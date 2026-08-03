@@ -9467,3 +9467,95 @@ select {
 }
 .topbar-brand-chip img { width: 100%; height: 100%; object-fit: contain; padding: 4px; background: #fff; box-sizing: border-box; }
 @media (max-width: 700px) { .topbar-brand-chip { width: 34px; height: 34px; } }
+
+
+/* Snaky KPI sparklines — bottom-right like product design */
+.kpi-card {
+  position: relative !important;
+  overflow: hidden !important;
+  min-height: 132px !important;
+}
+.kpi-card .sparkline,
+.kpi-card-spark .sparkline {
+  display: block !important;
+  position: absolute !important;
+  right: 12px !important;
+  bottom: 10px !important;
+  width: 88px !important;
+  height: 36px !important;
+  margin: 0 !important;
+  pointer-events: none;
+  opacity: 1 !important;
+}
+.kpi-card-spark {
+  padding-right: 96px !important;
+  padding-bottom: 12px !important;
+}
+.kpi-card-spark h3 {
+  max-width: calc(100% - 8px);
+}
+
+/* Larger sidebar logo */
+.sidebar-brand {
+  display: grid !important;
+  grid-template-columns: 72px 1fr auto !important;
+  align-items: center !important;
+  gap: 12px !important;
+  min-height: 88px !important;
+  padding: 12px 10px !important;
+}
+.sidebar-brand img,
+.sidebar-logo-img {
+  width: 72px !important;
+  height: 72px !important;
+  object-fit: contain !important;
+  background: #ffffff !important;
+  border-radius: 16px !important;
+  padding: 6px !important;
+  border: 1px solid #eaecf0 !important;
+  box-sizing: border-box !important;
+}
+.sidebar-brand-text strong {
+  display: block;
+  color: #fff !important;
+  font-size: 16px !important;
+  font-weight: 800 !important;
+  line-height: 1.15;
+}
+.sidebar-brand-text small {
+  display: block;
+  color: #d4af37 !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-top: 3px;
+}
+.sidebar-collapsed .sidebar-brand {
+  grid-template-columns: 1fr !important;
+  justify-items: center !important;
+}
+.sidebar-collapsed .sidebar-brand img {
+  width: 56px !important;
+  height: 56px !important;
+}
+.sidebar-collapsed .sidebar-brand-text { display: none !important; }
+
+/* Topbar profile never empty black */
+.topbar-profile-btn {
+  min-width: 44px;
+  min-height: 40px;
+  display: inline-flex !important;
+  align-items: center;
+  gap: 8px;
+  background: #f2f4f7 !important;
+  border: 1px solid #eaecf0 !important;
+  border-radius: 999px !important;
+  padding: 4px 10px 4px 4px !important;
+}
+.topbar-profile-btn .avatar,
+.topbar-profile-btn img {
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 50% !important;
+}

@@ -7909,17 +7909,21 @@ const api = {
   getSalesWorkspaceData(user, filters = {}) {
     reqRole(user);
     const d = data();
+    // Coerce collections so empty ERP never throws
+    ['sales','saleItems','invoices','quotations','expenses','leads','customers','deliveries','products','visits','salesVisits'].forEach(k => {
+      if (!Array.isArray(d[k])) d[k] = [];
+    });
     const scope = filters && filters.period ? { ...periodRange(filters.period), ...filters } : (filters || {});
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const sales = list('sales').filter(row => inDateRange(row, scope));
-    const invoices = list('invoices').filter(row => inDateRange(row, scope));
-    const quotations = list('quotations');
+    const sales = (list('sales') || []).filter(row => inDateRange(row, scope));
+    const invoices = (list('invoices') || []).filter(row => inDateRange(row, scope));
+    const quotations = list('quotations') || [];
     const saleIds = new Set(sales.map(s => s.id));
     const revenue = sales.reduce((sum, sale) => sum + num(sale.total), 0);
-    const cogs = d.saleItems.filter(item => saleIds.has(item.saleId)).reduce((sum, item) => sum + num(item.cost) * num(item.quantity), 0);
-    const expenses = d.expenses.filter(item => inDateRange(item, scope)).reduce((sum, item) => sum + num(item.amount), 0);
+    const cogs = (d.saleItems || []).filter(item => saleIds.has(item.saleId)).reduce((sum, item) => sum + num(item.cost) * num(item.quantity), 0);
+    const expenses = (d.expenses || []).filter(item => inDateRange(item, scope)).reduce((sum, item) => sum + num(item.amount), 0);
     const profit = revenue - cogs - expenses;
-    const pipeline = d.leads.filter(lead => !['Won', 'Lost'].includes(lead.stage)).reduce((sum, lead) => sum + num(lead.value), 0);
+    const pipeline = (d.leads || []).filter(lead => !['Won', 'Lost'].includes(lead.stage)).reduce((sum, lead) => sum + num(lead.value), 0);
     // Real month buckets from sale dates
     const monthIndex = (row) => {
       const raw = row.date || row.createdAt;
@@ -7968,7 +7972,7 @@ const api = {
       nextAction: quote.status === 'Draft' ? 'Send Quote' : quote.status === 'Sent' ? 'Convert To Order' : 'Generate Invoice',
       conversionProbability: quote.status === 'Sent' ? 72 : 48
     }));
-    const productComparison = Object.values(d.saleItems.reduce((acc, item) => {
+    const productComparison = Object.values((d.saleItems || []).reduce((acc, item) => {
       const key = item.productName || 'Unknown Product';
       acc[key] ||= { product: key, revenue: 0, profit: 0, quantity: 0 };
       acc[key].revenue += num(item.total);

@@ -834,7 +834,11 @@ function Sidebar({ page, setPage, open, setOpen, collapsed, setCollapsed, user, 
     <>
       <aside className={`sidebar ${open ? 'open' : ''}`}>
         <div className="sidebar-brand">
-          <img src="https://i.postimg.cc/CM9BdKbH/logo-ftc.png" alt="Farmtrack Biosciences logo" />
+          <img src="https://i.postimg.cc/CM9BdKbH/logo-ftc.png" alt="Farmtrack Biosciences logo" className="sidebar-logo-img" />
+          <div className="sidebar-brand-text">
+            <strong>Farmtrack</strong>
+            <small>Biosciences</small>
+          </div>
           <button type="button" className="sidebar-collapse" onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
             <ChevronDown size={17} className={collapsed ? 'chev-collapsed' : ''} />
           </button>
@@ -1858,17 +1862,18 @@ function KpiCard({ icon: Icon, label, value, change, tone, series }) {
 function Sparkline({ tone, series }) {
   const data = Array.isArray(series) && series.length ? series : buildSparkSeries(null, 0, 3);
   const color = tone === 'red' ? '#f04438' : tone === 'blue' ? '#2e90fa' : '#12b76a';
+  const animKey = data.map(d => d.v).join('-') + '-' + (tone || 'g');
   return (
     <div className="sparkline">
-      <ResponsiveContainer width="100%" height={40}>
-        <AreaChart data={data} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+      <ResponsiveContainer width="100%" height={36}>
+        <AreaChart key={animKey} data={data} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
           <defs>
-            <linearGradient id={`spark-${tone || 'green'}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={color} stopOpacity={0.28} />
+            <linearGradient id={`spark-${tone || 'green'}-${animKey.slice(0, 12)}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity={0.25} />
               <stop offset="100%" stopColor={color} stopOpacity={0} />
             </linearGradient>
           </defs>
-          <Area type="monotone" dataKey="v" stroke={color} fill={`url(#spark-${tone || 'green'})`} strokeWidth={2.4} isAnimationActive animationDuration={900} animationEasing="ease-out" />
+          <Area type="monotone" dataKey="v" stroke={color} fill={`url(#spark-${tone || 'green'}-${animKey.slice(0, 12)})`} strokeWidth={2.5} isAnimationActive animationDuration={1100} animationEasing="ease-in-out" dot={false} activeDot={false} />
         </AreaChart>
       </ResponsiveContainer>
     </div>
