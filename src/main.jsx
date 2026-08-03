@@ -2074,14 +2074,11 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
             </form>
           </Panel>
           <Panel className="span-7" title="Scheduled follow-ups" action={`${crmAnalytics.followUps.length} open`}>
-            <SimpleTable
+            <CRMFollowUpBoard
               rows={(allCalls || []).filter(row => row.followUpDate || ['To Be Called', 'Pending Calls', 'To Be Meeting', 'Follow-up'].includes(row.stage))}
-              columns={['followUpDate', 'customerName', 'phone', 'stage', 'notes', 'comments', 'assignedTo', 'date']}
+              onLogCall={() => setModal('call')}
+              onOpenCustomers={() => setView('customers')}
             />
-            <div className="inline-actions" style={{ marginTop: 12 }}>
-              <button type="button" onClick={() => setView('customers')}>Open customers</button>
-              <button type="button" onClick={() => setModal('call')}><Phone size={14} /> Log call</button>
-            </div>
           </Panel>
         </div>
       )}
@@ -2444,49 +2441,143 @@ function CRMCustomerDetail({ customer, orders = [], calls = [], deliveries = [],
   );
 }
 
-function CRMActivityList({ activities, setPage }) {
+
+function CRMFollowUpBoard({ rows = [], onLogCall, onOpenCustomers }) {
+  const [selected, setSelected] = useState(null);
+  if (!rows.length) {
+    return (
+      <div className="empty-state">
+        <p>No scheduled follow-ups. Log a call with a follow-up date or stage.</p>
+        <div className="inline-actions">
+          <button type="button" className="primary-action" onClick={onLogCall}><Phone size={14} /> Log call</button>
+          <button type="button" onClick={onOpenCustomers}>Open customers</button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <>
+      <div className="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Customer</th><th>Phone</th><th>Stage</th><th>Assigned</th><th></th></tr></thead>
+          <tbody>
+            {rows.map(row => (
+              <tr key={row.id} className="crm-followup-row" onClick={() => setSelected(row)}>
+                <td>{row.followUpDate || String(row.date || '').slice(0, 10)}</td>
+                <td><strong>{row.customerName || '—'}</strong></td>
+                <td>{row.phone || '—'}</td>
+                <td>{row.stage || '—'}</td>
+                <td>{row.assignedTo || '—'}</td>
+                <td><button type="button" className="mini-action" onClick={e => { e.stopPropagation(); setSelected(row); }}>Open</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="inline-actions" style={{ marginTop: 12 }}>
+        <button type="button" onClick={onOpenCustomers}>Open customers</button>
+        <button type="button" onClick={onLogCall}><Phone size={14} /> Log call</button>
+      </div>
+      {selected && (
+        <div className="modal-scrim retractable-overlay" onClick={() => setSelected(null)}>
+          <div className="modal-card overlay-scrollable wide" onClick={e => e.stopPropagation()}>
+            <header>
+              <h2>Follow-up · {selected.customerName || 'Customer'}</h2>
+              <button type="button" onClick={() => setSelected(null)}><X size={18} /></button>
+            </header>
+            <div className="modal-card-body overlay-scroll-body">
+              <div className="settings-kv-grid">
+                <article><span>Follow-up date</span><strong>{selected.followUpDate || '—'}</strong></article>
+                <article><span>Stage</span><strong>{selected.stage || '—'}</strong></article>
+                <article><span>Phone</span><strong>{selected.phone || '—'}</strong></article>
+                <article><span>Assigned to</span><strong>{selected.assignedTo || '—'}</strong></article>
+                <article><span>Notes</span><strong>{selected.notes || selected.nextStep || '—'}</strong></article>
+                <article><span>Comments</span><strong>{selected.comments || '—'}</strong></article>
+              </div>
+              <div className="inline-actions" style={{ marginTop: 16 }}>
+                <button type="button" className="primary-action" onClick={onLogCall}>Log related call</button>
+                <button type="button" onClick={() => setSelected(null)}>Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function CRMActivityList({ activities, setPage, onOpen }) {
+  const [selected, setSelected] = useState(null);
   const activityIcon = (item) => {
     const t = (item.type || '').toLowerCase();
-    const title = (item.title || '').toLowerCase();
-    if (t === 'call' || title.includes('call')) return 'call';
-    if (t === 'sale' || title.includes('sale') || title.includes('order')) return 'sale';
-    if (t === 'invoice' || title.includes('invoice')) return 'invoice';
-    if (t === 'leave' || title.includes('leave')) return 'leave';
-    if (t === 'stock' || title.includes('stock') || title.includes('inventory')) return 'stock';
-    if (t === 'order' || title.includes('purchase') || title.includes('procurement')) return 'order';
-    return 'call';
+    if (t === 'call') return 'call';
+    if (t === 'sale' || t === 'order') return 'sale';
+    if (t === 'invoice') return 'invoice';
+    if (t === 'delivery') return 'delivery';
+    if (t === 'lead') return 'lead';
+    return 'other';
   };
   const activityLink = (item) => {
     const t = (item.type || '').toLowerCase();
     const title = (item.title || '').toLowerCase();
-    if (t === 'call' || t === 'lead') return 'customers';
-    if (title.includes('leave') || t === 'leave') return 'leaves';
+    if (t === 'call' || t === 'lead') return 'crm';
     if (title.includes('sale') || title.includes('order')) return 'sales';
-    if (title.includes('invoice') || title.includes('receivable')) return 'accounts';
-    if (title.includes('payment') || title.includes('receipt')) return 'finance';
-    if (title.includes('procurement') || title.includes('purchase') || title.includes('po')) return 'purchasing';
-    if (title.includes('manufacturing') || title.includes('production') || title.includes('batch')) return 'production';
-    if (title.includes('stock') || title.includes('inventory') || title.includes('warehouse') || title.includes('transfer')) return 'inventory';
-    if (title.includes('report') || title.includes('analytics')) return 'reports';
-    if (title.includes('hr') || title.includes('attendance') || title.includes('employee')) return 'hr';
-    return 'customers';
+    if (title.includes('invoice')) return 'accounts';
+    if (title.includes('delivery')) return 'crm';
+    if (title.includes('stock') || title.includes('inventory')) return 'inventory';
+    if (title.includes('hr') || title.includes('leave')) return 'hr';
+    return 'crm';
   };
-  if (!activities?.length) return <div className="empty-state">No recent activities</div>;
+  if (!activities?.length) return <div className="empty-state">No recent activities yet. Log a call, add a customer, or create a sale.</div>;
   return (
-    <div className="crm-activity-list">
-      {activities.map(item => (
-        <article key={item.id} className="crm-activity-item" onClick={() => setPage?.(activityLink(item))}>
-          <div className={`crm-activity-icon ${activityIcon(item)}`}>
-            {item.type === 'Call' ? '📞' : item.type === 'Sale' ? '💰' : item.type === 'Leave' ? '🏖️' : item.type === 'Invoice' ? '📄' : item.type === 'Order' ? '📦' : item.type === 'Stock' ? '📋' : '📌'}
+    <>
+      <div className="crm-activity-list">
+        {activities.map(item => (
+          <article
+            key={item.id || `${item.type}-${item.time}-${item.title}`}
+            className="crm-activity-item"
+            role="button"
+            tabIndex={0}
+            onClick={() => {
+              setSelected(item);
+              onOpen?.(item);
+            }}
+            onKeyDown={e => { if (e.key === 'Enter') setSelected(item); }}
+          >
+            <div className={`crm-activity-icon ${activityIcon(item)}`}>
+              <span>{String(item.type || 'A').slice(0, 1)}</span>
+            </div>
+            <div className="crm-activity-body">
+              <strong>{item.title}</strong>
+              <span>{item.owner || 'System'} · {String(item.time || item.createdAt || '').slice(0, 16).replace('T', ' ')}</span>
+            </div>
+            <ArrowRight size={14} className="crm-activity-arrow" />
+          </article>
+        ))}
+      </div>
+      {selected && (
+        <div className="modal-scrim retractable-overlay" onClick={() => setSelected(null)}>
+          <div className="modal-card overlay-scrollable wide" onClick={e => e.stopPropagation()}>
+            <header>
+              <h2>{selected.type || 'Activity'}</h2>
+              <button type="button" onClick={() => setSelected(null)}><X size={18} /></button>
+            </header>
+            <div className="modal-card-body overlay-scroll-body">
+              <div className="settings-kv-grid">
+                <article><span>Title</span><strong>{selected.title}</strong></article>
+                <article><span>Status</span><strong>{selected.status || '—'}</strong></article>
+                <article><span>Owner</span><strong>{selected.owner || '—'}</strong></article>
+                <article><span>When</span><strong>{String(selected.time || '').slice(0, 19).replace('T', ' ')}</strong></article>
+              </div>
+              <div className="inline-actions" style={{ marginTop: 16 }}>
+                <button type="button" className="primary-action" onClick={() => { setPage?.(activityLink(selected)); setSelected(null); }}>Open related workspace</button>
+                <button type="button" onClick={() => setSelected(null)}>Close</button>
+              </div>
+            </div>
           </div>
-          <div className="crm-activity-body">
-            <strong>{item.title}</strong>
-            <span>{item.owner} · {String(item.time || item.createdAt || '').slice(0, 10)}</span>
-          </div>
-          <ArrowRight size={14} className="crm-activity-arrow" />
-        </article>
-      ))}
-    </div>
+        </div>
+      )}
+    </>
   );
 }
 

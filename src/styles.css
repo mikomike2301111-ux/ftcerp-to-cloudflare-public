@@ -2208,8 +2208,9 @@ td { padding: 13px 0; border-bottom: 1px solid #eef0f3; }
 .login-screen { min-height: 100vh; background: #050505; display: grid; place-items: center; padding: 24px; }
 .login-panel { width: min(440px, 100%); background: #fff; border-radius: 18px; padding: 32px; box-shadow: 0 30px 80px rgba(0,0,0,.32); }
 .brand-lockup { display: flex; align-items: center; gap: 16px; margin-bottom: 28px; }
-.brand-mark { width: 86px; height: 86px; border-radius: 20px; background: #050505; color: #fff; display: grid; place-items: center; overflow: hidden; }
-.brand-mark img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.brand-mark { width: 86px; height: 86px; border-radius: 20px; background: #ffffff; color: #101828; display: grid; place-items: center; overflow: hidden; border: 1px solid #eaecf0; box-shadow: 0 1px 2px rgba(16,24,40,.06); }
+.brand-mark img { width: 100%; height: 100%; object-fit: contain; display: block; background: #ffffff; padding: 6px; box-sizing: border-box; }
+.login-brand img, .auth-logo img { background: #ffffff; border-radius: 12px; padding: 8px; object-fit: contain; }
 .brand-lockup h1 { margin: 0; font-size: 24px; }
 .brand-lockup p { margin: 6px 0 0; color: var(--muted); }
 .login-form { display: grid; gap: 16px; }
@@ -9210,4 +9211,63 @@ select {
 }
 .crm-customer-detail .settings-kv-grid {
   min-width: min(720px, 100%);
+}
+
+
+/* EMAIL NAV + MOBILE OPS */
+.email-workspace .email-shell { display: grid; gap: 14px; }
+.email-nav-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px;
+  background: #fff;
+  border: 1px solid #eaecf0;
+  border-radius: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+.email-nav-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid #e4e7ec;
+  background: #f9fafb;
+  color: #344054;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+.email-nav-tabs button.active {
+  background: #050505;
+  color: #fff;
+  border-color: #050505;
+}
+.email-compose-panel, .email-sent-list { min-width: 0; }
+.crm-followup-row, .crm-activity-item { cursor: pointer; }
+.crm-followup-row:hover, .crm-activity-item:hover { background: #f9fafb; }
+
+@media (max-width: 900px) {
+  .topbar { flex-wrap: wrap; gap: 8px; }
+  .topbar-search, .global-search-wrap { width: 100%; min-width: 0; }
+  .sales-hero { grid-template-columns: 1fr !important; }
+  .sales-hero-stats { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .email-nav-tabs { overflow-x: auto; flex-wrap: nowrap; }
+  .email-nav-tabs button { flex: 0 0 auto; }
+  .crm-card-grid { grid-template-columns: 1fr !important; }
+  .dashboard-grid { grid-template-columns: 1fr !important; }
+  .panel.span-4, .panel.span-5, .panel.span-6, .panel.span-7, .panel.span-8, .panel.span-12 { grid-column: 1 / -1 !important; }
+  .inline-actions { flex-wrap: wrap; }
+  .accounts-command-strip, .sales-tabs, .settings-tabs { overflow-x: auto; flex-wrap: nowrap; }
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .sidebar { max-width: 100%; }
+}
+@media (max-width: 640px) {
+  .sales-hero-stats { grid-template-columns: 1fr 1fr !important; }
+  .hero-stat { padding-left: 52px !important; min-height: 64px; }
+  .topbar-email-btn, .topbar-profile-btn { min-width: 40px; }
 }

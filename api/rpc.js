@@ -191,12 +191,21 @@ async function taxInvoicePdfBuffer({ invoice, items, customer, settings, options
     ].forEach((line, i) => doc.text(line, left, 70 + i * 14, { width: width * 0.55 }));
 
     // ── Logo mark (right) — green rounded square with "F" ──
-    const logoSize = 46;
+    const logoSize = 52;
     const logoX = right - logoSize;
-    const logoY = 50;
+    const logoY = 48;
+    doc.save();
+    doc.roundedRect(logoX - 4, logoY - 4, logoSize + 8, logoSize + 8, 8).fill('#ffffff');
+    doc.restore();
     if (remoteLogoBuffer) {
+      doc.save();
+      doc.roundedRect(right - 134, 44, 138, 60, 8).fill('#ffffff');
+      doc.restore();
       doc.image(remoteLogoBuffer, right - 130, 48, { fit: [130, 52], align: 'right' });
     } else if (fs.existsSync(invoiceLogoPath)) {
+      doc.save();
+      doc.roundedRect(right - 134, 44, 138, 60, 8).fill('#ffffff');
+      doc.restore();
       doc.image(invoiceLogoPath, right - 130, 48, { fit: [130, 52], align: 'right' });
     } else {
       doc.roundedRect(logoX, logoY, logoSize, logoSize, 8).fill(GREEN);
@@ -6354,12 +6363,24 @@ const api = {
       ...periodDeliveries.slice(0, 6).map(delivery => ({ id: delivery.id, type: 'Delivery', title: `${delivery.status} - ${delivery.customerName}`, owner: delivery.driver || 'Delivery Team', time: delivery.updatedAt || delivery.createdAt || delivery.date || today(), status: delivery.status || 'Pending Delivery' }))
     ].sort((a, b) => String(b.time).localeCompare(String(a.time))).slice(0, 8);
     const topCustomers = [...customers].sort((a, b) => num(b.revenue) - num(a.revenue)).slice(0, 6);
-    const monthly = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'].map((month, index) => ({
-      month,
-      customers: Math.max(1, Math.round(customers.length * (0.55 + index * 0.08))),
-      revenue: Math.round(revenue * (0.1 + index * 0.025)),
-      opportunities: Math.max(1, leads.length + index)
-    }));
+    // Live monthly series from actual sales/calls/leads (no synthetic demo curve)
+    const monthlyMap = {};
+    periodSales.forEach(sale => {
+      const key = String(sale.date || sale.createdAt || today()).slice(0, 7);
+      if (!key) return;
+      monthlyMap[key] = monthlyMap[key] || { month: key, customers: 0, revenue: 0, opportunities: 0, _cust: new Set() };
+      monthlyMap[key].revenue += num(sale.total);
+      if (sale.customerId || sale.customerName) monthlyMap[key]._cust.add(sale.customerId || sale.customerName);
+    });
+    periodLeads.forEach(lead => {
+      const key = String(lead.createdAt || today()).slice(0, 7);
+      monthlyMap[key] = monthlyMap[key] || { month: key, customers: 0, revenue: 0, opportunities: 0, _cust: new Set() };
+      monthlyMap[key].opportunities += 1;
+    });
+    const monthly = Object.values(monthlyMap)
+      .map(row => ({ month: row.month, customers: row._cust.size, revenue: Math.round(row.revenue), opportunities: row.opportunities }))
+      .sort((a, b) => String(a.month).localeCompare(String(b.month)))
+      .slice(-12);
     const orders = d.sales.map(sale => {
       const customer = customers.find(c => c.id === sale.customerId || c.name === sale.customerName) || {};
       const delivery = d.deliveries.find(row => row.saleId === sale.id || row.saleNo === sale.saleNo) || {};
@@ -9077,13 +9098,13 @@ territory: geo,
       const monthGrns = grns.filter((_, i) => i % months.length === index);
       return {
         month,
-        spend: Math.round(monthPOs.reduce((sum, po) => sum + num(po.total), 0) || spend / months.length),
+        spend: Math.round(monthPOs.reduce((sum, po) => sum + num(po.total), 0)),
         deliveries: monthDeliveries.length,
         leadTime: 6 + index * 1.4,
         supplierPerformance: Math.round(suppliers.reduce((sum, s) => sum + num(s.overallRating), 0) / Math.max(1, suppliers.length) - index),
-        creditPurchases: Math.round(credit.filter((_, i) => i % months.length === index).reduce((sum, row) => sum + num(row.invoiceAmount), 0) || spend / months.length * 0.62),
+        creditPurchases: Math.round(credit.filter((_, i) => i % months.length === index).reduce((sum, row) => sum + num(row.invoiceAmount), 0)),
         outstandingBalances: Math.round(outstanding * (0.72 + index * 0.04)),
-        purchaseOrders: monthPOs.length || 1 + index,
+        purchaseOrders: monthPOs.length,
         receivedGoods: monthGrns.reduce((sum, row) => sum + num(row.acceptedQuantity), 0)
       };
     });
