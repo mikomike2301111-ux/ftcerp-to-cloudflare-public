@@ -2477,37 +2477,35 @@ function CRMActivityList({ activities, setPage }) {
 }
 
 function CRMReportsCenter({ user, data, globalPeriod = 'Month', onUpdated }) {
-  const [active, setActive] = useState('delivery');
+  const [active, setActive] = useState('customers');
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('all');
+  const [busyExport, setBusyExport] = useState('');
   const [filters, setFilters] = useState(() => ({ ...periodToReportDates(globalPeriod), module: 'Customer' }));
   useEffect(() => {
     setFilters(prev => ({ ...prev, ...periodToReportDates(globalPeriod), module: prev.module || 'Customer' }));
   }, [globalPeriod]);
   const reportSets = useMemo(() => {
     const calls = (data.calls || []).map(row => ({
-      date: dateValue(row),
+      date: dateValue(row) || String(row.followUpDate || row.createdAt || '').slice(0, 10),
       name: row.customerName || row.caller || row.name || 'Customer call',
       phone: row.phone || '',
-      detail: row.reason || row.notes || row.outcome || 'CRM call',
+      detail: [row.notes, row.comments, row.outcome].filter(Boolean).join(' · ') || 'CRM call',
       status: row.stage || row.status || 'Logged',
-      value: num(row.value)
-    }));
-    const activities = (data.activities || []).map(row => ({
-      date: dateValue(row),
-      name: row.title || row.customerName || row.type || 'CRM activity',
-      phone: row.phone || '',
-      detail: row.message || row.description || row.type || 'Activity',
-      status: row.status || row.priority || 'Active',
-      value: num(row.value)
+      value: num(row.value),
+      assignedTo: row.assignedTo || '',
+      followUpDate: row.followUpDate || ''
     }));
     const customers = (data.customers || []).map(row => ({
       date: dateValue(row),
       name: row.name,
       phone: row.phone,
-      detail: `${row.city || 'No location'} / ${row.type || 'Customer'}`,
+      email: row.email || '',
+      detail: `${row.city || '—'} · ${row.type || 'Customer'}${row.salesOwner || row.salesPerson ? ` · Sales: ${row.salesOwner || row.salesPerson}` : ''}`,
       status: row.status || row.health || 'Active',
-      value: num(row.revenue || row.balance || row.creditLimit)
+      value: num(row.revenue || row.balance || row.creditLimit),
+      balance: num(row.balance),
+      type: row.type || 'Customer'
     }));
     const leads = (data.leads || []).map(row => ({
       date: dateValue(row),
@@ -2522,64 +2520,109 @@ function CRMReportsCenter({ user, data, globalPeriod = 'Month', onUpdated }) {
       date: dateValue(row),
       name: row.name || row.customerName || 'Customer',
       phone: row.phone || '',
-      detail: row.detail || `${row.deliveryNo || 'Delivery'} / ${row.destination || 'No destination'} / ${row.method || 'No method'}`,
+      detail: `${row.deliveryNo || 'Delivery'} · ${row.destination || 'No destination'} · ${row.deliveryMethod || row.method || '—'}`,
       status: row.status || 'Pending Delivery',
-      value: num(row.value)
+      value: num(row.value || row.total)
     }));
+    const orders = (data.orders || data.sales || []).map(row => ({
+      date: dateValue(row),
+      name: row.customerName || 'Customer',
+      phone: row.phone || '',
+      detail: `${row.saleNo || row.orderNo || 'Order'} · ${row.deliveryStatus || row.status || ''}`,
+      status: row.status || row.deliveryStatus || 'Open',
+      value: num(row.total || row.balance)
+    }));
+    const followups = calls.filter(row => row.followUpDate || ['To Be Called', 'Pending Calls', 'To Be Meeting', 'Follow-up'].includes(row.status));
     return {
-      delivery: { label: 'Delivery report', module: 'Delivery', reportName: 'Delivery Report', rows: deliveries, icon: Truck, columns: ['date', 'deliveryNo', 'saleNo', 'name', 'destination', 'method', 'driver', 'status', 'arrival', 'value'] },
-      calls: { label: 'Reception calls', module: 'Customer', reportName: 'Customer Activity Report', rows: calls, icon: Phone, columns: ['date', 'name', 'phone', 'detail', 'status', 'value'] },
-      followup: { label: 'Follow-up log', module: 'Customer', reportName: 'Customer Report', rows: leads.concat(customers.filter(row => row.status !== 'Active')), icon: RefreshCw, columns: ['date', 'name', 'phone', 'detail', 'status', 'value'] },
-      customers: { label: 'Customer ledger', module: 'Customer', reportName: 'Customer Report', rows: customers, icon: Users, columns: ['date', 'name', 'phone', 'detail', 'status', 'value'] }
+      customers: { label: 'Customer ledger', module: 'Customer', reportName: 'Customer Report', rows: customers, icon: Users, columns: ['date', 'name', 'phone', 'email', 'type', 'detail', 'status', 'balance', 'value'] },
+      calls: { label: 'Calls & notes', module: 'Customer', reportName: 'Call Report', rows: calls, icon: Phone, columns: ['date', 'name', 'phone', 'detail', 'status', 'assignedTo', 'followUpDate'] },
+      followup: { label: 'Follow-ups', module: 'Customer', reportName: 'Follow-up Report', rows: followups, icon: RefreshCw, columns: ['date', 'name', 'phone', 'detail', 'status', 'followUpDate', 'assignedTo'] },
+      leads: { label: 'Pipeline', module: 'Customer', reportName: 'Pipeline Report', rows: leads, icon: Target, columns: ['date', 'name', 'phone', 'detail', 'status', 'value'] },
+      orders: { label: 'Purchases', module: 'Sales', reportName: 'Customer Purchases', rows: orders, icon: ShoppingCart, columns: ['date', 'name', 'detail', 'status', 'value'] },
+      delivery: { label: 'Deliveries', module: 'Delivery', reportName: 'Delivery Report', rows: deliveries, icon: Truck, columns: ['date', 'deliveryNo', 'name', 'destination', 'method', 'driver', 'status', 'value'] }
     };
   }, [data]);
   const activeSet = reportSets[active] || reportSets.customers;
-  const reportFilters = { ...filters, module: activeSet.module, reportName: activeSet.reportName };
-  const statuses = Array.from(new Set(activeSet.rows.map(row => row.status).filter(Boolean)));
-  const filteredRows = activeSet.rows.filter(row => {
-    const haystack = `${row.name} ${row.phone} ${row.detail} ${row.status}`.toLowerCase();
+  const statuses = Array.from(new Set((activeSet.rows || []).map(row => row.status).filter(Boolean)));
+  const filteredRows = (activeSet.rows || []).filter(row => {
+    const haystack = `${row.name} ${row.phone} ${row.email || ''} ${row.detail} ${row.status} ${row.assignedTo || ''}`.toLowerCase();
     const matchesQuery = !query.trim() || haystack.includes(query.trim().toLowerCase());
     const matchesStatus = status === 'all' || row.status === status;
-    return matchesQuery && matchesStatus && (!filters.startDate || row.date >= filters.startDate) && (!filters.endDate || row.date <= filters.endDate);
+    const d = String(row.date || '').slice(0, 10);
+    const matchesStart = !filters.startDate || !d || d >= filters.startDate;
+    const matchesEnd = !filters.endDate || !d || d <= filters.endDate;
+    return matchesQuery && matchesStatus && matchesStart && matchesEnd;
   });
-  const totalValue = filteredRows.reduce((sum, row) => sum + num(row.value), 0);
+  const totalValue = filteredRows.reduce((sum, row) => sum + num(row.value || row.balance), 0);
   const statusBreakdown = statuses.map(item => ({ name: item, count: filteredRows.filter(row => row.status === item).length })).filter(row => row.count);
   const chartRows = statusBreakdown.length ? statusBreakdown.map(row => ({ label: row.name, value: row.count })) : [{ label: 'Records', value: filteredRows.length }];
+  const columns = activeSet.columns || ['date', 'name', 'phone', 'detail', 'status', 'value'];
+
   async function exportCrmReport(format) {
-    const file = await rpc('generateReportExport', [user, {
-      ...reportFilters,
-      crmReportType: activeSet.label,
-      query: query.trim(),
-      status,
-      rows: filteredRows,
-      columns: activeSet.columns || ['date', 'name', 'phone', 'detail', 'status', 'value']
-    }, format]);
-    handleGeneratedFile(file, format);
+    const fmt = String(format || 'CSV').toUpperCase();
+    setBusyExport(fmt);
+    try {
+      if (fmt === 'CSV' || fmt === 'EXCEL' || fmt === 'JSON') {
+        downloadRowsFile(`crm-${active}-${filters.startDate || 'all'}`, filteredRows, fmt === 'EXCEL' ? 'CSV' : fmt);
+        return;
+      }
+      if (fmt === 'PRINT') {
+        printText(activeSet.label, filteredRows.map(r => columns.map(c => `${c}: ${r[c] ?? ''}`).join(' | ')).join('\n'));
+        return;
+      }
+      try {
+        const file = await rpc('generateReportExport', [user, {
+          ...filters,
+          module: activeSet.module,
+          reportName: activeSet.reportName,
+          crmReportType: activeSet.label,
+          query: query.trim(),
+          status,
+          rows: filteredRows,
+          columns
+        }, fmt === 'PDF' ? 'PDF' : fmt]);
+        handleGeneratedFile(file, fmt);
+      } catch {
+        downloadRowsFile(`crm-${active}`, filteredRows, 'CSV');
+        alert('Server PDF unavailable — CSV downloaded instead.');
+      }
+    } finally {
+      setBusyExport('');
+    }
   }
+
   return (
     <div className="crm-report-center">
       <div className="crm-report-heading">
         <div>
-          <span>Farmtrack CRM report suite</span>
+          <span>CRM report suite</span>
           <h2>CRM Reports</h2>
-          <p>Delivery, reception calls, follow-up logs, customer records, and export packages from ERP data for {filters.startDate} to {filters.endDate}.</p>
+          <p>
+            Live data from customers, calls, follow-ups, pipeline, purchases, and deliveries
+            {filters.startDate ? ` · ${filters.startDate} to ${filters.endDate}` : ''}.
+          </p>
         </div>
         <div className="crm-report-heading-actions">
-          <ExportButton format="Excel" onClick={() => exportCrmReport('Excel')} primary>Excel</ExportButton>
-          <ExportButton format="PDF" onClick={() => exportCrmReport('PDF')}>PDF</ExportButton>
-          <ExportButton format="CSV" onClick={() => exportCrmReport('CSV')}>CSV</ExportButton>
+          <button type="button" className="primary-action" disabled={!!busyExport} onClick={() => exportCrmReport('CSV')}>{busyExport === 'CSV' ? 'Exporting...' : 'Export CSV'}</button>
+          <button type="button" className="secondary-action" disabled={!!busyExport} onClick={() => exportCrmReport('PDF')}>PDF</button>
+          <button type="button" className="secondary-action" disabled={!!busyExport} onClick={() => exportCrmReport('PRINT')}>Print</button>
         </div>
       </div>
       <div className="crm-report-tabs">
         {Object.entries(reportSets).map(([id, set]) => {
           const Icon = set.icon;
-          return <button key={id} className={active === id ? 'active' : ''} onClick={() => { setActive(id); setStatus('all'); }}><Icon size={16} />{set.label}</button>;
+          return (
+            <button key={id} type="button" className={active === id ? 'active' : ''} onClick={() => { setActive(id); setStatus('all'); }}>
+              <Icon size={16} />{set.label}
+              <em style={{ marginLeft: 6, opacity: 0.7 }}>{(set.rows || []).length}</em>
+            </button>
+          );
         })}
       </div>
       <div className="crm-report-kpis">
         <article><span>Records</span><strong>{filteredRows.length.toLocaleString()}</strong></article>
         <article><span>Value</span><strong>{currency(totalValue)}</strong></article>
-        <article><span>Statuses</span><strong>{statusBreakdown.length || statuses.length}</strong></article>
+        <article><span>Statuses</span><strong>{statusBreakdown.length || statuses.length || 0}</strong></article>
         <article><span>Period</span><strong>{globalPeriod}</strong></article>
       </div>
       <div className="crm-report-toolbar">
@@ -2591,7 +2634,7 @@ function CRMReportsCenter({ user, data, globalPeriod = 'Month', onUpdated }) {
         <ReportDateControls filters={filters} setFilters={setFilters} />
       </div>
       <div className="dashboard-grid">
-        <Panel className="span-5" title="Status Mix" action={`${filteredRows.length} rows`}>
+        <Panel className="span-4" title="Status mix" action={`${filteredRows.length} rows`}>
           <div className="crm-mini-bars">
             {chartRows.map((row, index) => (
               <div key={row.label}>
@@ -2600,12 +2643,20 @@ function CRMReportsCenter({ user, data, globalPeriod = 'Month', onUpdated }) {
                 <strong>{row.value}</strong>
               </div>
             ))}
+            {filteredRows.length === 0 && <div className="empty-state">No rows in this period. Add CRM data or widen the date range.</div>}
           </div>
         </Panel>
-        <Panel className="span-7" title={`${activeSet.label} Preview`} action={<ExportFormatStrip formats={['PDF', 'Excel', 'CSV', 'Print']} onExport={exportCrmReport} />}>
+        <Panel className="span-8" title={`${activeSet.label}`} action={
+          <div className="panel-action-row">
+            <button type="button" className="mini-action" onClick={() => exportCrmReport('CSV')}>CSV</button>
+            <button type="button" className="mini-action" onClick={() => exportCrmReport('PRINT')}>Print</button>
+          </div>
+        }>
           {active === 'delivery'
-            ? <CRMDeliveryPreview user={user} rows={filteredRows.slice(0, 12)} onUpdated={onUpdated} />
-            : <SimpleTable rows={filteredRows.slice(0, 12)} columns={activeSet.columns || ['date', 'name', 'phone', 'detail', 'status', 'value']} />}
+            ? <CRMDeliveryPreview user={user} rows={filteredRows.slice(0, 50)} onUpdated={onUpdated} />
+            : filteredRows.length === 0
+              ? <div className="empty-state">No records for this report. Create customers, log calls, or sync visits first.</div>
+              : <SimpleTable rows={filteredRows.slice(0, 100)} columns={columns} />}
         </Panel>
       </div>
     </div>
