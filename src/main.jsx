@@ -128,7 +128,21 @@ import {
 
 const DEFAULT_USER = { email: 'miko@gmail.com', password: '1234567890' };
 const num = value => Number.parseFloat(value || 0) || 0;
-const currency = value => `Ksh${Number(value || 0).toLocaleString()}`;
+const currency = value => {
+  const n = Number(value || 0);
+  if (!Number.isFinite(n)) return 'Ksh0';
+  return `Ksh${n.toLocaleString('en-KE', { maximumFractionDigits: 0 })}`;
+};
+const compactCurrency = value => {
+  const n = Number(value || 0);
+  if (!Number.isFinite(n)) return 'Ksh0';
+  const abs = Math.abs(n);
+  const sign = n < 0 ? '-' : '';
+  if (abs >= 1_000_000_000) return `Ksh${sign}${(abs / 1_000_000_000).toFixed(2)}B`;
+  if (abs >= 1_000_000) return `Ksh${sign}${(abs / 1_000_000).toFixed(2)}M`;
+  if (abs >= 100_000) return `Ksh${sign}${(abs / 1_000).toFixed(1)}K`;
+  return `Ksh${sign}${abs.toLocaleString('en-KE', { maximumFractionDigits: 0 })}`;
+};
 const shortCurrency = value => {
   const n = Number(value || 0);
   if (Math.abs(n) >= 1000000) return `Ksh${(n / 1000000).toFixed(n >= 10000000 ? 0 : 1)}M`;
@@ -6068,11 +6082,11 @@ function AccountsWorkspace({ user, setPage, globalPeriod }) {
           <h1>Accounts</h1>
           <p>Chart of accounts, receivables, payables, bank balances, journals, reconciliations, and trial balance in one finance-backed workspace.</p>
         </div>
-        <div className="sales-hero-stats">
-          <strong>{data.accounts.length}</strong><span>Accounts</span>
-          <strong>{data.journals.length}</strong><span>Journals</span>
-          <strong>{currency(cashPosition)}</strong><span>Cash</span>
-        </div>
+        <HeroStats items={[
+          [data.accounts?.length || 0, 'Accounts'],
+          [data.journals?.length || 0, 'Journals'],
+          [cashPosition, 'Cash']
+        ]} />
       </div>
       <FinanceHealthStrip data={data} />
       <div className="accounts-command-strip">
@@ -6115,11 +6129,13 @@ function AccountsWorkspace({ user, setPage, globalPeriod }) {
         <>
           <div className="analytics-kpi-row">
             {accountCards.map(([title, value, Icon, detail]) => (
-              <article key={title}>
-                <span>{title}</span>
-                <strong>{currency(value)}</strong>
+              <article key={title} className="kpi-align-card">
+                <div className="kpi-align-top">
+                  <span>{title}</span>
+                  <Icon size={18} />
+                </div>
+                <strong title={currency(value)}>{compactCurrency(value)}</strong>
                 <small>{detail}</small>
-                <Icon size={18} />
               </article>
             ))}
           </div>
@@ -6688,11 +6704,11 @@ function Finance({ user, setPage, globalPeriod }) {
           <h1>Finance Operating Center</h1>
           <p>Sales, procurement, inventory, payments, expenses, tax, payroll, assets, budgets, and manual journals now flow into one balanced, auditable financial engine.</p>
         </div>
-        <div className="sales-hero-stats">
-          <strong>{currency(data.overview.cashPosition)}</strong><span>Cash</span>
-          <strong>{currency(data.overview.netProfit)}</strong><span>Net Profit</span>
-          <strong>{data.integrity.unbalanced}</strong><span>Unbalanced</span>
-        </div>
+        <HeroStats items={[
+          [data.overview.cashPosition, 'Cash'],
+          [data.overview.netProfit, 'Net Profit'],
+          [data.integrity.unbalanced, 'Unbalanced']
+        ]} />
       </div>
 
       <div className="inline-actions">
@@ -11661,12 +11677,16 @@ function EmailAdminCenter({ user, setPage }) {
 function HeroStats({ items = [] }) {
   return (
     <div className="sales-hero-stats">
-      {(items || []).map(([value, label], i) => (
-        <div className="hero-stat" key={`${label}-${i}`}>
-          <span>{label}</span>
-          <strong>{value}</strong>
-        </div>
-      ))}
+      {(items || []).map(([value, label], i) => {
+        const display = typeof value === 'number' ? compactCurrency(value) : value;
+        const long = String(display).length > 12;
+        return (
+          <div className={`hero-stat${long ? ' hero-stat-long' : ''}`} key={`${label}-${i}`}>
+            <span>{label}</span>
+            <strong title={typeof value === 'number' ? currency(value) : String(value)}>{display}</strong>
+          </div>
+        );
+      })}
     </div>
   );
 }

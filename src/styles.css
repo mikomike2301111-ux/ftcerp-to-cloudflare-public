@@ -550,10 +550,13 @@ th {
 .analytics-source-panel span { color: #667085; font-size: 11px; font-weight: 850; text-transform: uppercase; letter-spacing: .08em; }
 .analytics-source-panel strong { color: #101828; font-size: 18px; }
 .analytics-source-panel p { margin: 0; color: #667085; font-size: 12px; line-height: 1.45; }
-.analytics-kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
-.analytics-kpi-row article { border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); background: #fff; padding: 16px; }
-.analytics-kpi-row span { color: var(--muted); display: block; font-size: 12px; margin-bottom: 8px; }
-.analytics-kpi-row strong { font-size: 22px; letter-spacing: -.03em; }
+.analytics-kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.analytics-kpi-row article { border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); background: #fff; padding: 16px; min-width: 0; display: flex; flex-direction: column; gap: 6px; position: relative; overflow: hidden; }
+.analytics-kpi-row .kpi-align-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.analytics-kpi-row span { color: var(--muted); display: block; font-size: 12px; margin-bottom: 0; font-weight: 600; }
+.analytics-kpi-row strong { font-size: clamp(16px, 1.4vw, 22px); letter-spacing: -.03em; line-height: 1.2; word-break: break-word; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; max-width: 100%; }
+.analytics-kpi-row small { color: #667085; font-size: 12px; line-height: 1.35; }
+.analytics-kpi-row article svg { flex-shrink: 0; opacity: .7; }
 .analytics-storyline {
   display: grid;
   grid-template-columns: minmax(280px, 1.5fr) repeat(3, minmax(180px, 1fr));
@@ -1429,13 +1432,18 @@ th {
 .sales-hero-stats > strong {
   margin: 0;
   color: #fff;
-  font-size: clamp(18px, 1.4vw, 24px);
-  line-height: 1.1;
+  font-size: clamp(15px, 1.15vw, 22px);
+  line-height: 1.15;
   letter-spacing: -.03em;
   font-weight: 800;
   word-break: break-word;
   overflow-wrap: anywhere;
   white-space: normal;
+  max-width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+.sales-hero-stats .hero-stat-long strong {
+  font-size: clamp(13px, 1vw, 17px);
 }
 .sales-hero-stats .hero-stat span,
 .sales-hero-stats > span {

@@ -2393,6 +2393,7 @@ function seed() {
     requisitionAuditTrail: [],
     settings: {
       company_name: 'Farmtrack Biosciences Ltd',
+      demo_data_disabled: true,
       company_address: 'Nairobi, Nairobi 00100 KE',
       company_phone: '+2540711495522',
       company_email: 'farmtrack.consulting@gmail.com',
@@ -2555,100 +2556,54 @@ function ensureManufacturingData() {
 }
 
 function ensureFinanceData() {
-  if (!db || db.financeJournalEntries?.length && db.financeAccounts?.length && db.financialReports?.length) return;
-  const now = new Date();
-  const accountSeed = [
-    ['1000', 'Cash on Hand', 'Asset'], ['1010', 'KCB Bank', 'Asset'], ['1020', 'M-Pesa Till', 'Asset'],
-    ['1100', 'Accounts Receivable', 'Asset'], ['1200', 'Inventory Asset', 'Asset'], ['1300', 'Fixed Assets', 'Asset'],
-    ['2000', 'Accounts Payable', 'Liability'], ['2100', 'Tax Payable', 'Liability'], ['2200', 'Payroll Payable', 'Liability'],
-    ['3000', 'Owner Equity', 'Equity'], ['3100', 'Retained Earnings', 'Equity'],
-    ['4000', 'Sales Revenue', 'Revenue'], ['4100', 'Other Income', 'Revenue'],
-    ['5000', 'Cost of Goods Sold', 'Expense'], ['5100', 'Payroll Expense', 'Expense'], ['5200', 'Transport Expense', 'Expense'],
-    ['5300', 'Utilities Expense', 'Expense'], ['5400', 'Marketing Expense', 'Expense'], ['5500', 'Inventory Loss Expense', 'Expense'],
-    ['5600', 'Tax Expense', 'Expense']
-  ];
-  const existingAccounts = Array.isArray(db.financeAccounts) ? db.financeAccounts : [];
-  const byCode = new Map(existingAccounts.map(account => [String(account.code), account]));
-  db.financeAccounts = accountSeed.map(([code, name, type], index) => {
-    const existing = byCode.get(code);
-    return existing ? { ...existing, code, name: existing.name || name, type: existing.type || type, status: existing.status || 'Active', parent: existing.parent || type } : { id: `ACC-${index + 1}`, code, name, type, status: 'Active', parent: type };
-  });
-  existingAccounts
-    .filter(account => account.code && !accountSeed.some(([code]) => code === String(account.code)))
-    .forEach(account => db.financeAccounts.push(account));
-  const acc = name => db.financeAccounts.find(a => a.name === name) || db.financeAccounts[0];
-  const entries = [];
-  const lines = [];
-  const addEntry = ({ date, sourceModule, sourceId, reference, description, debit, credit, amount, user = 'System', approvalStatus = 'Auto Approved' }) => {
-    const id = gid();
-    const value = Math.round(num(amount));
-    if (!value) return null;
-    entries.push({ id, journalNo: `JE-${String(entries.length + 1).padStart(5, '0')}`, date: date || today(), description, sourceModule, sourceId, reference, totalDebit: value, totalCredit: value, approvalStatus, postedBy: user, immutable: true, createdAt: new Date().toISOString() });
-    lines.push({ id: gid(), journalEntryId: id, accountCode: debit.code, accountName: debit.name, accountType: debit.type, debit: value, credit: 0, sourceModule, reference, date: date || today() });
-    lines.push({ id: gid(), journalEntryId: id, accountCode: credit.code, accountName: credit.name, accountType: credit.type, debit: 0, credit: value, sourceModule, reference, date: date || today() });
-    return id;
-  };
-  (db.sales || []).forEach(sale => {
-    addEntry({ date: sale.date, sourceModule: 'Sales', sourceId: sale.id, reference: sale.saleNo, description: `Invoice revenue for ${sale.customerName}`, debit: acc('Accounts Receivable'), credit: acc('Sales Revenue'), amount: sale.total, user: sale.createdBy || 'Sales Workspace' });
-    const saleItems = (db.saleItems || []).filter(item => item.saleId === sale.id);
-    const cogs = saleItems.reduce((sum, item) => sum + num(item.cost) * num(item.quantity), 0);
-    addEntry({ date: sale.date, sourceModule: 'Inventory', sourceId: sale.id, reference: sale.saleNo, description: `COGS for ${sale.saleNo}`, debit: acc('Cost of Goods Sold'), credit: acc('Inventory Asset'), amount: cogs, user: 'Inventory Engine' });
-    if (num(sale.paid) > 0) addEntry({ date: sale.date, sourceModule: 'Banking', sourceId: sale.id, reference: sale.saleNo, description: `Customer receipt ${sale.customerName}`, debit: acc(sale.paymentMethod === 'M-Pesa' ? 'M-Pesa Till' : 'KCB Bank'), credit: acc('Accounts Receivable'), amount: sale.paid, user: 'Finance Engine' });
-    if (num(sale.tax) > 0) addEntry({ date: sale.date, sourceModule: 'Taxes', sourceId: sale.id, reference: sale.saleNo, description: `Output VAT ${sale.saleNo}`, debit: acc('Accounts Receivable'), credit: acc('Tax Payable'), amount: sale.tax, user: 'Tax Engine' });
-  });
-  (db.purchaseOrders || []).forEach(po => {
-    addEntry({ date: po.date, sourceModule: 'Procurement', sourceId: po.id, reference: po.poNo, description: `Committed spend ${po.supplierName}`, debit: acc('Inventory Asset'), credit: acc('Accounts Payable'), amount: po.total, user: 'Procurement Engine' });
-    if (num(po.tax) > 0) addEntry({ date: po.date, sourceModule: 'Taxes', sourceId: po.id, reference: po.poNo, description: `Input VAT ${po.poNo}`, debit: acc('Tax Expense'), credit: acc('Accounts Payable'), amount: po.tax, user: 'Tax Engine' });
-  });
-  (db.supplierPayments || []).forEach(pay => addEntry({ date: pay.date, sourceModule: 'Procurement', sourceId: pay.id, reference: pay.paymentNo, description: `Supplier payment ${pay.supplierName}`, debit: acc('Accounts Payable'), credit: acc('KCB Bank'), amount: pay.amount, user: 'Finance Engine' }));
-  (db.expenses || []).forEach(exp => addEntry({ date: exp.date, sourceModule: 'Expenses', sourceId: exp.id, reference: exp.expNo, description: exp.description || exp.category, debit: acc(exp.category === 'Salaries' ? 'Payroll Expense' : 'Transport Expense'), credit: acc(exp.paymentMethod === 'M-Pesa' ? 'M-Pesa Till' : 'KCB Bank'), amount: exp.amount, user: 'Finance Engine' }));
-  (db.inventoryDamage || []).forEach(dmg => addEntry({ date: dmg.date, sourceModule: 'Inventory', sourceId: dmg.id, reference: dmg.id, description: `Inventory damage ${dmg.productName}`, debit: acc('Inventory Loss Expense'), credit: acc('Inventory Asset'), amount: num(dmg.quantity) * num((db.inventory || []).find(i => i.productId === dmg.productId)?.unitCost || 0), user: dmg.reportedBy || 'Warehouse' }));
-  (db.production || []).forEach(job => addEntry({ date: job.startDate || today(), sourceModule: 'Production', sourceId: job.id, reference: job.jobNo, description: `Work in progress ${job.productName}`, debit: acc('Inventory Asset'), credit: acc('Cost of Goods Sold'), amount: num(job.materialCost || job.plannedQty * 120), user: job.assignedTo || 'Production' }));
-  db.financeJournalEntries = entries;
-  db.financeJournalLines = lines;
-  db.generalLedger = db.financeJournalLines.map((line, index) => ({ id: `GL-${index + 1}`, ...line, runningBalance: db.financeJournalLines.filter(l => l.accountCode === line.accountCode).slice(0, index + 1).reduce((sum, l) => sum + num(l.debit) - num(l.credit), 0) }));
-  const accountBalance = account => lines.filter(l => l.accountName === account).reduce((sum, l) => sum + num(l.debit) - num(l.credit), 0);
-  db.bankAccounts = [
-    { id: 'BANK-1', accountName: 'KCB Operating Account', bank: 'KCB', accountNumber: '1234567890', currency: 'KES', openingBalance: 1200000, balance: 1200000 + accountBalance('KCB Bank'), status: 'Active' },
-    { id: 'BANK-2', accountName: 'M-Pesa Paybill', bank: 'Safaricom', accountNumber: '247247', currency: 'KES', openingBalance: 300000, balance: 300000 + accountBalance('M-Pesa Till'), status: 'Active' },
-    { id: 'BANK-3', accountName: 'Petty Cash', bank: 'Cash', accountNumber: 'CASH-001', currency: 'KES', openingBalance: 75000, balance: 75000 + accountBalance('Cash on Hand'), status: 'Active' }
-  ];
-  db.bankTransactions = db.financeJournalLines.filter(l => ['KCB Bank', 'M-Pesa Till', 'Cash on Hand'].includes(l.accountName)).map((l, index) => ({ id: `BTX-${index + 1}`, accountName: l.accountName, date: l.date, reference: l.reference, description: `${l.sourceModule} ${l.reference}`, deposit: l.debit, withdrawal: l.credit, reconciled: index % 4 !== 0 }));
-  db.accountsReceivable = (db.invoices || []).map(inv => ({ id: `AR-${inv.id}`, invoiceId: inv.id, invNo: inv.invNo, customerName: inv.customerName, dueDate: inv.dueDate, total: num(inv.total), paid: num(inv.paid), balance: num(inv.balance), agingBucket: num(inv.balance) <= 0 ? 'Paid' : '0-30', risk: num(inv.balance) > 100000 ? 'Watch' : 'Normal', status: inv.status }));
-  db.financeAccountsPayable = (db.accountsPayable || []).map(ap => ({ ...ap, risk: num(ap.outstandingBalance) > 150000 ? 'High' : 'Normal' }));
-  db.payrollRecords = (db.payrollRecords?.length ? db.payrollRecords : [
-    ['EMP-001', 'Mary Sales', 'Sales', 85000], ['EMP-002', 'Peter Warehouse', 'Warehouse', 78000], ['EMP-003', 'Grace Production', 'Production', 92000], ['EMP-004', 'David Procurement', 'Procurement', 88000], ['EMP-005', 'Sarah Accountant', 'Finance', 95000]
-  ].map(([employeeNo, name, department, basicSalary], index) => {
-    const paye = Math.round(basicSalary * 0.16), nssf = 2160, nhif = 1700;
-    return { id: `PAY-${index + 1}`, employeeNo, name, department, basicSalary, allowances: 12000, deductions: paye + nssf + nhif, paye, nssf, nhif, netPay: basicSalary + 12000 - paye - nssf - nhif, status: 'Processed', month: now.toISOString().slice(0, 7) };
-  }));
-  db.taxRecords = [
-    { id: 'TAX-1', taxType: 'Output VAT', liability: (db.sales || []).reduce((s, x) => s + num(x.tax), 0), period: now.toISOString().slice(0, 7), status: 'Open' },
-    { id: 'TAX-2', taxType: 'Input VAT', liability: (db.purchaseOrders || []).reduce((s, x) => s + num(x.tax), 0), period: now.toISOString().slice(0, 7), status: 'Recoverable' },
-    { id: 'TAX-3', taxType: 'PAYE', liability: db.payrollRecords.reduce((s, x) => s + num(x.paye), 0), period: now.toISOString().slice(0, 7), status: 'Open' },
-    { id: 'TAX-4', taxType: 'NSSF/NHIF', liability: db.payrollRecords.reduce((s, x) => s + num(x.nssf) + num(x.nhif), 0), period: now.toISOString().slice(0, 7), status: 'Open' }
-  ];
-  db.fixedAssets = [
-    { id: 'AST-1', assetName: 'Delivery Truck KCG 114A', category: 'Vehicles', location: 'Nairobi', purchaseCost: 2800000, accumulatedDepreciation: 420000, currentValue: 2380000, method: 'Straight Line', status: 'Active' },
-    { id: 'AST-2', assetName: 'Feed Mixer Machine', category: 'Machinery', location: 'Production', purchaseCost: 1600000, accumulatedDepreciation: 260000, currentValue: 1340000, method: 'Straight Line', status: 'Active' },
-    { id: 'AST-3', assetName: 'Cold Storage Unit', category: 'Equipment', location: 'Cold Storage', purchaseCost: 950000, accumulatedDepreciation: 110000, currentValue: 840000, method: 'Straight Line', status: 'Active' }
-  ];
-  const departments = ['Sales', 'Inventory', 'Procurement', 'Production', 'Finance', 'Admin'];
-  db.budgets = departments.map((department, index) => {
-    const budget = 350000 + index * 120000;
-    const actual = Math.round(budget * (0.82 + index * 0.05));
-    return { id: `BUD-${index + 1}`, department, budget, actual, variance: budget - actual, forecast: Math.round(actual * 1.08), status: actual > budget ? 'Over Budget' : 'On Track' };
-  });
-  db.costCenters = departments.map((department, index) => ({ id: `CC-${index + 1}`, code: `CC-${100 + index}`, department, manager: ['Mary Sales', 'Peter Warehouse', 'David Procurement', 'Grace Production', 'Sarah Accountant', 'Miko Admin'][index], revenue: index === 0 ? (db.sales || []).reduce((s, x) => s + num(x.total), 0) : 0, cost: db.budgets[index].actual, profitability: index === 0 ? (db.sales || []).reduce((s, x) => s + num(x.total), 0) - db.budgets[index].actual : -db.budgets[index].actual }));
-  db.financialForecasts = ['Revenue', 'Cash Flow', 'Expenses', 'Tax Liability', 'Inventory Value', 'Net Profit'].map((metric, index) => ({ id: `FF-${index + 1}`, metric, current: [accountBalance('Sales Revenue') * -1, db.bankAccounts.reduce((s, b) => s + num(b.balance), 0), db.expenses.reduce((s, e) => s + num(e.amount), 0), db.taxRecords.reduce((s, t) => s + num(t.liability), 0), accountBalance('Inventory Asset'), 0][index] || 0, forecast30: Math.round(([accountBalance('Sales Revenue') * -1, db.bankAccounts.reduce((s, b) => s + num(b.balance), 0), db.expenses.reduce((s, e) => s + num(e.amount), 0), db.taxRecords.reduce((s, t) => s + num(t.liability), 0), accountBalance('Inventory Asset'), 0][index] || 0) * (1.04 + index * 0.02)), confidence: 82 - index * 3 }));
-  db.financialReports = ['Income Statement', 'Balance Sheet', 'Cashflow Statement', 'Trial Balance', 'General Ledger Report', 'Accounts Receivable Report', 'Accounts Payable Report', 'Inventory Valuation Report', 'Expense Report', 'Payroll Report', 'Tax Report', 'Budget Variance Report', 'Profitability Report', 'Department Performance Report', 'Supplier Financial Report', 'Customer Financial Report', 'Executive Financial Report'].map((name, index) => ({ id: `FREP-${index + 1}`, name, records: [entries, lines, db.accountsReceivable, db.financeAccountsPayable, db.expenses, db.payrollRecords, db.taxRecords, db.budgets][index % 8]?.length || 0, value: Math.round(Math.abs(accountBalance('Sales Revenue')) / 17 * (index + 1)), exports: ['PDF', 'Excel', 'CSV', 'PowerPoint', 'Print', 'Email'] }));
-  db.financeAuditLogs = entries.map(entry => ({ id: `FAUD-${entry.journalNo}`, user: entry.postedBy, date: entry.date, module: entry.sourceModule, action: 'Journal Posted', reference: entry.reference, oldValue: '', newValue: `${entry.totalDebit}/${entry.totalCredit}`, reason: entry.description, approval: entry.approvalStatus, immutable: true }));
-  db.financialAiInsights = [
-    { title: 'Ledger integrity', detail: `All ${entries.length} journals are balanced and immutable.`, sources: ['financeJournalEntries', 'financeJournalLines'] },
-    { title: 'Cash position', detail: `${money(db.bankAccounts.reduce((s, b) => s + num(b.balance), 0))} is available across bank, M-Pesa, and cash accounts.`, sources: ['bankAccounts', 'bankTransactions'] },
-    { title: 'Tax exposure', detail: `${money(db.taxRecords.reduce((s, t) => s + num(t.liability), 0))} current tax-related exposure is visible for VAT, PAYE, NSSF, and NHIF.`, sources: ['taxRecords', 'sales', 'purchaseOrders', 'payrollRecords'] }
-  ];
+  if (!db) return;
+  // Structural chart of accounts only — no demo balances or journal seed.
+  if (!Array.isArray(db.financeAccounts) || !db.financeAccounts.length) {
+    const accountSeed = [
+      ['1000', 'Cash on Hand', 'Asset'], ['1010', 'KCB Bank', 'Asset'], ['1020', 'M-Pesa Till', 'Asset'],
+      ['1100', 'Accounts Receivable', 'Asset'], ['1200', 'Inventory Asset', 'Asset'], ['1300', 'Fixed Assets', 'Asset'],
+      ['2000', 'Accounts Payable', 'Liability'], ['2100', 'Tax Payable', 'Liability'], ['2200', 'Payroll Payable', 'Liability'],
+      ['3000', 'Owner Equity', 'Equity'], ['3100', 'Retained Earnings', 'Equity'],
+      ['4000', 'Sales Revenue', 'Revenue'], ['4100', 'Other Income', 'Revenue'],
+      ['5000', 'Cost of Goods Sold', 'Expense'], ['5100', 'Payroll Expense', 'Expense'], ['5200', 'Transport Expense', 'Expense'],
+      ['5300', 'Utilities Expense', 'Expense'], ['5400', 'Marketing Expense', 'Expense'], ['5500', 'Inventory Loss Expense', 'Expense'],
+      ['5600', 'Tax Expense', 'Expense']
+    ];
+    db.financeAccounts = accountSeed.map(([code, name, type]) => ({
+      id: gid(), code, name, type, balance: 0, status: 'Active', createdAt: new Date().toISOString()
+    }));
+  }
+  db.financeJournalEntries = Array.isArray(db.financeJournalEntries) ? db.financeJournalEntries : [];
+  db.financeJournalLines = Array.isArray(db.financeJournalLines) ? db.financeJournalLines : [];
+  db.financeManualJournals = Array.isArray(db.financeManualJournals) ? db.financeManualJournals : [];
+  db.financeManualJournalLines = Array.isArray(db.financeManualJournalLines) ? db.financeManualJournalLines : [];
+  db.generalLedger = Array.isArray(db.generalLedger) ? db.generalLedger : [];
+  db.accountsReceivable = Array.isArray(db.accountsReceivable) ? db.accountsReceivable : [];
+  db.financeAccountsPayable = Array.isArray(db.financeAccountsPayable) ? db.financeAccountsPayable : [];
+  db.accountsPayable = Array.isArray(db.accountsPayable) ? db.accountsPayable : [];
+  db.expenses = Array.isArray(db.expenses) ? db.expenses : [];
+  db.bankTransactions = Array.isArray(db.bankTransactions) ? db.bankTransactions : [];
+  db.payrollRecords = Array.isArray(db.payrollRecords) ? db.payrollRecords : [];
+  db.taxRecords = Array.isArray(db.taxRecords) ? db.taxRecords : [];
+  db.budgets = Array.isArray(db.budgets) ? db.budgets : [];
+  db.financialReports = Array.isArray(db.financialReports) ? db.financialReports : [];
+  // Bank accounts: structure only, zero opening if missing
+  if (!Array.isArray(db.bankAccounts) || !db.bankAccounts.length) {
+    db.bankAccounts = [
+      { id: 'BANK-1', accountName: 'KCB Operating Account', bank: 'KCB', accountNumber: '', currency: 'KES', openingBalance: 0, balance: 0, status: 'Active' },
+      { id: 'BANK-2', accountName: 'M-Pesa Paybill', bank: 'Safaricom', accountNumber: '', currency: 'KES', openingBalance: 0, balance: 0, status: 'Active' },
+      { id: 'BANK-3', accountName: 'Petty Cash', bank: 'Cash', accountNumber: '', currency: 'KES', openingBalance: 0, balance: 0, status: 'Active' }
+    ];
+  } else if (db.settings?.demo_data_disabled) {
+    // Wipe demo-like large opening balances when demo mode is off
+    db.bankAccounts = db.bankAccounts.map(b => ({
+      ...b,
+      openingBalance: num(b.openingBalance) > 500000 && !b.userSet ? 0 : num(b.openingBalance),
+      balance: num(b.balance)
+    }));
+  }
 }
+
 
 function ensureInventoryData() {
   if (!db || db.inventoryTransactions?.length && db.inventoryAlerts?.length && db.inventoryForecasts?.length) return;
