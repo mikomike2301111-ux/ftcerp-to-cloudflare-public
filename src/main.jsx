@@ -4217,6 +4217,9 @@ function SalesModule({ user, setPage, globalPeriod }) {
   const counties = Array.isArray(territory.counties) ? territory.counties : [];
   const county = counties.find(c => c.name === selectedCounty) || counties[0] || { name: 'Nairobi', revenue: 0, profit: 0, visits: 0 };
   const metrics = ['revenue', 'profit', 'customers', 'invoices', 'expenses', 'pipeline'];
+  const revenueTrend = Array.isArray(data.revenueTrend) ? data.revenueTrend : [];
+  const orders = Array.isArray(data.orders) ? data.orders : [];
+  const invoices = Array.isArray(data.invoices) ? data.invoices : [];
   const salesKpis = [
     [CircleDollarSign, 'Revenue', currency(overview.revenue || 0), 0, 'green'],
     [LineChart, 'Profit', currency(overview.profit || 0), 0, num(overview.profit) >= 0 ? 'green' : 'red'],

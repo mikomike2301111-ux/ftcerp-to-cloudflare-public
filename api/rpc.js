@@ -1675,7 +1675,7 @@ function normalizedRows() {
   const warehouseNames = Array.from(new Set([
     ...(d.inventoryWarehouses || []).map(x => x.name),
     ...inventory.map(x => x.warehouseName),
-    'Main Store Nairobi'
+    'Main Store Njiru'
   ].filter(Boolean)));
   const productByName = new Map(products.map(p => [p.name, p]));
   const customerByName = new Map(customers.map(c => [c.name, c]));
@@ -1763,7 +1763,7 @@ function normalizedRows() {
         id: uuidFromString(`inventory:${i.id || i.productName}:${i.warehouseName}:${i.batchNo || index}`),
         tenant_id: TENANT_ID,
         product_id: uuidFromString(`product:${i.productId || p.id || p.sku || i.productName}`),
-        warehouse_id: uuidFromString(`warehouse:${i.warehouseName || 'Main Store Nairobi'}`),
+        warehouse_id: uuidFromString(`warehouse:${i.warehouseName || 'Main Store Njiru'}`),
         sku: i.sku || p.sku || '',
         product_name: i.productName || 'Unknown Product',
         category: p.category || i.category || 'General',
@@ -2330,7 +2330,7 @@ function ensureFarmtrackCatalogue(state) {
         if (!state.inventory.find(inv => inv.productName === p.name)) {
           state.inventory.push({
             id: `INV${String(i + 1).padStart(3, '0')}`, productId: p.id, productName: p.name, sku: p.sku,
-            category: p.category, warehouseName: 'Main Store Nairobi', batchNo: `FTC-BAT-${String(i + 1).padStart(3, '0')}`,
+            category: p.category, warehouseName: 'Main Store Njiru', batchNo: `FTC-BAT-${String(i + 1).padStart(3, '0')}`,
             quantity: 80 + (i * 7) % 120, unitCost: p.costPrice, expiryDate: '2027-12-31', receivedDate: today(),
             status: 'In Stock', createdAt: now, updatedAt: now, isDeleted: 'No'
           });
@@ -2565,7 +2565,7 @@ function ensureManufacturingData() {
     { id: 'BVH-002', formulaId: 'FORM-002', version: 'v1', action: 'create', user: 'System', timestamp: now, itemCount: 2 },
     { id: 'BVH-003', formulaId: 'FORM-003', version: 'v1', action: 'create', user: 'System', timestamp: now, itemCount: 3 }
   ];
-  db.productionOrders = (db.production || []).map(job => ({ id: job.id, orderNo: job.jobNo, productName: job.productName, productId: job.productId || 'PROD-001', formulaId: 'FORM-001', formulaVersion: 'v1', plannedQty: num(job.plannedQty || 1), outputUnit: 'BAG', status: job.status || 'Pending', operator: job.assignedTo || 'Grace Production', warehouse: 'Main Store Nairobi', startDate: job.startDate || today(), endDate: job.endDate || '', createdAt: now, materialCost: 0, packagingCost: 0, consumableCost: 0, laborCost: 0, overheadCost: 0, machineCost: 0, utilityCost: 0, totalActualCost: 0, costPerUnit: 0, grossMargin: 0 }));
+  db.productionOrders = (db.production || []).map(job => ({ id: job.id, orderNo: job.jobNo, productName: job.productName, productId: job.productId || 'PROD-001', formulaId: 'FORM-001', formulaVersion: 'v1', plannedQty: num(job.plannedQty || 1), outputUnit: 'BAG', status: job.status || 'Pending', operator: job.assignedTo || 'Grace Production', warehouse: 'Main Store Njiru', startDate: job.startDate || today(), endDate: job.endDate || '', createdAt: now, materialCost: 0, packagingCost: 0, consumableCost: 0, laborCost: 0, overheadCost: 0, machineCost: 0, utilityCost: 0, totalActualCost: 0, costPerUnit: 0, grossMargin: 0 }));
   db.productionBatches = [];
   db.productionBatchMaterials = [];
   db.productionBatchCosts = [];
@@ -2666,7 +2666,7 @@ function ensureInventoryData() {
   if (!db || db.inventoryTransactions?.length && db.inventoryAlerts?.length && db.inventoryForecasts?.length) return;
   const now = new Date();
   const warehouses = [
-    { id: 'WH1', name: 'Main Store Nairobi', code: 'MAIN-NRB', county: 'Nairobi', capacity: 12000, used: 7600 },
+    { id: 'WH1', name: 'Main Store Njiru', code: 'MAIN-NRB', county: 'Nairobi', capacity: 12000, used: 7600 },
     { id: 'WH2', name: 'Raw Materials Store', code: 'RAW-NRB', county: 'Nairobi', capacity: 9000, used: 5900 },
     { id: 'WH3', name: 'Cold Storage', code: 'COLD-NRB', county: 'Nairobi', capacity: 4500, used: 2600 },
     { id: 'WH4', name: 'Rift Valley Depot', code: 'RIFT-NKR', county: 'Nakuru', capacity: 8000, used: 4300 }
@@ -2699,7 +2699,7 @@ function ensureInventoryData() {
       shelfLocation: item.shelfLocation || (db.inventoryLocations[index % db.inventoryLocations.length]?.shelf || 'A1'),
       binNumber: item.binNumber || (db.inventoryLocations[index % db.inventoryLocations.length]?.bin?.split('-')[1] || '01'),
       serialNumber: item.serialNumber || `SN-${product.sku || index + 1}-${String(index + 1).padStart(4, '0')}`,
-      supplierName: item.supplierName || db.suppliers[index % db.suppliers.length]?.name || 'Preferred Supplier',
+      supplierName: item.supplierName || db.suppliers[index % db.suppliers.length]?.name || '',
       maxStock: item.maxStock || num(product.minStock) * 8 || 200,
       safetyStock: item.safetyStock || num(product.minStock) || 20,
       reorderPoint: item.reorderPoint || Math.round(num(product.minStock || 20) * 1.4),
@@ -2923,7 +2923,7 @@ function ensureProcurementData() {
   const iso = now.toISOString();
   const suppliers = db.suppliers || [];
   const products = db.products || [];
-  const warehouses = ['Main Store Nairobi', 'Raw Materials Store', 'Cold Storage'];
+  const warehouses = ['Main Store Njiru', 'Raw Materials Store', 'Cold Storage'];
   const departments = ['Warehouse', 'Production', 'Field Sales', 'Finance', 'Quality'];
   const statuses = ['Pending Approval', 'Approved', 'PO Created', 'Manager Approval', 'Procurement Approval'];
   db.purchaseRequests = products.slice(0, 8).map((product, index) => {
@@ -5646,7 +5646,7 @@ const api = {
         products: list('products').map(x => ({ id: x.id, name: x.name, sku: x.sku, price: num(x.sellingPrice), cost: num(x.costPrice) })),
         invoices: list('invoices').filter(x => num(x.balance) > 0).map(x => ({ id: x.id, name: `${x.invNo} - ${x.customerName} - ${money(x.balance)}` })),
         accounts: (d.financeAccounts || []).map(x => ({ id: x.id, name: `${x.code} - ${x.name}` })),
-        warehouses: (d.inventoryWarehouses || [{ name: 'Main Store Nairobi' }]).map(x => ({ id: x.id || x.name, name: x.name })),
+        warehouses: (d.inventoryWarehouses || [{ name: 'Main Store Njiru' }]).map(x => ({ id: x.id || x.name, name: x.name })),
         uoms: (d.unitOfMeasure || []).map(x => ({ id: x.code || x.name, name: `${x.name || x.code} (${x.code || x.name})` })),
         rawMaterials: (d.rawMaterials || []).map(x => ({ id: x.id, name: `${x.materialName} - ${x.availableQuantity}${x.unitOfMeasure}` })),
         productionOrders: (d.productionOrders || []).map(x => ({ id: x.id, name: `${x.orderNo} - ${x.productName} - ${x.status}` }))
@@ -6033,7 +6033,7 @@ const api = {
           id: existing?.id || gid(),
           productName,
           sku: sheetCell(row, ['sku', 'SKU'], existing?.sku || ''),
-          warehouseName: warehouseName || existing?.warehouseName || 'Main Store Nairobi',
+          warehouseName: warehouseName || existing?.warehouseName || 'Main Store Njiru',
           location: sheetCell(row, ['location', 'Location'], existing?.location || ''),
           batchNo: batchNo || existing?.batchNo || `SHEET-${Date.now()}`,
           quantity,
@@ -7175,7 +7175,7 @@ const api = {
     assertPositive(row.quantity || 1, 'Transfer quantity');
     if (num(row.quantity || 1) > num(item.quantity)) throw new Error(`Only ${num(item.quantity).toLocaleString()} ${item.productName} available in ${item.warehouseName}`);
     const qty = num(row.quantity || 1);
-    const toWarehouse = row.toWarehouse || data().inventoryWarehouses.find(wh => wh.name !== item.warehouseName)?.name || 'Main Store Nairobi';
+    const toWarehouse = row.toWarehouse || data().inventoryWarehouses.find(wh => wh.name !== item.warehouseName)?.name || 'Main Store Njiru';
     item.quantity = Math.max(0, num(item.quantity) - qty);
     let dest = data().inventory.find(x => x.productName === item.productName && x.warehouseName === toWarehouse);
     if (!dest) {
@@ -7388,7 +7388,7 @@ const api = {
       reorderLevel: num(material.reorderLevel) || num(material.reorderPoint) || 0,
       supplier: material.supplier || '',
       supplierId: material.supplierId || '',
-      warehouse: material.warehouse || 'Main Warehouse',
+      warehouse: material.warehouse || 'Main Store Njiru',
       binLocation: material.binLocation || material.storageLocation || 'A1',
       batchNumber: material.batchNumber || '',
       expiryDate: material.expiryDate || '',
@@ -7695,7 +7695,7 @@ const api = {
       outputUnit: row.outputUnit || formula.outputUnit,
       status: 'Pending',
       operator: row.assignedTo || row.operator || u.name,
-      warehouse: row.warehouse || 'Main Store Nairobi',
+      warehouse: row.warehouse || 'Main Store Njiru',
       startDate: row.startDate || today(),
       endDate: '',
       materialCost: 0,
@@ -7760,7 +7760,7 @@ const api = {
       d.inventoryTransactions = d.inventoryTransactions || [];
       d.inventoryTransactions.unshift({
         id: gid(), transactionType: 'Reservation', productName: material.materialName, batchNo: batch?.batchNumber || '',
-        quantity: reserveBase, unit: material.unitOfMeasure, warehouse: material.warehouse || 'Main Warehouse',
+        quantity: reserveBase, unit: material.unitOfMeasure, warehouse: material.warehouse || 'Main Store Njiru',
         reference: order.orderNo, date: today(), createdBy: u.name, createdAt: new Date().toISOString()
       });
     });
@@ -7824,7 +7824,7 @@ const api = {
       d.productionBatchMaterials.unshift({ id: gid(), productionBatchNo: batchNo, productionOrderId: order.id, materialId: material.id, materialName: material.materialName, batchUsed: batch?.batchNumber || material.batchNumber, quantityConsumed: consumeBase, unit: material.unitOfMeasure, costConsumed: Math.round(cost) });
       rawMaterialBatchesUsed.push({ materialName: material.materialName, batchNo: batch?.batchNumber || material.batchNumber, quantity: consumeBase, unit: material.unitOfMeasure });
       // Inventory transaction for consumption
-      d.inventoryTransactions.unshift({ id: gid(), transactionType: 'Consumption', productName: material.materialName, batchNo: batch?.batchNumber || '', quantity: consumeBase, unit: material.unitOfMeasure, warehouse: material.warehouse || 'Main Warehouse', reference: order.orderNo, date: today(), createdBy: u.name, createdAt: new Date().toISOString() });
+      d.inventoryTransactions.unshift({ id: gid(), transactionType: 'Consumption', productName: material.materialName, batchNo: batch?.batchNumber || '', quantity: consumeBase, unit: material.unitOfMeasure, warehouse: material.warehouse || 'Main Store Njiru', reference: order.orderNo, date: today(), createdBy: u.name, createdAt: new Date().toISOString() });
     });
 
     const laborCost = num(formula.laborCost) || Math.round(rawMaterialCost * 0.15);
@@ -7857,7 +7857,7 @@ const api = {
     d.wasteRecords.unshift({ id: gid(), batchNo, productionOrderId: order.id, orderNo: order.orderNo, productName: order.productName, expectedWaste: finished.expectedWaste, actualWaste: waste, yieldPercent, lossPercent, scrapMaterials: waste, recoveredMaterials: 0, recordedBy: u.name, date: today() });
 
     // Inventory + product catalog sync for finished goods output
-    const warehouseName = order.warehouse || 'Main Store Nairobi';
+    const warehouseName = order.warehouse || 'Main Store Njiru';
     const inv = d.inventory.find(x => x.productName === order.productName && x.warehouseName === warehouseName);
     if (inv) {
       inv.quantity = num(inv.quantity) + qty;
@@ -7916,10 +7916,11 @@ const api = {
   },
   getSales: user => (reqRole(user), list('sales')),
   getSalesWorkspaceData(user, filters = {}) {
+    try {
     reqRole(user);
     const d = data();
     // Coerce collections so empty ERP never throws
-    ['sales','saleItems','invoices','quotations','expenses','leads','customers','deliveries','products','visits','salesVisits'].forEach(k => {
+    ['sales','saleItems','invoices','quotations','expenses','leads','customers','deliveries','products','visits','salesVisits','saleItems','deliveries'].forEach(k => {
       if (!Array.isArray(d[k])) d[k] = [];
     });
     const scope = filters && filters.period ? { ...periodRange(filters.period), ...filters } : (filters || {});
@@ -8107,8 +8108,36 @@ territory: geo,
         }
       ],
       visits: (d.visits || []).filter(Boolean).sort((a, b) => String(b.visitDate || b.createdAt || '').localeCompare(String(a.visitDate || a.createdAt || ''))),
-      salesPeople: ['Edna', 'Njoroge', 'Joseph', 'Purity']
+      salesPeople: ['Edna', 'Njoroge', 'Joseph', 'Purity'],
+      products: d.products || []
     };
+    } catch (err) {
+      console.error('getSalesWorkspaceData', err && err.message, err);
+      return {
+        filters: {},
+        overview: { revenue: 0, profit: 0, orders: 0, invoices: 0, pipeline: 0, expenses: 0, quoteConversion: 0, forecast: 0, unpaidInvoices: 0, overdueInvoices: 0, pendingDelivery: 0, delivered: 0, topProducts: 0, repeatCustomers: 0, averageOrderValue: 0 },
+        revenueTrend: [],
+        teamPerformance: [],
+        teamComparison: [],
+        pipeline: { stages: [], leads: [] },
+        quotes: [],
+        orders: [],
+        invoices: [],
+        deliveries: [],
+        territory: { counties: [], visits: [], routes: [], heatmap: [], hero: {} },
+        reports: [],
+        customers: [],
+        analytics: { revenueTrend: [], profitTrend: [], teamPerformance: [], territoryComparison: [], productComparison: [], customerGrowth: [], quotationConversion: [], pipelineValue: [], forecast: [] },
+        quotations: [],
+        quotationItems: [],
+        ai: [],
+        visits: [],
+        salesPeople: [],
+        products: [],
+        errorSafe: true,
+        errorMessage: err && err.message
+      };
+    }
   },
   getGeoSalesData(user) {
     reqRole(user);
@@ -9248,7 +9277,7 @@ territory: geo,
         deliveries: rows.length,
         status: rows.some(row => row.status === 'Delayed') ? 'Delayed' : rows.some(row => row.status === 'Received') ? 'Delivered' : rows.length ? 'In Transit' : 'Pending',
         value: rows.reduce((sum, row) => sum + num(purchaseOrders.find(po => po.id === row.poId)?.total), 0),
-        warehouse: rows[0]?.warehouseName || 'Main Store Nairobi'
+        warehouse: rows[0]?.warehouseName || 'Main Store Njiru'
       };
     });
     const reports = d.procurementReports.map(report => ({
@@ -9442,7 +9471,7 @@ territory: geo,
       total: subtotal + tax,
       status: 'Approved',
       paymentTerms: supplier.paymentTerms || 'Net 30',
-      warehouseName: 'Main Store Nairobi',
+      warehouseName: 'Main Store Njiru',
       department: request.department,
       createdBy: u.name,
       createdAt: new Date().toISOString(),
@@ -10046,7 +10075,7 @@ territory: geo,
         minStock: num(p.minStock),
         stock: d.inventory.filter(i => i.productName === p.name).reduce((sum, item) => sum + num(item.quantity), 0)
       })),
-      warehouses: [{ id: 'WH1', name: 'Main Store Nairobi' }],
+      warehouses: [{ id: 'WH1', name: 'Main Store Njiru' }],
       users: list('users').map(u => ({ id: u.id, name: u.name, role: u.role })),
       roles: Object.values(ROLES)
     };
