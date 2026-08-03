@@ -2363,7 +2363,7 @@ function CRMCustomerDetail({ customer, orders = [], calls = [], deliveries = [],
   ].sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))).slice(0, 25);
   return (
     <div className="retractable-overlay" onClick={onClose}>
-      <div className={`modal-card crm-customer-detail ${sizeClass}`} onClick={e => e.stopPropagation()}>
+      <div className={`modal-card overlay-scrollable crm-customer-detail ${sizeClass || 'wide-full'}`} onClick={e => e.stopPropagation()}>
         <div className="overlay-resize-handle">
           <button type="button" className={overlaySize === 'default' ? 'active' : ''} onClick={() => setOverlaySize('default')} title="Default">1x</button>
           <button type="button" className={overlaySize === 'wide-50' ? 'active' : ''} onClick={() => setOverlaySize('wide-50')} title="50% wider">2x</button>
@@ -2816,25 +2816,34 @@ function CRMInputModal({ user, type, customers, onClose, onSaved, preset }) {
     setSaving(true);
     try {
       const payload = { ...form };
+      if (type === 'customer' && !payload.salesOwner) payload.salesOwner = user?.name || '';
       if (type === 'call') {
         let customer = customers.find(c => c.id === payload.customerId);
         if (!customer && payload.customerName && (payload.phone || payload.whatsapp)) {
-          const created = await rpc('saveCustomer', [user, { name: payload.customerName, phone: payload.phone || payload.whatsapp, email: '', city: '', type: 'Call Lead', status: 'Active', balance: 0 }]);
+          const created = await rpc('saveCustomer', [user, { name: payload.customerName, phone: payload.phone || payload.whatsapp, email: '', city: '', type: 'Call Lead', status: 'Active', balance: 0, salesOwner: user?.name || '' }]);
           customer = { id: created.id || created.row?.id, name: payload.customerName, phone: payload.phone || payload.whatsapp };
         }
         payload.customerId = customer?.id || payload.customerId || '';
         payload.customerName = customer?.name || payload.customerName;
         payload.phone = payload.phone || customer?.phone || '';
       }
-      await rpc(type === 'customer' ? 'saveCustomer' : type === 'lead' ? 'saveLead' : 'saveCall', [user, payload]);
-      onSaved();
+      // Optimistic: close UI immediately, refresh after server confirms
+      await optimisticSave(
+        () => { onClose(); return () => {}; },
+        async () => {
+          await rpc(type === 'customer' ? 'saveCustomer' : type === 'lead' ? 'saveLead' : 'saveCall', [user, payload]);
+          onSaved();
+        }
+      );
+    } catch (err) {
+      alert(err.message || 'Could not save');
     } finally {
       setSaving(false);
     }
   }
   return (
-    <div className="modal-backdrop">
-      <form className="modal-card input-overlay-card crm-input-modal african-pattern-modal" onSubmit={save}>
+    <div className="modal-scrim retractable-overlay" onClick={onClose}>
+      <form className="modal-card overlay-scrollable wide wide-full input-overlay-card crm-input-modal" onSubmit={save} onClick={e => e.stopPropagation()}>
         <header>
           <div>
             <h2>{type === 'customer' ? 'New Customer' : type === 'lead' ? 'New Opportunity' : 'Log Call'}</h2>
@@ -9298,12 +9307,12 @@ function SettingsUserModal({ user, meta, initial, onClose, onSaved }) {
 }
 
 // ─── Shared: lightweight modal for add/edit forms ───
-function ModalCard({ title, onClose, children, wide }) {
+function ModalCard({ title, onClose, children, wide = true }) {
   return (
-    <div className="modal-scrim" onClick={onClose}>
-      <div className={`modal-card ${wide ? 'wide' : ''}`} onClick={e => e.stopPropagation()}>
-        <header><h2>{title}</h2><button onClick={onClose}><X size={20} /></button></header>
-        {children}
+    <div className="modal-scrim retractable-overlay" onClick={onClose}>
+      <div className={`modal-card overlay-scrollable ${wide ? 'wide wide-full' : ''}`} onClick={e => e.stopPropagation()}>
+        <header><h2>{title}</h2><button type="button" onClick={onClose} aria-label="Close"><X size={20} /></button></header>
+        <div className="modal-card-body overlay-scroll-body">{children}</div>
       </div>
     </div>
   );

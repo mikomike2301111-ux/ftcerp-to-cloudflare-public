@@ -3420,8 +3420,8 @@ textarea {
 
 /* â”€â”€â”€ MODAL CARD (shared for HR/Leave forms) â”€â”€â”€ */
 .modal-scrim { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 100; display: grid; place-items: center; padding: 24px; }
-.modal-card { background: #fff; border-radius: 16px; width: min(520px, 100%); max-height: min(88vh, 820px); overflow: auto; box-shadow: 0 24px 60px rgba(15,23,42,.18); }
-.modal-card.wide { width: min(720px, 100%); }
+.modal-card { background: #fff; border-radius: 16px; width: min(96vw, 1100px); max-height: min(94vh, 960px); overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 24px 60px rgba(15,23,42,.18); }
+.modal-card.wide { width: min(96vw, 1280px); }
 .modal-card header { display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; border-bottom: 1px solid #eef0f3; position: sticky; top: 0; background: #fff; z-index: 2; border-radius: 16px 16px 0 0; }
 .modal-card header h2 { font-size: 18px; margin: 0; }
 .modal-card header button { background: none; border: none; cursor: pointer; color: #667085; padding: 4px; }
@@ -5151,29 +5151,49 @@ button:where(
 
 
 /* === RETRACTABLE OVERLAY SYSTEM === */
-.retractable-overlay {
+.retractable-overlay,
+.modal-scrim {
   position: fixed;
   inset: 0;
-  z-index: 100;
+  z-index: 1200;
   background: rgba(2,3,4,.64);
   display: grid;
   place-items: center;
-  padding: 20px;
+  padding: 16px;
   animation: fadeIn .15s ease;
+  overflow: auto;
 }
-.retractable-overlay .modal-card {
+.retractable-overlay .modal-card,
+.modal-scrim .modal-card,
+.modal-card.overlay-scrollable {
   position: relative;
-  width: min(620px, 100%);
-  max-width: 92vw;
+  width: min(96vw, 1280px);
+  max-width: 96vw;
   background: #fff;
   border-radius: 16px;
   box-shadow: 0 30px 90px rgba(0,0,0,.35);
-  max-height: min(88vh, 820px);
-  overflow: auto;
+  max-height: min(94vh, 960px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   transition: width .25s ease, transform .2s ease;
 }
-.retractable-overlay .modal-card.wide-50 { width: min(50vw, 760px); }
-.retractable-overlay .modal-card.wide-full { width: min(92vw, 1100px); }
+.retractable-overlay .modal-card.wide-50 { width: min(70vw, 900px); }
+.retractable-overlay .modal-card.wide-full,
+.modal-card.wide.wide-full { width: min(96vw, 1280px); }
+.overlay-scroll-body,
+.modal-card-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overflow-x: auto;
+  overflow-y: auto;
+  padding: 16px 24px 24px;
+  -webkit-overflow-scrolling: touch;
+}
+.modal-card header {
+  flex: 0 0 auto;
+}
 .retractable-overlay .overlay-resize-handle { position: absolute; top: 12px; right: 48px; display: flex; gap: 4px; z-index: 5; }
 .overlay-resize-handle button { width: 28px; height: 28px; border: 1px solid #e4e7ec; border-radius: 7px; background: #fff; color: #475467; display: grid; place-items: center; font-size: 12px; cursor: pointer; transition: all .15s ease; }
 .overlay-resize-handle button:hover { background: #050505; color: #fff; border-color: #050505; }
@@ -5858,13 +5878,15 @@ button:where(
 
 /* Fix modal at all sizes */
 .modal-card {
-  width: min(620px, calc(100vw - 40px)) !important;
-  max-height: min(88vh, 820px);
+  width: min(96vw, 1100px) !important;
+  max-height: min(94vh, 960px);
 }
 .modal-card.wide, 
 .modal-card.crm-customer-detail,
-.modal-card.input-overlay-card {
-  width: min(92vw, 1100px) !important;
+.modal-card.input-overlay-card,
+.modal-card.overlay-scrollable {
+  width: min(96vw, 1280px) !important;
+  max-height: min(94vh, 960px);
 }
 
 /* Fix card grids to wrap */
@@ -9157,3 +9179,35 @@ select {
 .visits-workspace-clean .visits-search-wrap input { border: 0; outline: none; width: 100%; font-size: 14px; }
 .visits-workspace-clean .visits-rep-filter { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: #667085; }
 .visits-workspace-clean .visits-rep-filter select { height: 40px; border: 1px solid #e4e7ec; border-radius: 10px; padding: 0 10px; }
+
+
+/* OVERLAY FULL SCROLL SYSTEM */
+.retractable-overlay,
+.modal-scrim {
+  overflow: auto !important;
+  align-content: start;
+  justify-items: center;
+}
+.modal-card,
+.retractable-overlay .modal-card {
+  width: min(96vw, 1280px) !important;
+  max-width: 96vw !important;
+  max-height: min(94vh, 960px) !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+.modal-card-body,
+.overlay-scroll-body,
+.modal-card .settings-form-grid,
+.modal-card form {
+  overflow-x: auto !important;
+  overflow-y: auto !important;
+  max-width: 100%;
+}
+.modal-card .settings-form-grid {
+  min-width: min(920px, 100%);
+}
+.crm-customer-detail .settings-kv-grid {
+  min-width: min(720px, 100%);
+}
