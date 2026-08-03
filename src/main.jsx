@@ -4857,6 +4857,7 @@ function VisitsImportOverlay({ user, salesPeople, onClose, onDone }) {
 }
 
 function SalesTrendChart({ data, metric }) {
+  data = Array.isArray(data) ? data : [];
   return (
     <div className="sales-chart">
       <ResponsiveContainer width="100%" height="100%">
@@ -5411,13 +5412,14 @@ function SalesReports({ reports, user }) {
   );
 }
 
-function SalesAnalytics({ analytics }) {
+function SalesAnalytics({ analytics = {} }) {
+  const a = analytics || {};
   return (
     <div className="dashboard-grid">
-      <Panel className="span-6" title="Revenue Trend"><SalesTrendChart data={analytics.revenueTrend} metric="revenue" /></Panel>
-      <Panel className="span-6" title="Profit Trend"><SalesTrendChart data={analytics.revenueTrend} metric="profit" /></Panel>
-      <Panel className="span-6" title="Territory Comparison"><SimpleTable rows={analytics.territoryComparison} columns={['county', 'revenue', 'profit', 'visits']} /></Panel>
-      <Panel className="span-6" title="Product Comparison"><SimpleTable rows={analytics.productComparison} columns={['product', 'revenue', 'profit', 'quantity']} /></Panel>
+      <Panel className="span-6" title="Revenue Trend"><SalesTrendChart data={a.revenueTrend || []} metric="revenue" /></Panel>
+      <Panel className="span-6" title="Profit Trend"><SalesTrendChart data={a.revenueTrend || []} metric="profit" /></Panel>
+      <Panel className="span-6" title="Territory Comparison"><SimpleTable rows={a.territoryComparison || []} columns={['county', 'revenue', 'profit', 'visits']} /></Panel>
+      <Panel className="span-6" title="Product Comparison"><SimpleTable rows={a.productComparison || []} columns={['product', 'revenue', 'profit', 'quantity']} /></Panel>
       <Panel className="span-6" title="Customer Growth"><SalesTrendChart data={analytics.customerGrowth} metric="customers" /></Panel>
       <Panel className="span-6" title="Quotation Conversion"><SalesTrendChart data={analytics.quotationConversion} metric="conversion" /></Panel>
       <Panel className="span-6" title="Pipeline Value"><SalesTrendChart data={analytics.pipelineValue} metric="pipeline" /></Panel>

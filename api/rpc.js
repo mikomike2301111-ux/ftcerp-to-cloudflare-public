@@ -8030,7 +8030,7 @@ const api = {
         pipeline: Math.round(pipeline),
         expenses: Math.round(expenses),
         quoteConversion: quotations.length ? Math.round((quotations.filter(q => q.status === 'Converted').length / quotations.length) * 100) : 42,
-        forecast: Math.round(revenueTrend.at(-1).revenue * 1.12),
+        forecast: Math.round((revenueTrend.at(-1)?.revenue || revenue || 0) * 1.12),
         unpaidInvoices: unpaidInvoices.length,
         overdueInvoices: overdueInvoices.length,
         pendingDelivery: pendingDeliveryCount,
@@ -8055,10 +8055,10 @@ const api = {
       pipeline: {
         stages: ['Lead', 'Qualified', 'Quoted', 'Negotiation', 'Won'].map(stage => ({
           stage,
-          count: d.leads.filter(lead => lead.stage === stage || (stage === 'Lead' && lead.stage === 'New')).length,
-          value: d.leads.filter(lead => lead.stage === stage || (stage === 'Lead' && lead.stage === 'New')).reduce((sum, lead) => sum + num(lead.value), 0)
+          count: (d.leads || []).filter(lead => lead.stage === stage || (stage === 'Lead' && lead.stage === 'New')).length,
+          value: (d.leads || []).filter(lead => lead.stage === stage || (stage === 'Lead' && lead.stage === 'New')).reduce((sum, lead) => sum + num(lead.value), 0)
         })),
-        leads: d.leads
+        leads: d.leads || []
       },
       quotes: quoteWorkflow,
       orders: sales.map((sale, index) => {

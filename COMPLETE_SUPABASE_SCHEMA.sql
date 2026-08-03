@@ -669,9 +669,25 @@ grant usage on schema public to anon, authenticated, service_role;
 grant all on all tables in schema public to service_role;
 grant select, insert, update, delete on all tables in schema public to authenticated;
 grant select on all tables in schema public to anon;
-grant select on all materialized views in schema public to anon, authenticated, service_role;
+-- Grant on concrete analytics views (ALL MATERIALIZED VIEWS not valid on all Postgres builds)
+grant select on public.analytics_revenue_summary to anon, authenticated, service_role;
+grant select on public.analytics_inventory_health to anon, authenticated, service_role;
+grant select on public.analytics_customer_value to anon, authenticated, service_role;
+grant select on public.analytics_executive_summary to anon, authenticated, service_role;
+grant select on public.analytics_procurement_metrics to anon, authenticated, service_role;
+grant select on public.analytics_production_metrics to anon, authenticated, service_role;
+grant select on public.analytics_risk_center to anon, authenticated, service_role;
 
 -- =============================================================================
 -- END. After running: set Vercel SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY / ANON
 -- STATE_ID used by app: farmtrack-demo
 -- =============================================================================
+
+-- If grants failed earlier, run only this block:
+-- grant select on public.analytics_revenue_summary to anon, authenticated, service_role;
+-- grant select on public.analytics_inventory_health to anon, authenticated, service_role;
+-- grant select on public.analytics_customer_value to anon, authenticated, service_role;
+-- grant select on public.analytics_executive_summary to anon, authenticated, service_role;
+-- grant select on public.analytics_procurement_metrics to anon, authenticated, service_role;
+-- grant select on public.analytics_production_metrics to anon, authenticated, service_role;
+-- grant select on public.analytics_risk_center to anon, authenticated, service_role;
