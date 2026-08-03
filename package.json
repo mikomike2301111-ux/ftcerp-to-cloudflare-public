@@ -9,6 +9,8 @@
     "check": "node --check api/rpc.js && vite build"
   },
   "dependencies": {
+    "@supabase/server": "^1.4.1",
+    "@supabase/supabase-js": "^2.112.0",
     "@vitejs/plugin-react": "^4.3.4",
     "exceljs": "^4.4.0",
     "googleapis": "^173.0.0",
