@@ -2475,10 +2475,22 @@ function applyQuickBooksSeed() {
 function data() {
   if (!db) seed();
   applyQuickBooksSeed();
-  ensureGeoSalesData();
-  ensureProcurementData();
-  ensureInventoryData();
   ensureManufacturingData();
+  ensureFinanceData();
+  ensureHrData();
+  ensureLeaveData();
+  if (!db.settings) db.settings = {};
+  db.settings.demo_data_disabled = true;
+  if (!db._demoPurgedOnce) {
+    purgeDemoTransactionalData(db);
+    db._demoPurgedOnce = true;
+  }
+  if (!Array.isArray(db.salesVisits)) db.salesVisits = [];
+  if (!Array.isArray(db.visits)) db.visits = [];
+  if (!Array.isArray(db.purchaseOrders)) db.purchaseOrders = [];
+  if (!Array.isArray(db.purchaseRequests)) db.purchaseRequests = [];
+  if (!Array.isArray(db.inventoryTransactions)) db.inventoryTransactions = [];
+  if (!Array.isArray(db.counties)) db.counties = [];
   return db;
 }
 
@@ -2623,6 +2635,25 @@ function ensureFinanceData() {
 
 
 function ensureInventoryData() {
+  if (!db) return;
+  if (db.settings?.demo_data_disabled) {
+    db.inventory = Array.isArray(db.inventory) ? db.inventory : [];
+    db.inventoryTransactions = Array.isArray(db.inventoryTransactions) ? db.inventoryTransactions.filter(x => !String(x.id || '').startsWith('ITX-')) : [];
+    db.inventoryBatches = Array.isArray(db.inventoryBatches) ? db.inventoryBatches.filter(x => !String(x.id || '').startsWith('IBAT-')) : [];
+    db.inventoryDocuments = Array.isArray(db.inventoryDocuments) ? db.inventoryDocuments.filter(x => !String(x.id || '').startsWith('IDOC-')) : [];
+    db.inventoryForecasts = Array.isArray(db.inventoryForecasts) ? db.inventoryForecasts.filter(x => !String(x.id || '').startsWith('IFOR-')) : [];
+    db.inventoryReports = Array.isArray(db.inventoryReports) ? db.inventoryReports.filter(x => !String(x.id || '').startsWith('IREP-')) : [];
+    db.inventoryWarehouses = Array.isArray(db.inventoryWarehouses) ? db.inventoryWarehouses : [];
+    db.inventoryLocations = Array.isArray(db.inventoryLocations) ? db.inventoryLocations : [];
+    db.inventoryDamage = Array.isArray(db.inventoryDamage) ? db.inventoryDamage : [];
+    db.inventoryAdjustments = Array.isArray(db.inventoryAdjustments) ? db.inventoryAdjustments : [];
+    db.inventoryTransfers = Array.isArray(db.inventoryTransfers) ? db.inventoryTransfers : [];
+    db.inventoryAudits = Array.isArray(db.inventoryAudits) ? db.inventoryAudits : [];
+    db.inventoryReorderRules = Array.isArray(db.inventoryReorderRules) ? db.inventoryReorderRules : [];
+    db.inventoryHealthScores = Array.isArray(db.inventoryHealthScores) ? db.inventoryHealthScores : [];
+    return;
+  }
+
   if (!db || db.inventoryTransactions?.length && db.inventoryAlerts?.length && db.inventoryForecasts?.length) return;
   const now = new Date();
   const warehouses = [
@@ -2867,6 +2898,17 @@ function ensureInventoryData() {
 }
 
 function ensureProcurementData() {
+  if (!db) return;
+  if (db.settings?.demo_data_disabled) {
+    db.purchaseRequests = Array.isArray(db.purchaseRequests) ? db.purchaseRequests.filter(r => !String(r.id || '').startsWith('PR-')) : [];
+    db.purchaseRequestItems = Array.isArray(db.purchaseRequestItems) ? db.purchaseRequestItems.filter(r => !String(r.id || '').startsWith('PRI-')) : [];
+    db.purchaseOrders = Array.isArray(db.purchaseOrders) ? db.purchaseOrders.filter(r => !String(r.id || '').startsWith('PO-') || String(r.poNo || '').includes('PO-26')) : (db.purchaseOrders || []);
+    // Keep user-created POs; strip synthetic PO-26* demo numbers
+    db.purchaseOrders = (db.purchaseOrders || []).filter(r => !String(r.poNo || '').startsWith('PO-26'));
+    db.suppliers = Array.isArray(db.suppliers) ? db.suppliers : [];
+    return;
+  }
+
   if (!db || db.purchaseRequests?.length && db.goodsReceipts?.length && db.accountsPayable?.length) return;
   const now = new Date();
   const iso = now.toISOString();
@@ -3138,7 +3180,19 @@ function ensureProcurementData() {
 }
 
 function ensureGeoSalesData() {
-  if (!db || db.counties?.length === 47 && db.salesVisits?.length) return;
+  // Demo field visits disabled — only keep empty arrays / county list without fake visits
+  if (!db) return;
+  if (db.settings?.demo_data_disabled) {
+    db.salesVisits = Array.isArray(db.salesVisits) ? db.salesVisits.filter(v => !String(v.id || '').startsWith('VISIT-')) : [];
+    db.visits = Array.isArray(db.visits) ? db.visits.filter(v => !String(v.id || '').startsWith('VISIT-')) : [];
+    if (!Array.isArray(db.counties) || !db.counties.length) {
+      db.counties = (typeof KENYA_COUNTIES !== 'undefined' ? KENYA_COUNTIES : []).map((name, index) => ({
+        id: `COUNTY${String(index + 1).padStart(2, '0')}`, code: String(index + 1).padStart(3, '0'), name
+      }));
+    }
+    return;
+  }
+  if (db.counties?.length === 47 && db.salesVisits?.length) return;
   const now = new Date();
   const reps = db.users.filter(u => [ROLES.SALES, ROLES.MANAGER, ROLES.FIELD, ROLES.ADMIN].includes(u.role));
   const countyProfiles = KENYA_COUNTIES.map((name, index) => {
@@ -3883,7 +3937,27 @@ function purgeDemoTransactionalData(d) {
   if (Array.isArray(d.sales)) d.sales = d.sales.filter(s => !String(s.saleNo || '').startsWith('DASH-WK-'));
   if (Array.isArray(d.invoices)) d.invoices = d.invoices.filter(inv => !String(inv.invNo || '').includes('DASH-WK'));
   if (Array.isArray(d.expenses)) d.expenses = d.expenses.filter(e => !String(e.description || '').includes('dashboard demo'));
+  // Strip all synthetic ID-prefixed demo rows
+  const strip = (arr, pred) => Array.isArray(arr) ? arr.filter(pred) : [];
+  d.salesVisits = strip(d.salesVisits, v => !String(v.id || '').startsWith('VISIT-') && !String(v.notes || '').includes('Geo verified'));
+  d.visits = strip(d.visits, v => !String(v.id || '').startsWith('VISIT-'));
+  d.purchaseOrders = strip(d.purchaseOrders, r => !String(r.poNo || '').startsWith('PO-26') && !String(r.id || '').match(/^PO-\d+$/));
+  d.purchaseRequests = strip(d.purchaseRequests, r => !String(r.id || '').startsWith('PR-'));
+  d.purchaseRequestItems = strip(d.purchaseRequestItems, r => !String(r.id || '').startsWith('PRI-'));
+  d.inventoryTransactions = strip(d.inventoryTransactions, r => !String(r.id || '').startsWith('ITX-'));
+  d.inventoryBatches = strip(d.inventoryBatches, r => !String(r.id || '').startsWith('IBAT-'));
+  d.inventoryDocuments = strip(d.inventoryDocuments, r => !String(r.id || '').startsWith('IDOC-'));
+  d.inventoryForecasts = strip(d.inventoryForecasts, r => !String(r.id || '').startsWith('IFOR-'));
+  d.inventoryReports = strip(d.inventoryReports, r => !String(r.id || '').startsWith('IREP-'));
+  d.customers = strip(d.customers, c => !/demo|sample|acme|test customer/i.test(String(c.name || '')));
+  d.leads = strip(d.leads, c => !/demo|sample/i.test(String(c.name || '')));
+  d.calls = Array.isArray(d.calls) ? d.calls : [];
+  d.sales = strip(d.sales, s => !String(s.saleNo || '').startsWith('DASH-'));
+  d.invoices = strip(d.invoices, i => !String(i.invNo || '').includes('DASH-'));
+  d.expenses = strip(d.expenses, e => !/demo|sample/i.test(String(e.description || '')));
   d.quickBooksImport = null;
+  d.settings = d.settings || {};
+  d.settings.demo_data_disabled = true;
 }
 
 function attendanceHours(record = {}) {
