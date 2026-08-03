@@ -771,9 +771,9 @@ function Login({ onLogin }) {
     <div className="login-screen">
       <section className="login-panel">
         <div className="brand-lockup">
-          <div className="brand-mark"><img src="/erp-logo-black.png" alt="Farmtrack ERP logo" /></div>
+          <div className="brand-mark"><img src="https://i.postimg.cc/CM9BdKbH/logo-ftc.png" alt="Farmtrack Biosciences logo" /></div>
           <div>
-            <h1>FarmTrack ERP</h1>
+            <h1>Farmtrack Biosciences</h1>
             <p>Staff operations portal · staff.farmtrack.co.ke</p>
           </div>
         </div>
@@ -807,7 +807,7 @@ function Sidebar({ page, setPage, open, setOpen, collapsed, setCollapsed, user, 
     <>
       <aside className={`sidebar ${open ? 'open' : ''}`}>
         <div className="sidebar-brand">
-          <img src="/unity-erp-mark.png" alt="Unity ERP logo" />
+          <img src="https://i.postimg.cc/CM9BdKbH/logo-ftc.png" alt="Farmtrack Biosciences logo" />
           <button type="button" className="sidebar-collapse" onClick={() => setCollapsed(!collapsed)} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
             <ChevronDown size={17} className={collapsed ? 'chev-collapsed' : ''} />
           </button>
@@ -1717,7 +1717,7 @@ function CommandHero({ command }) {
       <div>
         <span>{command.roleProfile || 'Executive Command Center'}</span>
         <h1>{command.greeting || 'Good Morning'}</h1>
-        <p>{command.company || 'Farmtrack Bio Sciences Ltd'} · Business control center</p>
+        <p>{command.company || 'Farmtrack Biosciences Ltd'} · Business control center</p>
       </div>
       <div className="hero-pulse">
         <span />
@@ -10222,7 +10222,7 @@ function HREmailCenter({ user, hrEmail, employees = [], emails = [], onSent }) {
   const [form, setForm] = useState({ to: '', subject: '', body: '', employeeId: '', template: '' });
   const [busy, setBusy] = useState(false);
   const templates = {
-    welcome: { subject: 'Welcome to Farmtrack Bio Sciences', body: 'Welcome to the team. Please complete your onboarding checklist with HR.' },
+    welcome: { subject: 'Welcome to Farmtrack Biosciences', body: 'Welcome to the team. Please complete your onboarding checklist with HR.' },
     interview: { subject: 'Interview invitation', body: 'You are invited to an interview. Please confirm your availability.' },
     leave_approved: { subject: 'Leave request approved', body: 'Your leave request has been approved. Enjoy your time off.' },
     leave_rejected: { subject: 'Leave request decision', body: 'Your leave request was not approved. Contact your manager for details.' },

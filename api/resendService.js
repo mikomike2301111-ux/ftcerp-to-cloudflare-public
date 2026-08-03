@@ -57,7 +57,7 @@ async function sendEmail({ to, subject, html, text, replyTo, cc, bcc, from } = {
 
 /* ─── Template helpers ─── */
 
-const FARMTRACK_LOGO_URL = process.env.COMPANY_LOGO_URL || 'https://i.postimg.cc/MZsvCfTp/FTC-LOGO2.png';
+const FARMTRACK_LOGO_URL = process.env.COMPANY_LOGO_URL || 'https://i.postimg.cc/CM9BdKbH/logo-ftc.png';
 
 function emailShell({ title, subtitle, bodyHtml, actionLabel, actionUrl, footerNote }) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title></head><body style="margin:0;padding:0;background:#f4f6f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#101828;">
@@ -67,9 +67,9 @@ function emailShell({ title, subtitle, bodyHtml, actionLabel, actionUrl, footerN
         <tr><td style="background:#ffffff;padding:18px 28px;border-bottom:1px solid #eef0f3;">
           <table width="100%"><tr>
             <td>
-              <img src="${FARMTRACK_LOGO_URL}" alt="Farmtrack Bio Sciences" width="160" height="auto" style="display:block;max-width:160px;height:auto;border:0;" />
+              <img src="${FARMTRACK_LOGO_URL}" alt="Farmtrack Biosciences" width="160" height="auto" style="display:block;max-width:160px;height:auto;border:0;" />
             </td>
-            <td align="right" style="color:#667085;font-size:12px;line-height:1.4;">Farmtrack Bio Sciences<br/><span style="color:#98a2b3;">ERP notification</span></td>
+            <td align="right" style="color:#667085;font-size:12px;line-height:1.4;">Farmtrack Biosciences<br/><span style="color:#98a2b3;">ERP notification</span></td>
           </tr></table>
         </td></tr>
         <tr><td style="padding:32px;">
@@ -81,7 +81,7 @@ function emailShell({ title, subtitle, bodyHtml, actionLabel, actionUrl, footerN
           </td></tr></table>` : ''}
         </td></tr>
         <tr><td style="background:#f9fafb;padding:18px 32px;border-top:1px solid #eef0f3;">
-          <p style="margin:0;font-size:12px;color:#667085;line-height:1.5;">${footerNote || 'This is an automated message from Farmtrack Bio Sciences Ltd, Kenya.'}<br/>Sent from erpintergration@gmail.com</p>
+          <p style="margin:0;font-size:12px;color:#667085;line-height:1.5;">${footerNote || 'This is an automated message from Farmtrack Biosciences Ltd, Kenya.'}<br/>Sent from erpintergration@gmail.com</p>
         </td></tr>
       </table>
     </td></tr>
@@ -118,7 +118,7 @@ async function sendInvoiceEmail({ to, customerName, invoiceNo, invoiceDate, dueD
     </table>`;
   const html = emailShell({
     title: `Invoice ${invoiceNo}`,
-    subtitle: `Hi ${customerName}, here's your invoice from ${companyName || 'Farmtrack Bio Sciences'}.`,
+    subtitle: `Hi ${customerName}, here's your invoice from ${companyName || 'Farmtrack Biosciences'}.`,
     bodyHtml: `${itemsHtml}${totalsHtml}<p style="font-size:13px;color:#475467;margin:8px 0;">Due date: <strong>${dueDate || '—'}</strong> · Issued: ${invoiceDate || '—'}</p>`,
     actionLabel: viewUrl ? 'View Invoice' : null,
     actionUrl: viewUrl,
