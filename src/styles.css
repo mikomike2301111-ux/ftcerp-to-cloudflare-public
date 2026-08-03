@@ -85,7 +85,8 @@ th {
   padding: 28px 18px 24px; display: flex; flex-direction: column; z-index: 20;
   transition: width .22s ease, padding .22s ease, transform .22s ease;
 }
-.sidebar-brand { min-height: 112px; display: grid; grid-template-columns: 1fr 34px; align-items: center; gap: 12px; border-bottom: 1px solid rgba(255,255,255,.1); }
+.sidebar-brand {
+  background: transparent; min-height: 112px; display: grid; grid-template-columns: 1fr 34px; align-items: center; gap: 12px; border-bottom: 1px solid rgba(255,255,255,.1); }
 .sidebar-brand img {
   width: 82px;
   height: 82px;
@@ -125,7 +126,8 @@ th {
 .main-shell { margin-left: 280px; width: calc(100% - 280px); min-width: 0; flex: 0 0 auto; transition: margin-left .22s ease, width .22s ease; }
 .sidebar-collapsed .sidebar { width: 88px; padding-inline: 14px; }
 .sidebar-collapsed .main-shell { margin-left: 88px; width: calc(100% - 88px); }
-.sidebar-collapsed .sidebar-brand { grid-template-columns: 1fr; justify-items: center; min-height: 104px; gap: 10px; }
+.sidebar-collapsed .sidebar-brand {
+  background: transparent; grid-template-columns: 1fr; justify-items: center; min-height: 104px; gap: 10px; }
 .sidebar-collapsed .sidebar-brand img { width: 60px; height: 60px; transform: translateY(-2px) scale(1.06); }
 .sidebar-collapsed .sidebar-brand-text { display: none; }
 .sidebar-collapsed .sidebar-collapse { transform: rotate(-90deg); }
@@ -2362,7 +2364,8 @@ td { padding: 13px 0; border-bottom: 1px solid #eef0f3; }
 @media (max-width: 900px) {
   /* â”€â”€â”€ MOBILE LAYOUT: sidebar off-canvas, content full width â”€â”€â”€ */
   .sidebar, .sidebar-collapsed .sidebar { width: 280px; padding: 28px 18px 24px; transform: translateX(-100%); transition: transform .2s ease; }
-  .sidebar-collapsed .sidebar-brand { grid-template-columns: 58px 1fr 34px; justify-items: stretch; min-height: 112px; }
+  .sidebar-collapsed .sidebar-brand {
+  background: transparent; grid-template-columns: 58px 1fr 34px; justify-items: stretch; min-height: 112px; }
   .sidebar-collapsed .sidebar-brand-text { display: block; }
   .sidebar-collapsed .sidebar nav button { justify-content: flex-start; padding: 0 16px; gap: 14px; }
   .sidebar-collapsed .sidebar nav button span { display: inline; }
@@ -9270,4 +9273,90 @@ select {
   .sales-hero-stats { grid-template-columns: 1fr 1fr !important; }
   .hero-stat { padding-left: 52px !important; min-height: 64px; }
   .topbar-email-btn, .topbar-profile-btn { min-width: 40px; }
+}
+
+
+/* FORCE LOGO WHITE + EMAIL TABS VISIBLE */
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+}
+.sidebar-brand img {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  background: #ffffff !important;
+  border-radius: 12px;
+  padding: 6px;
+  border: 1px solid #eaecf0;
+  box-sizing: border-box;
+}
+.brand-mark,
+.brand-mark img {
+  background: #ffffff !important;
+}
+.email-workspace .email-nav-tabs {
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 10px;
+  background: #fff;
+  border: 1px solid #eaecf0;
+  border-radius: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+.email-workspace .email-nav-tabs button {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 16px !important;
+  border-radius: 999px !important;
+  border: 1px solid #d0d5dd !important;
+  background: #f9fafb !important;
+  color: #101828 !important;
+  font-weight: 700 !important;
+  font-size: 13px !important;
+  white-space: nowrap;
+}
+.email-workspace .email-nav-tabs button.active {
+  background: #050505 !important;
+  color: #ffffff !important;
+  border-color: #050505 !important;
+}
+.email-workspace .email-nav-tabs button.active::after { display: none !important; }
+
+@media (max-width: 900px) {
+  .topbar {
+    display: flex !important;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 12px !important;
+  }
+  .topbar > * { min-width: 0; }
+  .topbar-search, .global-search-wrap, .topbar .search-box {
+    order: 5;
+    width: 100% !important;
+    flex: 1 1 100%;
+  }
+  .sidebar.open {
+    transform: translateX(0);
+    z-index: 50;
+  }
+  .email-workspace .email-nav-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .sales-hero, .crm-hero, .email-hero {
+    grid-template-columns: 1fr !important;
+  }
+  .crm-card-grid { grid-template-columns: 1fr !important; }
 }

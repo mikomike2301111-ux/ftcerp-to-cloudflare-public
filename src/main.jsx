@@ -11250,10 +11250,16 @@ function EmailWorkspace({ user, setPage }) {
       <div className="inline-actions"><CreateRequisitionButton user={user} module="email" /></div>
 
       <div className="email-shell">
-      <div className="email-nav-tabs">
+      <div className="email-nav-tabs" role="tablist" aria-label="Email sections">
         {tabs.map(t => {
           const Icon = tabIcon[t] || FileText;
-          return <button key={t} className={view === t ? 'active' : ''} onClick={() => setView(t)}><Icon size={18} />{label(t)}</button>;
+          const titles = { compose: 'Compose', drafts: 'Drafts', sent: 'Sent', templates: 'Templates' };
+          return (
+            <button key={t} type="button" role="tab" aria-selected={view === t} className={view === t ? 'active' : ''} onClick={() => setView(t)}>
+              <Icon size={18} />
+              <span>{titles[t] || label(t)}</span>
+            </button>
+          );
         })}
       </div>
 

@@ -3871,6 +3871,10 @@ function purgeDemoTransactionalData(d) {
   emptyKeys.forEach(k => { d[k] = []; });
   d.settings = d.settings || {};
   d.settings.demo_data_disabled = true;
+  // Strip known demo sale markers
+  if (Array.isArray(d.sales)) d.sales = d.sales.filter(s => !String(s.saleNo || '').startsWith('DASH-WK-'));
+  if (Array.isArray(d.invoices)) d.invoices = d.invoices.filter(inv => !String(inv.invNo || '').includes('DASH-WK'));
+  if (Array.isArray(d.expenses)) d.expenses = d.expenses.filter(e => !String(e.description || '').includes('dashboard demo'));
   d.quickBooksImport = null;
 }
 
@@ -4363,31 +4367,8 @@ const api = {
   getDashboardData(user) {
     const u = reqRole(user);
     const d = data();
-    const recentSeedExists = d.sales.some(s => String(s.saleNo || '').startsWith('DASH-WK-'));
-    if (!recentSeedExists && d.products.length && d.customers.length) {
-      const seedProducts = d.products.slice(0, 6);
-      const seedCustomers = d.customers.slice(0, 5);
-      for (let i = 7; i >= 0; i--) {
-        const date = new Date();
-        date.setDate(date.getDate() - (i * 7 + 2));
-        const iso = date.toISOString();
-        const ds = iso.slice(0, 10);
-        const product = seedProducts[i % seedProducts.length];
-        const customer = seedCustomers[i % seedCustomers.length];
-        const qty = 4 + i * 2;
-        const unitPrice = num(product.sellingPrice || product.price || 1200);
-        const cost = num(product.costPrice || unitPrice * 0.55);
-        const subtotal = qty * unitPrice;
-        const tax = Math.round(subtotal * 0.16);
-        const total = subtotal + tax;
-        const saleId = gid();
-        const saleNo = `DASH-WK-${String(8 - i).padStart(2, '0')}`;
-        d.sales.unshift({ id: saleId, createdAt: iso, updatedAt: iso, createdBy: u.id, isDeleted: 'No', saleNo, customerId: customer.id, customerName: customer.name, date: ds, subtotal, tax, total, paid: total, balance: 0, status: 'Paid', approvalStatus: 'Auto Approved', paymentMethod: 'Bank' });
-        d.saleItems.unshift({ id: gid(), createdAt: iso, updatedAt: iso, createdBy: u.id, isDeleted: 'No', saleId, productId: product.id, productName: product.name, quantity: qty, unitPrice, cost, total: subtotal });
-        d.invoices.unshift({ id: gid(), createdAt: iso, updatedAt: iso, createdBy: u.id, isDeleted: 'No', invNo: `INV-${saleNo}`, saleId, customerId: customer.id, customerName: customer.name, date: ds, dueDate: ds, subtotal, tax, total, paid: total, balance: 0, status: 'Paid', approvalStatus: 'Auto Approved', type: 'Sales' });
-        d.expenses.unshift({ id: gid(), createdAt: iso, updatedAt: iso, createdBy: u.id, isDeleted: 'No', expNo: `EXP-${saleNo}`, category: i % 2 ? 'Sales Travel' : 'Distribution', date: ds, description: `Weekly dashboard demo operating cost ${8 - i}`, amount: Math.round(total * (0.22 + (i % 3) * 0.03)), paymentMethod: 'Bank', status: 'Paid' });
-      }
-    }
+    // No auto-demo dashboard seed — charts use live sales/expenses only.
+
     const cy = new Date().getFullYear();
     const ly = cy - 1;
     const byYear = y => d.sales.filter(s => new Date(s.createdAt).getFullYear() === y);
