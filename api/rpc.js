@@ -1522,17 +1522,19 @@ async function loadState() {
     db = rows[0].data;
     const repaired = ensureFarmtrackCatalogue(db);
     if (applyQuickBooksSeed() || repaired) {
-      db.deferNormalizedSync = true;
+      if (db) db.deferNormalizedSync = true;
       await saveState();
-      delete db.deferNormalizedSync;
+      if (db) delete db.deferNormalizedSync;
     }
     return;
   }
   seed();
   applyQuickBooksSeed();
-  db.deferNormalizedSync = true;
-  await saveState();
-  delete db.deferNormalizedSync;
+  if (db) {
+    db.deferNormalizedSync = true;
+    await saveState();
+    if (db) delete db.deferNormalizedSync;
+  }
 }
 
 const GENERATED_PERSISTENCE_KEYS = new Set([
@@ -1588,7 +1590,7 @@ async function saveState() {
     body: JSON.stringify({ id: STATE_ID, data: persistedState, updated_at: persistedState._lastWriterAt })
   });
   lastPersistedAt = Date.now();
-  if (db.deferNormalizedSync) return;
+  if (!db || db.deferNormalizedSync) return;
   await Promise.race([
     syncNormalizedSupabase({ silent: true }),
     new Promise(resolve => setTimeout(() => resolve({ attempted: false, reason: 'normalized sync timeout guard' }), 8000))
@@ -6468,7 +6470,31 @@ const api = {
   saveLead(user, row) { const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD); return save('leads', u, row); },
   deleteLead: (user, id) => (reqRole(user, ROLES.ADMIN, ROLES.MANAGER), softDelete('leads', id)),
   getCalls: user => (reqRole(user), list('calls')),
-  saveCall(user, row) { const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD); return save('calls', u, row); },
+  saveCall(user, row = {}) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD);
+    const d = data();
+    d.calls = Array.isArray(d.calls) ? d.calls : [];
+    let customer = null;
+    if (row.customerId) customer = (d.customers || []).find(c => c.id === row.customerId);
+    if (!customer && row.customerName) customer = (d.customers || []).find(c => String(c.name).toLowerCase() === String(row.customerName).toLowerCase());
+    const payload = {
+      ...row,
+      customerId: customer?.id || row.customerId || '',
+      customerName: customer?.name || clean(row.customerName) || 'Walk-in',
+      phone: clean(row.phone || customer?.phone || ''),
+      stage: clean(row.stage) || 'Logged',
+      notes: clean(row.notes || row.nextStep || ''),
+      comments: clean(row.comments || ''),
+      followUpDate: dateOnly(row.followUpDate || '') || '',
+      assignedTo: clean(row.assignedTo) || u.name,
+      salesOwner: customer?.salesOwner || customer?.salesPerson || u.name,
+      outcome: clean(row.outcome || ''),
+      date: dateOnly(row.date) || today(),
+      updatedAt: new Date().toISOString()
+    };
+    if (!payload.customerName && !payload.phone) throw new Error('Customer name or phone is required to log a call');
+    return save('calls', u, payload);
+  },
   updateCallStage(user, id, stage) { reqRole(user); const c = data().calls.find(x => x.id === id); if (c) c.stage = stage; return { success: true }; },
   getVisits(user, filters = {}) {
     reqRole(user);
@@ -9759,11 +9785,17 @@ territory: geo,
   generateCustomerStatement(user, customerId, options = {}) {
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.ACCOUNTANT);
     const d = data();
-    const customer = d.customers.find(c => c.id === customerId);
+    const customer = (d.customers || []).find(c => c.id === customerId || String(c.name).toLowerCase() === String(customerId || '').toLowerCase());
     if (!customer) throw new Error('Customer not found');
-    const invoices = d.invoices.filter(i => i.customerId === customerId || i.customerName === customer.name).sort((a, b) => String(b.date).localeCompare(String(a.date)));
-    const payments = d.payments.filter(p => p.customerId === customerId || p.customerName === customer.name).sort((a, b) => String(b.date).localeCompare(String(b.date)));
-    const credits = d.creditNotes?.filter(c => c.customerId === customerId) || [];
+    const cid = customer.id;
+    const cname = customer.name;
+    const invoices = (d.invoices || []).filter(i => i.customerId === cid || i.customerName === cname).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    const payments = (d.payments || []).filter(p => p.customerId === cid || p.customerName === cname).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    const sales = (d.sales || []).filter(s => s.customerId === cid || s.customerName === cname).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    const orders = sales;
+    const deliveries = (d.deliveries || []).filter(x => x.customerId === cid || x.customerName === cname);
+    const calls = (d.calls || []).filter(x => x.customerId === cid || x.customerName === cname);
+    const credits = (d.creditNotes || []).filter(c => c.customerId === cid) || [];
     const statementLines = [];
     let runningBalance = 0;
     const allTxns = [
@@ -9790,7 +9822,12 @@ territory: geo,
       lines: statementLines,
       overdueInvoices: invoices.filter(i => num(i.balance) > 0 && reportDaysOverdue(i.dueDate) > 0).map(i => ({ invNo: i.invNo, date: i.date, dueDate: i.dueDate, total: num(i.total), balance: num(i.balance), daysOverdue: reportDaysOverdue(i.dueDate) })),
       creditLimit: num(customer.creditLimit),
-      currentBalance: runningBalance
+      currentBalance: runningBalance,
+      salesOwner: customer.salesOwner || customer.salesPerson || '',
+      purchases: sales.map(s => ({ saleNo: s.saleNo, date: s.date, total: num(s.total), paid: num(s.paid), balance: num(s.balance), status: s.status, deliveryStatus: s.deliveryStatus || '' })),
+      deliveries: deliveries.map(x => ({ deliveryNo: x.deliveryNo, date: x.date || x.createdAt, status: x.status, destination: x.destination, method: x.deliveryMethod || x.method })),
+      followUps: calls.filter(c => c.followUpDate || c.comments).map(c => ({ date: c.followUpDate || c.date, stage: c.stage, comments: c.comments || c.notes, phone: c.phone, assignedTo: c.assignedTo })),
+      customer
     };
   },
   getAuditTrail(user, filters = {}) {

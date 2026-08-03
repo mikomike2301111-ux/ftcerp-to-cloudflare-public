@@ -9360,3 +9360,46 @@ select {
   }
   .crm-card-grid { grid-template-columns: 1fr !important; }
 }
+
+
+/* Aligned finance/CRM KPI cards — no wavy offset */
+.kpi-card-aligned {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 120px;
+  padding: 16px !important;
+  overflow: hidden;
+}
+.kpi-card-aligned .kpi-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 !important;
+}
+.kpi-card-aligned h3 {
+  margin: 0 !important;
+  font-size: clamp(16px, 1.3vw, 22px) !important;
+  line-height: 1.15 !important;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.kpi-card-aligned .kpi-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+}
+.kpi-card-aligned .kpi-meta em {
+  font-style: normal;
+  font-weight: 700;
+  font-size: 12px;
+}
+.kpi-card-aligned .kpi-meta em.up { color: #027a48; }
+.kpi-card-aligned .kpi-meta em.down { color: #b42318; }
+.kpi-card-aligned .kpi-meta small {
+  margin: 0 !important;
+  color: #667085;
+}
+.kpi-card .sparkline { display: none !important; }

@@ -1804,16 +1804,19 @@ function ForecastCard({ forecast }) {
 }
 
 function KpiCard({ icon: Icon, label, value, change, tone }) {
+  const pct = Number(change);
+  const showPct = Number.isFinite(pct);
   return (
-    <article className="kpi-card">
+    <article className={`kpi-card kpi-card-aligned tone-${tone || 'green'}`}>
       <div className="kpi-head">
-        <span><Icon size={22} /></span>
+        <span><Icon size={18} /></span>
         <strong>{label}</strong>
       </div>
-      <h3>{value}</h3>
-      <div className={`change ${change >= 0 ? 'up' : 'down'} ${tone}`}>{change >= 0 ? '+' : ''}{change}%</div>
-      <small>vs last month</small>
-      <Sparkline tone={tone} />
+      <h3 title={String(value)}>{value}</h3>
+      <div className="kpi-meta">
+        {showPct ? <em className={pct >= 0 ? 'up' : 'down'}>{pct >= 0 ? '+' : ''}{pct}%</em> : <em>—</em>}
+        <small>vs prior period</small>
+      </div>
     </article>
   );
 }
@@ -1886,7 +1889,7 @@ function DataPage({ user, title, icon, fn, columns }) {
 }
 
 function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
-  const tabs = ['overview', 'pipeline', 'customers', 'followups', 'leads', 'calls', 'activities', 'reports', 'analytics'];
+  const tabs = ['overview', 'pipeline', 'customers', 'followups', 'paid-followups', 'leads', 'calls', 'activities', 'reports', 'analytics'];
   const [refreshKey, setRefreshKey] = useState(0);
   const { loading, data, error } = useServer(user, 'getCRMWorkspaceData', [{ period: globalPeriod }], [refreshKey, globalPeriod]);
   const [view, setView] = useRouteTab('customers', tabs, 'overview');
@@ -2076,6 +2079,22 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
           <Panel className="span-7" title="Scheduled follow-ups" action={`${crmAnalytics.followUps.length} open`}>
             <CRMFollowUpBoard
               rows={(allCalls || []).filter(row => row.followUpDate || ['To Be Called', 'Pending Calls', 'To Be Meeting', 'Follow-up'].includes(row.stage))}
+              onLogCall={() => setModal('call')}
+              onOpenCustomers={() => setView('customers')}
+            />
+          </Panel>
+        </div>
+      )}
+      {view === 'paid-followups' && (
+        <div className="dashboard-grid">
+          <Panel className="span-12" title="Follow-up · customers who have paid" action="Live payments + CRM">
+            <CRMFollowUpBoard
+              rows={(allCalls || []).filter(row => {
+                const name = row.customerName || '';
+                const paidCustomer = (allCustomers || []).some(c => (c.id === row.customerId || c.name === name) && (num(c.revenue) > 0 || num(c.balance) === 0 && num(c.orders) > 0));
+                const hasPayment = (data.orders || []).some(o => (o.customerName === name || o.customerId === row.customerId) && num(o.paid) > 0);
+                return (paidCustomer || hasPayment) && (row.followUpDate || row.comments || ['To Be Called', 'Pending Calls', 'Follow-up', 'To Be Meeting'].includes(row.stage));
+              })}
               onLogCall={() => setModal('call')}
               onOpenCustomers={() => setView('customers')}
             />
@@ -2637,11 +2656,16 @@ function CRMReportsCenter({ user, data, globalPeriod = 'Month', onUpdated }) {
       status: row.status || row.deliveryStatus || 'Open',
       value: num(row.total || row.balance)
     }));
-    const followups = calls.filter(row => row.followUpDate || ['To Be Called', 'Pending Calls', 'To Be Meeting', 'Follow-up'].includes(row.status));
+    const followups = calls.filter(row => row.followUpDate || row.comments || ['To Be Called', 'Pending Calls', 'To Be Meeting', 'Follow-up'].includes(row.status)).map(row => ({
+      ...row,
+      comments: row.comments || row.detail || '',
+      followUpDate: row.followUpDate || '',
+      assignedTo: row.assignedTo || ''
+    }));
     return {
       customers: { label: 'Customer ledger', module: 'Customer', reportName: 'Customer Report', rows: customers, icon: Users, columns: ['date', 'name', 'phone', 'email', 'type', 'detail', 'status', 'balance', 'value'] },
       calls: { label: 'Calls & notes', module: 'Customer', reportName: 'Call Report', rows: calls, icon: Phone, columns: ['date', 'name', 'phone', 'detail', 'status', 'assignedTo', 'followUpDate'] },
-      followup: { label: 'Follow-ups', module: 'Customer', reportName: 'Follow-up Report', rows: followups, icon: RefreshCw, columns: ['date', 'name', 'phone', 'detail', 'status', 'followUpDate', 'assignedTo'] },
+      followup: { label: 'Follow-ups', module: 'Customer', reportName: 'Follow-up Report', rows: followups, icon: RefreshCw, columns: ['date', 'name', 'phone', 'detail', 'status', 'followUpDate', 'assignedTo', 'comments'] },
       leads: { label: 'Pipeline', module: 'Customer', reportName: 'Pipeline Report', rows: leads, icon: Target, columns: ['date', 'name', 'phone', 'detail', 'status', 'value'] },
       orders: { label: 'Purchases', module: 'Sales', reportName: 'Customer Purchases', rows: orders, icon: ShoppingCart, columns: ['date', 'name', 'detail', 'status', 'value'] },
       delivery: { label: 'Deliveries', module: 'Delivery', reportName: 'Delivery Report', rows: deliveries, icon: Truck, columns: ['date', 'deliveryNo', 'name', 'destination', 'method', 'driver', 'status', 'value'] }
@@ -7856,17 +7880,26 @@ function DashboardRequisitionWidget({ user }) {
   );
 }
 
-function CustomerStatementModal({ user, customers, onClose, onSaved }) {
+function CustomerStatementModal({ user, customers = [], onClose, onSaved }) {
+  const [query, setQuery] = useState('');
   const [customerId, setCustomerId] = useState('');
   const [statement, setStatement] = useState(null);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const sorted = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return [...(customers || [])]
+      .filter(c => !q || `${c.customerName || c.name} ${c.phone || ''} ${c.email || ''}`.toLowerCase().includes(q))
+      .sort((a, b) => String(b.updatedAt || b.lastActivity || b.name || '').localeCompare(String(a.updatedAt || a.lastActivity || a.name || '')));
+  }, [customers, query]);
 
-  async function generate() {
-    if (!customerId) return;
+  async function generate(id) {
+    const target = id || customerId;
+    if (!target) return alert('Select a customer');
+    setCustomerId(target);
     setLoading(true);
     try {
-      const result = await rpc('generateCustomerStatement', [user, customerId]);
+      const result = await rpc('generateCustomerStatement', [user, target]);
       setStatement(result);
     } catch (error) {
       alert(error.message || 'Could not generate statement');
@@ -7888,38 +7921,70 @@ function CustomerStatementModal({ user, customers, onClose, onSaved }) {
     }
   }
 
-  const selectedCustomer = customers.find(c => c.id === customerId || c.customerName === customerId);
   return (
-    <div className="modal-backdrop">
-      <div className="modal-card">
-        <header><h2>Generate Customer Statement</h2><button type="button" onClick={onClose}><X size={18} /></button></header>
-        <label>Customer<select value={customerId} onChange={e => { setCustomerId(e.target.value); setStatement(null); }}><option value="">Select customer</option>{customers.map(c => <option key={c.id || c.customerName} value={c.id || c.customerName}>{c.customerName}</option>)}</select></label>
-        <button className="primary-action" disabled={!customerId || loading} onClick={generate}>{loading ? 'Generating...' : 'Generate Statement'}</button>
-        {statement && (
-          <div className="statement-preview" style={{ marginTop: 16, border: '1px solid #e5e7eb', borderRadius: 12, padding: 16, background: '#f9fafb' }}>
-            <h3>{selectedCustomer?.customerName || customerId}</h3>
-            <p>Generated: {new Date(statement.generatedAt).toLocaleString()}</p>
-            <SimpleTable rows={statement.lines || []} columns={['date', 'type', 'reference', 'debit', 'credit', 'balance']} />
-            {statement.overdue && statement.overdue.length > 0 && (
-              <div style={{ marginTop: 12 }}>
-                <strong>Overdue Invoices</strong>
-                <SimpleTable rows={statement.overdue} columns={['invNo', 'date', 'amount', 'daysOverdue']} />
-              </div>
-            )}
-            <div style={{ marginTop: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <strong>Closing Balance: {currency(statement.closingBalance || 0)}</strong>
-              <div className="invoice-actions-row">
-                <button className="secondary-action" disabled={exporting} onClick={() => exportStatement('PDF')}><Download size={14} /> PDF</button>
-                <button className="secondary-action" disabled={exporting} onClick={() => exportStatement('Print')}><Printer size={14} /> Print</button>
-                <button className="secondary-action" disabled={exporting} onClick={() => exportStatement('Email')}><Mail size={14} /> Email</button>
-              </div>
-            </div>
+    <div className="modal-scrim retractable-overlay" onClick={onClose}>
+      <div className="modal-card overlay-scrollable wide wide-full" onClick={e => e.stopPropagation()}>
+        <header>
+          <h2>Customer statement</h2>
+          <button type="button" onClick={onClose}><X size={18} /></button>
+        </header>
+        <div className="modal-card-body overlay-scroll-body">
+          <div className="report-search-box" style={{ marginBottom: 12 }}>
+            <Search size={16} />
+            <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Type customer name or phone (predictive)..." autoFocus />
           </div>
-        )}
+          <div className="table-wrap" style={{ maxHeight: 220, marginBottom: 14 }}>
+            <table>
+              <thead><tr><th>Customer</th><th>Phone</th><th>Balance</th><th></th></tr></thead>
+              <tbody>
+                {sorted.slice(0, 40).map(c => {
+                  const id = c.customerId || c.id;
+                  const name = c.customerName || c.name;
+                  return (
+                    <tr key={id} className={customerId === id ? 'row-selected' : ''} style={{ cursor: 'pointer' }} onClick={() => generate(id)}>
+                      <td><strong>{name}</strong></td>
+                      <td>{c.phone || '—'}</td>
+                      <td>{currency(c.dueBalance ?? c.balance ?? 0)}</td>
+                      <td><button type="button" className="mini-action" onClick={e => { e.stopPropagation(); generate(id); }}>Statement</button></td>
+                    </tr>
+                  );
+                })}
+                {sorted.length === 0 && <tr><td colSpan={4}>No customers match. Add customers in CRM or Sales first.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          {loading && <div className="empty-state">Building statement...</div>}
+          {statement && !loading && (
+            <div className="dashboard-grid">
+              <Panel className="span-12" title={`${statement.customerName} · statement`} action={statement.statementDate}>
+                <div className="settings-kv-grid">
+                  <article><span>Closing balance</span><strong>{currency(statement.closingBalance)}</strong></article>
+                  <article><span>Total invoiced</span><strong>{currency(statement.totalInvoiced)}</strong></article>
+                  <article><span>Total paid</span><strong>{currency(statement.totalPaid)}</strong></article>
+                  <article><span>Sales owner</span><strong>{statement.salesOwner || '—'}</strong></article>
+                </div>
+                <div className="inline-actions" style={{ margin: '12px 0' }}>
+                  <button className="primary-action" disabled={exporting} onClick={() => exportStatement('PDF')}><Download size={14} /> PDF</button>
+                  <button className="secondary-action" disabled={exporting} onClick={() => exportStatement('CSV')}>CSV</button>
+                  <button className="secondary-action" disabled={exporting} onClick={() => exportStatement('Print')}><Printer size={14} /> Print</button>
+                </div>
+                <SimpleTable rows={statement.lines || []} columns={['date', 'type', 'reference', 'description', 'debit', 'credit', 'balance']} />
+              </Panel>
+              <Panel className="span-6" title="Purchases / orders" action={`${(statement.purchases || []).length}`}>
+                <SimpleTable rows={statement.purchases || []} columns={['date', 'saleNo', 'total', 'paid', 'balance', 'status', 'deliveryStatus']} />
+              </Panel>
+              <Panel className="span-6" title="Deliveries & follow-ups">
+                <SimpleTable rows={statement.deliveries || []} columns={['date', 'deliveryNo', 'status', 'destination', 'method']} />
+                <SimpleTable rows={statement.followUps || []} columns={['date', 'stage', 'phone', 'comments', 'assignedTo']} />
+              </Panel>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 }
+
 
 function ReportDateControls({ filters, setFilters }) {
   const applyPeriod = days => {
