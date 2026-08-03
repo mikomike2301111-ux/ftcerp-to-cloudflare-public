@@ -8014,7 +8014,9 @@ const api = {
       { name: 'Overdue Collections', value: overdueInvoices.reduce((s, i) => s + num(i.balance), 0), records: overdueInvoices.length, exports: ['PDF', 'Excel', 'CSV', 'Email'] }
     ].map(row => ({ ...row, value: Math.round(row.value), dateRange: 'May 12 - Jun 12, 2026' }));
 
-    const geo = api.getGeoSalesData(user);
+    let geo = { counties: [], visits: [], routes: [], heatmap: [], hero: {}, repComparison: [], opportunityMap: [] };
+    try { geo = api.getGeoSalesData(user) || geo; } catch (e) { console.error('getGeoSalesData', e.message); }
+    if (!geo || !Array.isArray(geo.counties)) geo = { ...geo, counties: [] };
     return {
       filters: {
         dateRange: 'May 12 - Jun 12, 2026',
@@ -8066,7 +8068,7 @@ const api = {
         return { ...sale, liveStatus: delivery?.status || sale.deliveryStatus || orderStages[index % orderStages.length], deliveryId: delivery?.id || '', deliveryNo: delivery?.deliveryNo || '', deliveredConfirmed: Boolean(delivery?.deliveredConfirmed) };
       }),
       invoices: invoices.map((invoice, index) => ({ ...invoice, liveStatus: invoice.status || invoiceStages[index % invoiceStages.length] })),
-      deliveries: d.deliveries.map((row, index) => ({ ...row, saleNo: row.saleNo || d.sales.find(s => s.id === row.saleId)?.saleNo || d.sales[index]?.saleNo || '' })),
+      deliveries: (d.deliveries || []).map((row, index) => ({ ...row, saleNo: row.saleNo || (d.sales || []).find(s => s.id === row.saleId)?.saleNo || (d.sales || [])[index]?.saleNo || '' })),
 territory: geo,
        reports: reportRows,
        customers: list('customers').map(c => ({ ...c, customerName: c.name })),
@@ -8074,7 +8076,7 @@ territory: geo,
         revenueTrend,
         profitTrend: revenueTrend.map(row => ({ month: row.month, profit: row.profit })),
         teamPerformance,
-        territoryComparison: geo.counties.slice(0, 10).map(c => ({ county: c.name, revenue: c.revenue, profit: c.profit, visits: c.visits })),
+        territoryComparison: (geo?.counties || []).slice(0, 10).map(c => ({ county: c.name, revenue: num(c.revenue), profit: num(c.profit), visits: num(c.visits) })),
         productComparison,
         customerGrowth: months.map((month, index) => ({ month, customers: 22 + index * 8 })),
         quotationConversion: months.map((month, index) => ({ month, conversion: 34 + index * 6 })),
@@ -8111,6 +8113,16 @@ territory: geo,
   getGeoSalesData(user) {
     reqRole(user);
     const d = data();
+    d.salesVisits = Array.isArray(d.salesVisits) ? d.salesVisits : [];
+    d.salesCheckins = Array.isArray(d.salesCheckins) ? d.salesCheckins : [];
+    d.salesRoutes = Array.isArray(d.salesRoutes) ? d.salesRoutes : [];
+    d.territoryAssignments = Array.isArray(d.territoryAssignments) ? d.territoryAssignments : [];
+    d.leads = Array.isArray(d.leads) ? d.leads : [];
+    d.saleItems = Array.isArray(d.saleItems) ? d.saleItems : [];
+    d.sales = Array.isArray(d.sales) ? d.sales : [];
+    d.customers = Array.isArray(d.customers) ? d.customers : [];
+    d.quotations = Array.isArray(d.quotations) ? d.quotations : [];
+    d.counties = Array.isArray(d.counties) ? d.counties : [];
     const countyRevenue = new Map();
     d.sales.forEach((sale, index) => {
       const customer = d.customers.find(c => c.id === sale.customerId || c.name === sale.customerName);

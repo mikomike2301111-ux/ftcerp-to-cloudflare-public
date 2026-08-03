@@ -4211,23 +4211,25 @@ function SalesModule({ user, setPage, globalPeriod }) {
   if (workspace.loading) return <Loading title="Sales" />;
   if (workspace.error) return <ErrorState title="Sales" error={workspace.error} />;
 
-  const data = workspace.data;
-  const territory = data.territory;
-  const county = territory.counties.find(c => c.name === selectedCounty) || territory.counties[0];
+  const data = workspace.data || {};
+  const overview = data.overview || {};
+  const territory = data.territory || { counties: [], visits: [], routes: [], heatmap: [] };
+  const counties = Array.isArray(territory.counties) ? territory.counties : [];
+  const county = counties.find(c => c.name === selectedCounty) || counties[0] || { name: 'Nairobi', revenue: 0, profit: 0, visits: 0 };
   const metrics = ['revenue', 'profit', 'customers', 'invoices', 'expenses', 'pipeline'];
   const salesKpis = [
-    [CircleDollarSign, 'Revenue', currency(data.overview.revenue), 14.8, 'green'],
-    [LineChart, 'Profit', currency(data.overview.profit), 9.2, 'green'],
-    [ReceiptText, 'Orders', data.overview.orders, 6.4, 'blue'],
-    [FileText, 'Invoices', data.overview.invoices, 4.1, 'blue'],
-    [Target, 'Pipeline', currency(data.overview.pipeline), 11.3, 'green'],
-    [BriefcaseBusiness, 'Expenses', currency(data.overview.expenses), -3.2, 'red'],
-    [Wallet, 'Avg Order', currency(data.overview.averageOrderValue || 0), 5.1, 'blue'],
-    [Truck, 'Pending Delivery', data.overview.pendingDelivery || 0, data.overview.pendingDelivery ? -2 : 2, data.overview.pendingDelivery ? 'red' : 'blue'],
-    [ClipboardCheck, 'Unpaid Invoices', data.overview.unpaidInvoices || 0, data.overview.unpaidInvoices ? -3 : 3, data.overview.unpaidInvoices ? 'red' : 'blue'],
-    [Users, 'Repeat Customers', data.overview.repeatCustomers || 0, 7.6, 'blue'],
-    [Package, 'Top Products', data.overview.topProducts || 0, 4.8, 'blue'],
-    [Gauge, 'Quote Conversion', `${data.overview.quoteConversion || 0}%`, 6.2, 'blue']
+    [CircleDollarSign, 'Revenue', currency(overview.revenue || 0), 0, 'green'],
+    [LineChart, 'Profit', currency(overview.profit || 0), 0, num(overview.profit) >= 0 ? 'green' : 'red'],
+    [ReceiptText, 'Orders', overview.orders || 0, 0, 'blue'],
+    [FileText, 'Invoices', overview.invoices || 0, 0, 'blue'],
+    [Target, 'Pipeline', currency(overview.pipeline || 0), 0, 'green'],
+    [BriefcaseBusiness, 'Expenses', currency(overview.expenses || 0), 0, 'red'],
+    [Wallet, 'Avg Order', currency(overview.averageOrderValue || 0), 0, 'blue'],
+    [Truck, 'Pending Delivery', overview.pendingDelivery || 0, 0, overview.pendingDelivery ? 'red' : 'blue'],
+    [ClipboardCheck, 'Unpaid Invoices', overview.unpaidInvoices || 0, 0, overview.unpaidInvoices ? 'red' : 'blue'],
+    [Users, 'Repeat Customers', overview.repeatCustomers || 0, 0, 'blue'],
+    [Package, 'Top Products', overview.topProducts || 0, 0, 'blue'],
+    [Gauge, 'Quote Conversion', `${overview.quoteConversion || 0}%`, 0, 'blue']
   ];
 
   return (
@@ -4272,7 +4274,7 @@ function SalesModule({ user, setPage, globalPeriod }) {
           </div>
           <div className="dashboard-grid">
             <Panel className="span-12 sales-main-chart" title="Revenue Operations Trend" action="Shared Filters">
-              <SalesTrendChart data={data.revenueTrend} metric={metric} />
+              <SalesTrendChart data={data.revenueTrend || []} metric={metric} />
             </Panel>
             <Panel className="span-12" title="Sales Team Comparison">
               <div className="metric-toggle">{metrics.map(x => <button key={x} className={metric === x ? 'active' : ''} onClick={() => setMetric(x)}>{label(x)}</button>)}</div>
