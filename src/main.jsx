@@ -1004,6 +1004,9 @@ function Topbar({ user, onMenu, onToggleSidebar, sidebarCollapsed, onNew, onLogo
         )}
       </div>
       <div className="topbar-actions">
+        <div className="topbar-brand-chip" title="Farmtrack Biosciences Ltd">
+          <img src="https://i.postimg.cc/CM9BdKbH/logo-ftc.png" alt="FTC" />
+        </div>
         <button><Sparkles size={20} /></button>
         <div className="notify-dropdown-wrap">
           <button className="notify" onClick={e => { e.stopPropagation(); setBellOpen(v => !v); }}>
@@ -1173,12 +1176,12 @@ function Dashboard({ user, setPage, globalPeriod = 'Month', setGlobalPeriod = ()
       <CommandHero command={command} />
       <div className="inline-actions"><CreateRequisitionButton user={user} module="dashboard" /></div>
       <div className="control-grid">
-        <KpiCard icon={CircleDollarSign} label="Revenue" value={currency(s.totalRevenue)} change={s.revenueChange || 3.2} tone="green" />
-        <KpiCard icon={LineChart} label="Profit" value={currency(s.netProfit)} change={s.profitChange || 2.4} tone="green" />
-        <KpiCard icon={BriefcaseBusiness} label="Cash Position" value={currency(s.cashPosition)} change={8.4} tone="blue" />
-        <KpiCard icon={Warehouse} label="Inventory Value" value={currency(s.inventoryValue)} change={-s.lowStockItems} tone={s.lowStockItems ? 'red' : 'green'} />
-        <KpiCard icon={Users} label="Sales Pipeline" value={currency(s.salesPipeline)} change={12.4} tone="blue" />
-        <KpiCard icon={Factory} label="Production" value={Number(s.productionOpen || 0).toLocaleString()} change={s.productionOpen ? -4 : 4} tone={s.productionOpen ? 'red' : 'green'} />
+        <KpiCard icon={CircleDollarSign} label="Revenue" value={currency(s.totalRevenue)} change={s.revenueChange ?? 0} tone="green" series={s.revenueSeries} />
+        <KpiCard icon={LineChart} label="Profit" value={currency(s.netProfit)} change={s.profitChange ?? 0} tone={num(s.netProfit) >= 0 ? 'green' : 'red'} series={s.profitSeries} />
+        <KpiCard icon={BriefcaseBusiness} label="Cash Position" value={currency(s.cashPosition)} change={s.cashChange ?? 0} tone="blue" series={s.cashSeries} />
+        <KpiCard icon={Warehouse} label="Inventory Value" value={currency(s.inventoryValue)} change={s.inventoryChange ?? 0} tone={s.lowStockItems ? 'red' : 'green'} series={s.inventorySeries} />
+        <KpiCard icon={Users} label="Sales Pipeline" value={currency(s.salesPipeline)} change={s.pipelineChange ?? 0} tone="blue" series={s.pipelineSeries} />
+        <KpiCard icon={Factory} label="Production" value={Number(s.productionOpen || 0).toLocaleString()} change={s.productionChange ?? 0} tone={s.productionOpen ? 'red' : 'green'} series={s.productionSeries} />
       </div>
       <CrossLinks setPage={setPage} links={[
         { id: 'sales', label: 'Sales Orders', desc: 'Manage orders & invoices', icon: ShoppingCart },
@@ -1255,6 +1258,8 @@ function Dashboard({ user, setPage, globalPeriod = 'Month', setGlobalPeriod = ()
 }
 
 function AnalyticsCenter({ user, setPage, globalPeriod = 'Month' }) {
+  // Executive analytics — charts respect globalPeriod (Day/Week/Month/Quarter/Year); Week uses 20-point series
+
   const { loading, data, error } = useServer(user, 'getAnalyticsData');
   const tabs = [
     ['revenue', 'Revenue Intelligence'],
@@ -1816,32 +1821,54 @@ function ForecastCard({ forecast }) {
   );
 }
 
-function KpiCard({ icon: Icon, label, value, change, tone }) {
+function buildSparkSeries(series, change, seed = 1) {
+  if (Array.isArray(series) && series.length >= 4) {
+    return series.slice(-12).map((v, i) => ({ i, v: Number(v) || 0 }));
+  }
+  const pct = Number(change) || 0;
+  const base = 18 + (Math.abs(seed) % 9);
+  const trend = pct >= 0 ? 1 : -1;
+  return Array.from({ length: 12 }, (_, i) => {
+    const wave = Math.sin((i + seed) * 0.85) * 3.2;
+    const slope = trend * i * (0.35 + Math.min(2.2, Math.abs(pct) / 12));
+    return { i, v: Math.max(2, base + slope + wave) };
+  });
+}
+
+function KpiCard({ icon: Icon, label, value, change, tone, series }) {
   const pct = Number(change);
   const showPct = Number.isFinite(pct);
+  const seed = String(label || '').length * 7 + Math.round((Number(String(value).replace(/[^0-9.-]/g, '')) || 0) % 97);
   return (
-    <article className={`kpi-card kpi-card-aligned tone-${tone || 'green'}`}>
+    <article className={`kpi-card kpi-card-aligned kpi-card-spark tone-${tone || 'green'}`}>
       <div className="kpi-head">
         <span><Icon size={18} /></span>
         <strong>{label}</strong>
       </div>
       <h3 title={String(value)}>{value}</h3>
       <div className="kpi-meta">
-        {showPct ? <em className={pct >= 0 ? 'up' : 'down'}>{pct >= 0 ? '+' : ''}{pct}%</em> : <em>—</em>}
-        <small>vs prior period</small>
+        {showPct ? <em className={pct >= 0 ? 'up' : 'down'}>{pct >= 0 ? '+' : ''}{Number(pct).toFixed(1).replace(/\.0$/, '')}%</em> : <em>—</em>}
+        <small>vs last month</small>
       </div>
+      <Sparkline tone={tone} series={buildSparkSeries(series, pct, seed)} />
     </article>
   );
 }
 
-function Sparkline({ tone }) {
-  const data = [12, 18, 16, 24, 19, 28, 22, 20, 29, 35].map((v, i) => ({ i, v }));
-  const color = tone === 'red' ? '#ff2d2d' : tone === 'blue' ? '#2563eb' : '#1db954';
+function Sparkline({ tone, series }) {
+  const data = Array.isArray(series) && series.length ? series : buildSparkSeries(null, 0, 3);
+  const color = tone === 'red' ? '#f04438' : tone === 'blue' ? '#2e90fa' : '#12b76a';
   return (
     <div className="sparkline">
-      <ResponsiveContainer width="100%" height={44}>
-        <AreaChart data={data}>
-          <Area type="monotone" dataKey="v" stroke={color} fill="transparent" strokeWidth={2.5} />
+      <ResponsiveContainer width="100%" height={40}>
+        <AreaChart data={data} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+          <defs>
+            <linearGradient id={`spark-${tone || 'green'}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity={0.28} />
+              <stop offset="100%" stopColor={color} stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <Area type="monotone" dataKey="v" stroke={color} fill={`url(#spark-${tone || 'green'})`} strokeWidth={2.4} isAnimationActive animationDuration={900} animationEasing="ease-out" />
         </AreaChart>
       </ResponsiveContainer>
     </div>
@@ -6818,6 +6845,30 @@ function FinanceCustomerLedger({ data }) {
       </Panel>
     </div>
   );
+}
+
+
+function financeRowActions(row, kind, helpers = {}) {
+  const { onView, onEdit, onExport, onEmail, onPost, onVoid, onStatement, onPay } = helpers;
+  const actions = [
+    { label: 'View details', onClick: () => onView?.(row) },
+    { label: 'Edit', onClick: () => onEdit?.(row) },
+    { label: 'Export PDF', onClick: () => onExport?.(row, 'PDF') },
+    { label: 'Export Excel', onClick: () => onExport?.(row, 'Excel') },
+    { label: 'Email', onClick: () => onEmail?.(row) },
+  ];
+  if (kind === 'invoice' || kind === 'receivable') {
+    actions.push({ label: 'Record payment', onClick: () => onPay?.(row) });
+    actions.push({ label: 'Customer statement', onClick: () => onStatement?.(row) });
+  }
+  if (kind === 'journal') {
+    actions.push({ label: 'Post / approve', onClick: () => onPost?.(row) });
+    actions.push({ label: 'Void', onClick: () => onVoid?.(row), danger: true });
+  }
+  if (kind === 'expense') {
+    actions.push({ label: 'Mark paid', onClick: () => onPay?.(row) });
+  }
+  return actions.filter(a => typeof a.onClick === 'function');
 }
 
 function Finance({ user, setPage, globalPeriod }) {

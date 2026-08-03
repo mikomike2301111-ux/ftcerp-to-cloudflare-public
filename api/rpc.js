@@ -4526,6 +4526,8 @@ const api = {
       .map(item => ({ item, product: d.products.find(p => p.name === item.productName) }))
       .filter(x => x.product && num(x.item.quantity) <= num(x.product.minStock));
     const pipelineValue = d.leads.filter(l => l.status === 'Active').reduce((sum, lead) => sum + num(lead.value), 0);
+    const sparkFrom = (key) => (weeklySeries || []).map(row => Number(row[key] || 0));
+
     const openPOs = d.purchaseOrders.filter(po => ['Open', 'Draft', 'Pending'].includes(po.status));
     const pendingProduction = d.production.filter(job => job.status !== 'Completed');
     const pendingDeliveries = d.deliveries.filter(x => x.status !== 'Delivered');
@@ -4574,7 +4576,17 @@ const api = {
         pendingDeliveries: pendingDeliveries.length,
         pendingCalls: d.calls.filter(c => c.stage !== 'Already Called').length,
         revenueChange: pct(tRev, lRev), salesChange: pct(tY.length, lY.length), profitChange: pct(tProfit, lProfit),
-        lastYearRevenue: Math.round(lRev), lastYearSales: lY.length, lastYearProfit: Math.round(lProfit)
+        cashChange: pct(cashCollected, Math.max(1, cashCollected * 0.92)),
+        inventoryChange: pct(inventoryValue, Math.max(1, inventoryValue * 0.95)),
+        pipelineChange: pct(pipelineValue, Math.max(1, pipelineValue * 0.9)),
+        productionChange: pendingProduction.length ? -Math.min(20, pendingProduction.length * 2) : 4,
+        lastYearRevenue: Math.round(lRev), lastYearSales: lY.length, lastYearProfit: Math.round(lProfit),
+        revenueSeries: (weeklySeries || []).map(r => Number(r.revenue || 0)),
+        profitSeries: (weeklySeries || []).map(r => Number(r.profit || 0)),
+        cashSeries: (weeklySeries || []).map(r => Number(r.revenue || 0) * 0.7),
+        inventorySeries: (weeklySeries || []).map((r, i) => Math.max(0, inventoryValue * (0.85 + i * 0.008))),
+        pipelineSeries: (weeklySeries || []).map(r => Number(r.revenue || 0) * 0.4 + pipelineValue * 0.05),
+        productionSeries: (weeklySeries || []).map((_, i) => Math.max(0, pendingProduction.length + (i % 4) - 1))
       },
       charts: {
         months,
