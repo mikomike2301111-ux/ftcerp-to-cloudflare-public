@@ -140,8 +140,21 @@ const compactCurrency = value => {
   const sign = n < 0 ? '-' : '';
   if (abs >= 1_000_000_000) return `Ksh${sign}${(abs / 1_000_000_000).toFixed(2)}B`;
   if (abs >= 1_000_000) return `Ksh${sign}${(abs / 1_000_000).toFixed(2)}M`;
-  if (abs >= 100_000) return `Ksh${sign}${(abs / 1_000).toFixed(1)}K`;
-  return `Ksh${sign}${abs.toLocaleString('en-KE', { maximumFractionDigits: 0 })}`;
+  if (abs >= 10_000) return `Ksh${sign}${(abs / 1_000).toFixed(1)}K`;
+  return `Ksh${sign}${Math.round(abs).toLocaleString('en-KE')}`;
+};
+const heroValue = value => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    // Counts stay plain; money uses compact
+    if (Math.abs(value) >= 1000 && String(Math.round(value)).length > 5) return compactCurrency(value);
+    if (Math.abs(value) >= 10000) return compactCurrency(value);
+    return Math.round(value).toLocaleString('en-KE');
+  }
+  const s = String(value ?? '0');
+  if (/^Ksh/i.test(s)) return s;
+  const n = Number(String(s).replace(/[^0-9.-]/g, ''));
+  if (Number.isFinite(n) && Math.abs(n) >= 10000) return compactCurrency(n);
+  return s;
 };
 const shortCurrency = value => {
   const n = Number(value || 0);
@@ -1948,11 +1961,11 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
           <h1>CRM - Vision Geral</h1>
           <p>Manage customers, leads, opportunities, calls, follow-ups, activities, reports, and customer intelligence in one connected workspace.</p>
         </div>
-        <div className="sales-hero-stats">
-          <strong>{overview.totalCustomers || allCustomers.length}</strong><span>Customers</span>
-          <strong>{overview.opportunities || allLeads.length}</strong><span>Opportunities</span>
-          <strong>{allCalls.length}</strong><span>Calls</span>
-        </div>
+        <HeroStats items={[
+          [overview.totalCustomers || allCustomers.length, 'Customers'],
+          [overview.opportunities || allLeads.length, 'Opportunities'],
+          [allCalls.length, 'Calls']
+        ]} />
       </div>
 
       <div className="inline-actions">
@@ -3924,11 +3937,11 @@ function ProcurementWorkspace({ user, setPage, globalPeriod }) {
           <h1>Purchases Workspace</h1>
           <p>Purchase requests, purchase orders, suppliers, deliveries, goods receiving, credit, accounts payable, reports, analytics, and AI in one connected workflow.</p>
         </div>
-        <div className="sales-hero-stats">
-          <strong>{data.overview.totalPOs}</strong><span>POs</span>
-          <strong>{currency(data.overview.procurementSpend)}</strong><span>Spend</span>
-          <strong>{currency(data.overview.outstandingSupplierBalances)}</strong><span>Payables</span>
-        </div>
+        <HeroStats items={
+          [[data.overview.totalPOs, 'POs'],
+          [currency(data.overview.procurementSpend), 'Spend'],
+          [currency(data.overview.outstandingSupplierBalances), 'Payables']]
+        } />
       </div>
       <div className="inline-actions"><CreateRequisitionButton user={user} module="purchasing" /></div>
 
@@ -4193,11 +4206,11 @@ function SalesModule({ user, setPage, globalPeriod }) {
           <h1>Sales Workspace</h1>
           <p>Pipeline, quotes, orders, invoices, team, territory, reports, and analytics operating as one shared workspace.</p>
         </div>
-        <div className="sales-hero-stats">
-          <strong>{currency(data.overview.revenue)}</strong><span>Revenue</span>
-          <strong>{data.overview.orders}</strong><span>Orders</span>
-          <strong>{currency(data.overview.pipeline)}</strong><span>Pipeline</span>
-        </div>
+        <HeroStats items={
+          [[currency(data.overview.revenue), 'Revenue'],
+          [data.overview.orders, 'Orders'],
+          [currency(data.overview.pipeline), 'Pipeline']]
+        } />
       </div>
       <div className="inline-actions">
         <button onClick={() => setSaleFormOpen(true)}><Plus size={16} /> New Sales Order</button>
@@ -7634,10 +7647,10 @@ function RequisitionsPage({ user, setPage }) {
           <h1>Requisitions</h1>
           <p>Create, track, and manage requisitions across all modules. Approval workflow with email notifications.</p>
         </div>
-        <div className="sales-hero-stats">
-          <strong>{d.pendingApproval || 0}</strong><span>Pending</span>
-          <strong>{currency(d.totalEstimatedValue || 0)}</strong><span>Total Value</span>
-        </div>
+        <HeroStats items={
+          [[d.pendingApproval || 0, 'Pending'],
+          [currency(d.totalEstimatedValue || 0), 'Total Value']]
+        } />
       </div>
       <div className="inline-actions">
         <button onClick={() => setReqModalOpen(true)}><Plus size={16} /> Create Requisition</button>
@@ -8093,11 +8106,11 @@ function Reports({ user, setPage, title, globalPeriod = 'Month' }) {
           <h1>Report Center</h1>
           <p>Generate, export, print, email, schedule, and archive filtered ERP reports from live business records.</p>
         </div>
-        <div className="sales-hero-stats">
-          <strong>{data.rows.length}</strong><span>Rows</span>
-          <strong>{currency(data.kpis[1]?.value || 0)}</strong><span>Value</span>
-          <strong>{data.reports.length}</strong><span>Reports</span>
-        </div>
+        <HeroStats items={
+          [[data.rows.length, 'Rows'],
+          [currency(data.kpis[1]?.value || 0), 'Value'],
+          [data.reports.length, 'Reports']]
+        } />
       </div>
       <div className="inline-actions"><CreateRequisitionButton user={user} module="reports" /></div>
 
@@ -8528,11 +8541,11 @@ function InputCenter({ user, setPage }) {
           <h1>ERP Input Center</h1>
           <p>Enter operational records once. The backend routes the input, creates business events, updates ledgers where needed, and keeps an audit trail.</p>
         </div>
-        <div className="sales-hero-stats">
-          <strong>{data.modules.length}</strong><span>Input Types</span>
-          <strong>{data.recentEvents.length}</strong><span>Events</span>
-          <strong>{data.audit.length}</strong><span>Audit</span>
-        </div>
+        <HeroStats items={
+          [[data.modules.length, 'Input Types'],
+          [data.recentEvents.length, 'Events'],
+          [data.audit.length, 'Audit']]
+        } />
       </div>
       <div className="inline-actions"><CreateRequisitionButton user={user} module="inputs" /></div>
       <div className="dashboard-grid">
@@ -8688,11 +8701,11 @@ function SettingsPage({ user }) {
           <h1>Settings</h1>
           <p>Company profile, users, departments, warehouses, operational rules, email, and system health — linked to live ERP data.</p>
         </div>
-        <div className="sales-hero-stats">
-          <strong>{data?.users?.length || 0}</strong><span>Users</span>
-          <strong>{data?.departments?.length || 0}</strong><span>Departments</span>
-          <strong>{data?.health?.records || 0}</strong><span>Records</span>
-        </div>
+        <HeroStats items={
+          [[data?.users?.length || 0, 'Users'],
+          [data?.departments?.length || 0, 'Departments'],
+          [data?.health?.records || 0, 'Records']]
+        } />
       </div>
 
       {message && <div className="settings-save-message"><CheckCircle2 size={18} />{message}</div>}
@@ -11849,8 +11862,8 @@ function HeroStats({ items = [] }) {
   return (
     <div className="sales-hero-stats">
       {(items || []).map(([value, label], i) => {
-        const display = typeof value === 'number' ? compactCurrency(value) : value;
-        const long = String(display).length > 12;
+        const display = heroValue(value);
+        const long = String(display).replace(/\s/g, '').length > 10;
         return (
           <div className={`hero-stat${long ? ' hero-stat-long' : ''}`} key={`${label}-${i}`}>
             <span>{label}</span>

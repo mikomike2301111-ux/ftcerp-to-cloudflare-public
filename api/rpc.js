@@ -2598,6 +2598,12 @@ function ensureFinanceData() {
   db.taxRecords = Array.isArray(db.taxRecords) ? db.taxRecords : [];
   db.budgets = Array.isArray(db.budgets) ? db.budgets : [];
   db.financialReports = Array.isArray(db.financialReports) ? db.financialReports : [];
+  db.financeAuditLogs = Array.isArray(db.financeAuditLogs) ? db.financeAuditLogs : [];
+  db.financeManualAuditLogs = Array.isArray(db.financeManualAuditLogs) ? db.financeManualAuditLogs : [];
+  db.fixedAssets = Array.isArray(db.fixedAssets) ? db.fixedAssets : [];
+  db.costCenters = Array.isArray(db.costCenters) ? db.costCenters : [];
+  db.financialForecasts = Array.isArray(db.financialForecasts) ? db.financialForecasts : [];
+  db.financialAiInsights = Array.isArray(db.financialAiInsights) ? db.financialAiInsights : [];
   // Bank accounts: structure only, zero opening if missing
   if (!Array.isArray(db.bankAccounts) || !db.bankAccounts.length) {
     db.bankAccounts = [
@@ -9409,6 +9415,10 @@ territory: geo,
     reqRole(user);
     const d = data();
     ensureFinanceData();
+    // Coerce critical collections so spreads never throw
+    ['financeAuditLogs','financeManualAuditLogs','financeJournalEntries','financeJournalLines','financeManualJournals','financeManualJournalLines','expenses','payrollRecords','taxRecords','fixedAssets','budgets','costCenters','financialForecasts','financialReports','financialAiInsights','quotations','quotationItems','bankAccounts','invoices','payments','customers','sales'].forEach(k => {
+      if (!Array.isArray(d[k])) d[k] = [];
+    });
     const scope = filters && filters.period ? { ...periodRange(filters.period), ...filters } : (filters || {});
     const periodSales = (d.sales || []).filter(row => inDateRange(row, scope));
     const saleIds = new Set(periodSales.map(s => s.id));
@@ -9599,7 +9609,7 @@ territory: geo,
       costCenters: d.costCenters,
       forecasts: d.financialForecasts,
       reports: d.financialReports,
-      audit: [...(d.financeManualAuditLogs || []), ...d.financeAuditLogs],
+      audit: [...(Array.isArray(d.financeManualAuditLogs) ? d.financeManualAuditLogs : []), ...(Array.isArray(d.financeAuditLogs) ? d.financeAuditLogs : [])],
       ai: d.financialAiInsights,
       customerFinance,
       agingSummary,
@@ -9836,8 +9846,8 @@ territory: geo,
     const allEvents = [
       ...(d.activity || []).map(a => ({ ...a, source: 'Activity', type: 'Manual' })),
       ...(d.businessEvents || []).map(e => ({ ...e, source: 'Business Event', type: 'System' })),
-      ...(d.financeManualAuditLogs || []).map(l => ({ ...l, source: 'Finance Journal', type: 'Financial' })),
-      ...(d.financeAuditLogs || []).map(l => ({ ...l, source: 'Auto Journal', type: 'Financial' })),
+      ...(Array.isArray(d.financeManualAuditLogs) ? d.financeManualAuditLogs : []).map(l => ({ ...l, source: 'Finance Journal', type: 'Financial' })),
+      ...(Array.isArray(d.financeAuditLogs) ? d.financeAuditLogs : []).map(l => ({ ...l, source: 'Auto Journal', type: 'Financial' })),
       ...(d.quotationAuditTrail || []).map(q => ({ ...q, source: 'Quotation', type: 'Sales' })),
       ...(d.paymentAuditTrail || []).map(p => ({ ...p, source: 'Payment', type: 'Financial' }))
     ].sort((a, b) => String(b.createdAt || b.timestamp || b.date).localeCompare(String(a.createdAt || a.timestamp || a.date)));

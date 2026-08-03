@@ -9403,3 +9403,37 @@ select {
   color: #667085;
 }
 .kpi-card .sparkline { display: none !important; }
+
+
+/* HERO NUMBERS NEVER WRAP MID-VALUE */
+.sales-hero-stats {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)) !important;
+  gap: 10px !important;
+  align-items: stretch !important;
+}
+.sales-hero-stats .hero-stat {
+  min-width: 0 !important;
+  padding: 12px 12px 12px 56px !important;
+  overflow: hidden !important;
+}
+.sales-hero-stats .hero-stat strong,
+.sales-hero-stats > strong {
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+  font-size: clamp(14px, 1.1vw, 20px) !important;
+  max-width: 100%;
+  display: block;
+}
+.sales-hero-stats .hero-stat-long strong {
+  font-size: clamp(12px, 0.95vw, 16px) !important;
+}
+.sales-hero-stats > strong {
+  white-space: nowrap !important;
+}
+.sales-hero-stats > span {
+  white-space: nowrap !important;
+}
