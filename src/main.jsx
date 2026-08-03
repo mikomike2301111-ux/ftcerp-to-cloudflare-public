@@ -9428,7 +9428,7 @@ function NotificationCenter({ user, setPage }) {
 
 // ─── HR WORKSPACE ───
 function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
-  const tabs = ['overview', 'directory', 'attendance', 'performance', 'payroll', 'recruitment', 'departments', 'benefits', 'training', 'selfservice', 'analytics', 'reports'];
+  const tabs = ['overview', 'directory', 'attendance', 'performance', 'payroll', 'recruitment', 'departments', 'benefits', 'training', 'selfservice', 'email', 'analytics', 'reports'];
   const [view, setView] = useRouteTab('hr', tabs, 'overview');
   const [refreshKey, setRefreshKey] = useState(0);
   const [search, setSearch] = useState('');
@@ -9473,12 +9473,16 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
   return (
     <section className="page-stack clean-ops-page">
       <div className="sales-hero">
-        <div><span>People</span><h1>HR</h1><p>Employees, attendance, payroll, recruitment, and performance in one place.</p></div>
+        <div>
+          <span>Human Resource Management</span>
+          <h1>HRMS</h1>
+          <p>Employee lifecycle, attendance, leave, payroll, recruitment, training, and analytics. HR email: {s.hrEmail || 'hr@farmtrack.co.ke'}</p>
+        </div>
         <HeroStats items={[
-          [s.headcount || employees.filter(e => e.status === 'Active').length, 'Employees'],
-          [s.departments || departments.length, 'Departments'],
-          [s.activeCandidates || 0, 'Candidates'],
-          [currency(s.payrollCost || 0), 'Payroll']
+          [s.activeEmployees || employees.filter(e => e.status === 'Active').length, 'Active'],
+          [s.onLeave || 0, 'On leave'],
+          [s.pendingLeaves || data.leaveSummary?.pendingApprovals || 0, 'Leave approvals'],
+          [currency(s.payrollCost || 0), 'Payroll cost']
         ]} />
       </div>
       <div className="inline-actions">
@@ -9486,13 +9490,14 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
         <button type="button" onClick={() => setView('attendance')}><Clock size={16} /> Attendance</button>
         <button type="button" onClick={() => setView('payroll')}><Wallet size={16} /> Payroll</button>
         <button type="button" onClick={() => setPage?.('leaves')}><Calendar size={16} /> Leaves</button>
+        <button type="button" onClick={() => setView('email')}><Mail size={16} /> HR Email</button>
         <CreateRequisitionButton user={user} module="hr" />
       </div>
       <div className="hr-insight-strip hr-insight-strip-compact">
-        <article><span>Hours ({data.period?.label || globalPeriod})</span><strong>{s.totalHoursInPeriod || 0}h</strong><em>{s.presentInPeriod || 0} present · {s.absentInPeriod || 0} absent</em></article>
-        <article><span>Leave</span><strong>{data.leaveSummary?.leaveDaysInPeriod || 0}d</strong><em>{data.leaveSummary?.pendingApprovals || 0} pending</em></article>
-        <article><span>Attendance rate</span><strong>{s.attendanceRate || 0}%</strong><em>{s.lateArrivals || 0} late · {s.missingCheckouts || 0} missing out</em></article>
-        <article><span>Payroll</span><strong>{currency(s.payrollCost || 0)}</strong><em>{s.headcount || 0} active staff</em></article>
+        <article><span>Headcount</span><strong>{s.headcount || 0}</strong><em>{s.activeEmployees || 0} active · {s.newThisMonth || 0} new this month</em></article>
+        <article><span>Attendance today</span><strong>{s.presentToday || 0}</strong><em>{s.lateToday || s.lateArrivals || 0} late · {s.attendanceRate || 0}% period rate</em></article>
+        <article><span>Leave</span><strong>{s.onLeave || 0} on leave</strong><em>{s.pendingLeaves || data.leaveSummary?.pendingApprovals || 0} pending approvals</em></article>
+        <article><span>Payroll / Talent</span><strong>{currency(s.payrollCost || 0)}</strong><em>{s.activeCandidates || 0} candidates · {s.trainingCompletion || 0}% training</em></article>
       </div>
       <div className="settings-tabs">
         {tabs.map(t => <button key={t} type="button" className={view === t ? 'active' : ''} onClick={() => setView(t)}>{t.charAt(0).toUpperCase() + t.slice(1)}</button>)}
@@ -9502,15 +9507,46 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
 
       {view === 'overview' && (
         <div className="dashboard-grid">
-          <Panel className="span-4" title="Attention">
+          <Panel className="span-12" title="HR command center" action={globalPeriod}>
             <div className="settings-kv-grid">
-              <article><span>Late arrivals</span><strong>{s.lateArrivals || 0}</strong></article>
-              <article><span>Missing checkouts</span><strong>{s.missingCheckouts || 0}</strong></article>
+              <article><span>Total employees</span><strong>{s.headcount || 0}</strong></article>
+              <article><span>Active</span><strong>{s.activeEmployees || 0}</strong></article>
+              <article><span>New this month</span><strong>{s.newThisMonth || 0}</strong></article>
+              <article><span>On leave</span><strong>{s.onLeave || 0}</strong></article>
+              <article><span>Attendance today</span><strong>{s.presentToday || 0}</strong></article>
+              <article><span>Late</span><strong>{s.lateToday || s.lateArrivals || 0}</strong></article>
+              <article><span>Upcoming birthdays (30d)</span><strong>{s.upcomingBirthdays || 0}</strong></article>
+              <article><span>Contracts expiring (60d)</span><strong>{s.contractExpiring || 0}</strong></article>
+              <article><span>Payroll status</span><strong>{s.payrollStatus || '—'}</strong></article>
+              <article><span>Recruitment pipeline</span><strong>{s.activeCandidates || 0}</strong></article>
+              <article><span>Pending leave</span><strong>{s.pendingLeaves || 0}</strong></article>
               <article><span>Pending reviews</span><strong>{s.pendingReviews || 0}</strong></article>
-              <article><span>Pending leave</span><strong>{data.leaveSummary?.pendingApprovals || 0}</strong></article>
+              <article><span>Training completion</span><strong>{s.trainingCompletion || 0}%</strong></article>
+              <article><span>Satisfaction score</span><strong>{s.satisfactionScore || 0}</strong></article>
+              <article><span>Performance avg</span><strong>{s.performanceAverage || 0}</strong></article>
+              <article><span>Payroll cost</span><strong>{currency(s.payrollCost || 0)}</strong></article>
             </div>
           </Panel>
-          <Panel className="span-4" title="Top performer">
+          <Panel className="span-4" title="Department distribution">
+            <SimpleTable rows={(s.departmentDistribution || []).map(r => ({ department: r.name, headcount: r.count }))} columns={['department', 'headcount']} />
+          </Panel>
+          <Panel className="span-4" title="Gender distribution">
+            <div className="settings-kv-grid">
+              <article><span>Male</span><strong>{s.genderDistribution?.Male || 0}</strong></article>
+              <article><span>Female</span><strong>{s.genderDistribution?.Female || 0}</strong></article>
+              <article><span>Other / unset</span><strong>{s.genderDistribution?.Other || 0}</strong></article>
+            </div>
+          </Panel>
+          <Panel className="span-4" title="Recruitment funnel">
+            <SimpleTable rows={(s.recruitmentFunnel || []).map(r => ({ stage: r.stage, count: r.count }))} columns={['stage', 'count']} />
+          </Panel>
+          <Panel className="span-6" title="Performance" action={`${employeeMetrics.length} people`}>
+            <HRPerformanceBars rows={employeeMetrics.slice(0, 8)} />
+          </Panel>
+          <Panel className="span-6" title="Hours and activity">
+            <SimpleTable rows={employeeMetrics.slice(0, 8)} columns={['name', 'department', 'hours', 'overtime', 'customersHandled', 'orders', 'performanceScore']} />
+          </Panel>
+          <Panel className="span-6" title="Top performer">
             {topPerformer ? (
               <div className="hr-top-performer">
                 <strong>{topPerformer.name}</strong>
@@ -9520,14 +9556,15 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
               </div>
             ) : <div className="empty-state">No performance data yet.</div>}
           </Panel>
-          <Panel className="span-4" title="Export">
-            <button type="button" className="panel-action-button" onClick={() => downloadRowsFile('hr-employees', employees, 'CSV')}><Download size={15} /> Export employees CSV</button>
+          <Panel className="span-6" title="HR activity timeline" action={`${(data.hrTimeline || []).length} events`}>
+            <SimpleTable rows={(data.hrTimeline || []).slice(0, 8).map(t => ({ at: String(t.at || '').slice(0, 16).replace('T', ' '), action: t.action, by: t.by, description: t.description }))} columns={['at', 'action', 'by', 'description']} />
           </Panel>
-          <Panel className="span-6" title="Performance" action={`${employeeMetrics.length} people`}>
-            <HRPerformanceBars rows={employeeMetrics.slice(0, 8)} />
-          </Panel>
-          <Panel className="span-6" title="Hours and activity">
-            <SimpleTable rows={employeeMetrics.slice(0, 8)} columns={['name', 'department', 'hours', 'overtime', 'customersHandled', 'orders', 'performanceScore']} />
+          <Panel className="span-12" title="Exports">
+            <div className="inline-actions">
+              <button type="button" onClick={() => downloadRowsFile('hr-employees', employees, 'CSV')}><Download size={15} /> Employees CSV</button>
+              <button type="button" onClick={() => downloadRowsFile('hr-attendance', attendance, 'CSV')}><Download size={15} /> Attendance CSV</button>
+              <button type="button" onClick={() => downloadRowsFile('hr-payroll-preview', payrollPreview, 'CSV')}><Download size={15} /> Payroll CSV</button>
+            </div>
           </Panel>
         </div>
       )}
@@ -9941,12 +9978,23 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
               <button type="button" onClick={() => setView('payroll')}>View payslip preview</button>
               <button type="button" onClick={() => setView('directory')}>Update my details (via HR)</button>
               <button type="button" onClick={() => setView('attendance')}>See attendance entry</button>
+              <button type="button" onClick={() => setView('training')}>Apply for training</button>
+              <button type="button" onClick={() => setView('benefits')}>View benefits</button>
             </div>
           </Panel>
           <Panel className="span-8" title="Your team quick links">
             <SimpleTable rows={employees.filter(e => e.status === 'Active').slice(0, 10)} columns={['name', 'department', 'position', 'email', 'phone', 'status']} />
           </Panel>
         </div>
+      )}
+      {view === 'email' && (
+        <HREmailCenter
+          user={user}
+          hrEmail={s.hrEmail || 'hr@farmtrack.co.ke'}
+          employees={employees}
+          emails={data.hrEmails || []}
+          onSent={() => setRefreshKey(k => k + 1)}
+        />
       )}
       {view === 'analytics' && (
         <div className="dashboard-grid">
@@ -10170,22 +10218,114 @@ function HRReports({ data, employees, payrollPreview, employeeMetrics, user, glo
   );
 }
 
+function HREmailCenter({ user, hrEmail, employees = [], emails = [], onSent }) {
+  const [form, setForm] = useState({ to: '', subject: '', body: '', employeeId: '', template: '' });
+  const [busy, setBusy] = useState(false);
+  const templates = {
+    welcome: { subject: 'Welcome to Farmtrack Bio Sciences', body: 'Welcome to the team. Please complete your onboarding checklist with HR.' },
+    interview: { subject: 'Interview invitation', body: 'You are invited to an interview. Please confirm your availability.' },
+    leave_approved: { subject: 'Leave request approved', body: 'Your leave request has been approved. Enjoy your time off.' },
+    leave_rejected: { subject: 'Leave request decision', body: 'Your leave request was not approved. Contact your manager for details.' },
+    payroll: { subject: 'Payslip available', body: 'Your payslip for this period is ready in the ERP self-service portal.' },
+    contract: { subject: 'Contract reminder', body: 'This is a reminder regarding your employment contract dates. Please contact HR.' }
+  };
+  return (
+    <div className="dashboard-grid">
+      <Panel className="span-5" title="Compose from HR" action={hrEmail}>
+        <form className="settings-form-grid" onSubmit={async e => {
+          e.preventDefault();
+          setBusy(true);
+          try {
+            await rpc('sendHrEmail', [user, form]);
+            setForm({ to: '', subject: '', body: '', employeeId: '', template: '' });
+            onSent?.();
+            alert('HR email sent / logged.');
+          } catch (err) { alert(err.message); }
+          finally { setBusy(false); }
+        }}>
+          <label>Template
+            <select value={form.template} onChange={e => {
+              const t = templates[e.target.value];
+              setForm(f => ({ ...f, template: e.target.value, subject: t?.subject || f.subject, body: t?.body || f.body }));
+            }}>
+              <option value="">Custom</option>
+              {Object.keys(templates).map(k => <option key={k} value={k}>{k.replace(/_/g, ' ')}</option>)}
+            </select>
+          </label>
+          <label>Link employee
+            <select value={form.employeeId} onChange={e => {
+              const emp = employees.find(x => x.id === e.target.value);
+              setForm(f => ({ ...f, employeeId: e.target.value, to: emp?.email || emp?.companyEmail || f.to }));
+            }}>
+              <option value="">Optional</option>
+              {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </select>
+          </label>
+          <label>To<input type="email" value={form.to} onChange={e => setForm({ ...form, to: e.target.value })} required placeholder="employee@email.com" /></label>
+          <label>Subject<input value={form.subject} onChange={e => setForm({ ...form, subject: e.target.value })} required /></label>
+          <label>Message<textarea rows={5} value={form.body} onChange={e => setForm({ ...form, body: e.target.value })} required /></label>
+          <button type="submit" className="primary-action" disabled={busy}>{busy ? 'Sending...' : 'Send from HR mailbox'}</button>
+        </form>
+      </Panel>
+      <Panel className="span-7" title="Sent / logged HR mail" action={`${emails.length} messages`}>
+        <SimpleTable rows={(emails || []).slice(0, 30).map(m => ({ at: String(m.at || '').slice(0, 16).replace('T', ' '), to: m.to, subject: m.subject, status: m.status, by: m.by }))} columns={['at', 'to', 'subject', 'status', 'by']} />
+      </Panel>
+    </div>
+  );
+}
+
 function EmployeeFormModal({ user, onClose, onSave, initial }) {
-  const [form, setForm] = useState(initial && initial.id ? { ...initial } : { name: '', email: '', phone: '', department: 'Sales', position: 'Officer', employmentType: 'Full-time', joinDate: new Date().toISOString().slice(0, 10), status: 'Active', salary: 60000, hourlyRate: 0, payType: 'Salary', manager: 'Miko Admin', workSchedule: '08:00-17:00', expectedHoursPerDay: 8, overtimeEligible: 'Yes', location: 'Office', address: '', nationalId: '', kraPin: '', taxCategory: 'Resident', bankName: '', bankBranch: '', bankAccount: '', bankAccountName: '', mpesaNumber: '', paymentMethod: 'Bank Transfer', houseAllowance: 0, transportAllowance: 0, medicalAllowance: 0, communicationAllowance: 0, riskAllowance: 0, mealAllowance: 0, responsibilityAllowance: 0, loanDeduction: 0, saccoDeduction: 0, otherDeductions: 0, customDeductions: [], emergencyContactName: '', emergencyContactPhone: '', emergencyContactRelation: '', nextOfKinName: '', nextOfKinPhone: '', nextOfKinRelation: '', leaveBalanceAnnual: 21, leaveBalanceSick: 10, leaveBalanceCasual: 5 });
+  const [form, setForm] = useState(initial && initial.id ? { ...initial } : {
+    name: '', firstName: '', middleName: '', lastName: '', email: '', companyEmail: '', personalEmail: '', phone: '', altPhone: '',
+    department: 'Sales', position: 'Officer', employmentType: 'Full-time', joinDate: new Date().toISOString().slice(0, 10), status: 'Active',
+    salary: 0, hourlyRate: 0, payType: 'Salary', manager: '', workSchedule: '08:00-17:00', expectedHoursPerDay: 8, overtimeEligible: 'Yes',
+    location: 'Office', branch: '', jobGrade: '', address: '', county: '', city: '', postalCode: '', nationalId: '', passportNo: '',
+    gender: '', dateOfBirth: '', nationality: 'Kenyan', maritalStatus: '', kraPin: '', nssfNumber: '', nhifNumber: '', payrollNumber: '',
+    taxCategory: 'Resident', bankName: '', bankBranch: '', bankAccount: '', bankAccountName: '', mpesaNumber: '', paymentMethod: 'Bank Transfer',
+    houseAllowance: 0, transportAllowance: 0, medicalAllowance: 0, communicationAllowance: 0, riskAllowance: 0, mealAllowance: 0, responsibilityAllowance: 0, otherAllowances: 0,
+    loanDeduction: 0, saccoDeduction: 0, otherDeductions: 0, customDeductions: [], emergencyContactName: '', emergencyContactPhone: '', emergencyContactRelation: '',
+    emergencyContactEmail: '', emergencyContactAddress: '', nextOfKinName: '', nextOfKinPhone: '', nextOfKinRelation: '',
+    contractStart: '', contractEnd: '', probationEnd: '', leaveBalanceAnnual: 21, leaveBalanceSick: 10, leaveBalanceCasual: 5, leaveBalanceMaternity: 90, leaveBalancePaternity: 14
+  });
+  const [noteText, setNoteText] = useState('');
+  const [notePrivate, setNotePrivate] = useState(false);
   const isEdit = Boolean(form.id);
   const addCustomDeduction = () => setForm({ ...form, customDeductions: [...(form.customDeductions || []), { id: `ded-${Date.now()}`, label: '', amount: 0, type: 'One-time' }] });
   const updateDeduction = (i, field, val) => { const next = [...(form.customDeductions || [])]; next[i] = { ...next[i], [field]: field === 'amount' ? Number(val) : val }; setForm({ ...form, customDeductions: next }); };
   const removeDeduction = i => setForm({ ...form, customDeductions: (form.customDeductions || []).filter((_, idx) => idx !== i) });
+  const syncName = (patch) => {
+    const next = { ...form, ...patch };
+    next.name = [next.firstName, next.middleName, next.lastName].filter(Boolean).join(' ').trim() || next.name;
+    setForm(next);
+  };
   return (
     <ModalCard title={isEdit ? 'Edit Employee' : 'Add Employee'} onClose={onClose} wide>
-      <form className="settings-form-grid" onSubmit={e => { e.preventDefault(); onSave(form); }}>
-        <fieldset className="settings-fieldset"><legend>Identity</legend><div>
-          <label>Name<input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required /></label>
-          <label>Status<select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>{['Active', 'Inactive', 'On Leave', 'Suspended'].map(s => <option key={s}>{s}</option>)}</select></label>
-          <label>Email<input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></label>
-          <label>Phone<input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} /></label>
-          <label>Address<textarea rows={2} value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} placeholder="Physical address..." /></label>
+      <form className="settings-form-grid" onSubmit={e => {
+        e.preventDefault();
+        const payload = { ...form, name: form.name || [form.firstName, form.middleName, form.lastName].filter(Boolean).join(' ').trim() };
+        if (!payload.name) return alert('Name is required');
+        onSave(payload);
+      }}>
+        <fieldset className="settings-fieldset"><legend>Personal information</legend><div>
+          <label>First name<input value={form.firstName || ''} onChange={e => syncName({ firstName: e.target.value })} /></label>
+          <label>Middle name<input value={form.middleName || ''} onChange={e => syncName({ middleName: e.target.value })} /></label>
+          <label>Last name<input value={form.lastName || ''} onChange={e => syncName({ lastName: e.target.value })} /></label>
+          <label>Full name<input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required /></label>
+          <label>Gender<select value={form.gender || ''} onChange={e => setForm({ ...form, gender: e.target.value })}><option value="">Select</option>{['Male', 'Female', 'Other'].map(s => <option key={s}>{s}</option>)}</select></label>
+          <label>Date of birth<input type="date" value={form.dateOfBirth || ''} onChange={e => setForm({ ...form, dateOfBirth: e.target.value })} /></label>
+          <label>Nationality<input value={form.nationality || ''} onChange={e => setForm({ ...form, nationality: e.target.value })} /></label>
+          <label>Marital status<select value={form.maritalStatus || ''} onChange={e => setForm({ ...form, maritalStatus: e.target.value })}><option value="">Select</option>{['Single', 'Married', 'Divorced', 'Widowed'].map(s => <option key={s}>{s}</option>)}</select></label>
+          <label>Status<select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>{['Active', 'Inactive', 'Suspended', 'Resigned', 'Terminated', 'Retired', 'On Leave'].map(s => <option key={s}>{s}</option>)}</select></label>
+          <label>Personal email<input type="email" value={form.personalEmail || ''} onChange={e => setForm({ ...form, personalEmail: e.target.value })} /></label>
+          <label>Company email<input type="email" value={form.companyEmail || form.email || ''} onChange={e => setForm({ ...form, companyEmail: e.target.value, email: e.target.value })} /></label>
+          <label>Phone<input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="+254..." /></label>
+          <label>Alternative phone<input value={form.altPhone || ''} onChange={e => setForm({ ...form, altPhone: e.target.value })} /></label>
           <label>National ID<input value={form.nationalId} onChange={e => setForm({ ...form, nationalId: e.target.value })} /></label>
+          <label>Passport<input value={form.passportNo || ''} onChange={e => setForm({ ...form, passportNo: e.target.value })} /></label>
+          <label>Address<textarea rows={2} value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} placeholder="Physical address..." /></label>
+          <label>County<input value={form.county || ''} onChange={e => setForm({ ...form, county: e.target.value })} /></label>
+          <label>City<input value={form.city || ''} onChange={e => setForm({ ...form, city: e.target.value })} /></label>
+          <label>Postal code<input value={form.postalCode || ''} onChange={e => setForm({ ...form, postalCode: e.target.value })} /></label>
         </div></fieldset>
         <fieldset className="settings-fieldset"><legend>Emergency / Family Contact</legend><div>
           <label>Emergency Contact Name<input value={form.emergencyContactName} onChange={e => setForm({ ...form, emergencyContactName: e.target.value })} placeholder="e.g. Jane Wanjiru" /></label>
@@ -10196,17 +10336,22 @@ function EmployeeFormModal({ user, onClose, onSave, initial }) {
           <label>Next of Kin Relationship<input value={form.nextOfKinRelation} onChange={e => setForm({ ...form, nextOfKinRelation: e.target.value })} placeholder="e.g. Father, Sibling" /></label>
         </div></fieldset>
         <fieldset className="settings-fieldset"><legend>Employment</legend><div>
-          <label>Department<select value={form.department} onChange={e => setForm({ ...form, department: e.target.value })}>{['Sales', 'Finance', 'Inventory', 'Procurement', 'Production', 'Admin', 'CRM', 'Field Operations', 'HR', 'Audit'].map(d => <option key={d}>{d}</option>)}</select></label>
+          <label>Department<select value={form.department} onChange={e => setForm({ ...form, department: e.target.value })}>{['Sales', 'Finance', 'Inventory', 'Procurement', 'Production', 'Admin', 'CRM', 'Field Operations', 'HR', 'Audit', 'Administrator'].map(d => <option key={d}>{d}</option>)}</select></label>
           <label>Position<input value={form.position} onChange={e => setForm({ ...form, position: e.target.value })} /></label>
+          <label>Job grade<input value={form.jobGrade || ''} onChange={e => setForm({ ...form, jobGrade: e.target.value })} /></label>
           <label>Type<select value={form.employmentType} onChange={e => setForm({ ...form, employmentType: e.target.value })}>{['Full-time', 'Part-time', 'Contract', 'Intern', 'Casual'].map(t => <option key={t}>{t}</option>)}</select></label>
-          <label>Join Date<input type="date" value={form.joinDate} onChange={e => setForm({ ...form, joinDate: e.target.value })} /></label>
+          <label>Date hired<input type="date" value={form.joinDate} onChange={e => setForm({ ...form, joinDate: e.target.value })} /></label>
+          <label>Contract start<input type="date" value={form.contractStart || ''} onChange={e => setForm({ ...form, contractStart: e.target.value })} /></label>
+          <label>Contract end<input type="date" value={form.contractEnd || ''} onChange={e => setForm({ ...form, contractEnd: e.target.value })} /></label>
+          <label>Probation end<input type="date" value={form.probationEnd || ''} onChange={e => setForm({ ...form, probationEnd: e.target.value })} /></label>
           <label>Pay Type<select value={form.payType} onChange={e => setForm({ ...form, payType: e.target.value })}>{['Salary', 'Hourly'].map(t => <option key={t}>{t}</option>)}</select></label>
           {form.payType === 'Hourly' ? (
-            <label>Hourly Rate (KES)<input type="number" value={form.hourlyRate} onChange={e => setForm({ ...form, hourlyRate: Number(e.target.value) })} placeholder="e.g. 500" /></label>
+            <label>Hourly Rate (KES)<input type="number" min="0" value={form.hourlyRate} onChange={e => setForm({ ...form, hourlyRate: Number(e.target.value) })} placeholder="e.g. 500" /></label>
           ) : (
-            <label>Basic Salary (KES)<input type="number" value={form.salary} onChange={e => setForm({ ...form, salary: Number(e.target.value) })} /></label>
+            <label>Basic Salary (KES)<input type="number" min="0" value={form.salary} onChange={e => setForm({ ...form, salary: Number(e.target.value) })} /></label>
           )}
           <label>Manager<input value={form.manager} onChange={e => setForm({ ...form, manager: e.target.value })} /></label>
+          <label>Branch<input value={form.branch || ''} onChange={e => setForm({ ...form, branch: e.target.value })} /></label>
           <label>Work Schedule<input value={form.workSchedule} onChange={e => setForm({ ...form, workSchedule: e.target.value })} placeholder="08:00-17:00" /></label>
           <label>Expected Hours/Day<input type="number" value={form.expectedHoursPerDay} onChange={e => setForm({ ...form, expectedHoursPerDay: Number(e.target.value) })} /></label>
           <label>Location<input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} /></label>
@@ -10214,6 +10359,9 @@ function EmployeeFormModal({ user, onClose, onSave, initial }) {
         </div></fieldset>
         <fieldset className="settings-fieldset"><legend>Tax & Banking</legend><div>
           <label>KRA PIN<input value={form.kraPin} onChange={e => setForm({ ...form, kraPin: e.target.value })} placeholder="A001234567B" /></label>
+          <label>NSSF number<input value={form.nssfNumber || ''} onChange={e => setForm({ ...form, nssfNumber: e.target.value })} /></label>
+          <label>NHIF / SHIF number<input value={form.nhifNumber || ''} onChange={e => setForm({ ...form, nhifNumber: e.target.value })} /></label>
+          <label>Payroll number<input value={form.payrollNumber || ''} onChange={e => setForm({ ...form, payrollNumber: e.target.value })} /></label>
           <label>Tax Category<select value={form.taxCategory} onChange={e => setForm({ ...form, taxCategory: e.target.value })}>{['Resident', 'Non-Resident'].map(t => <option key={t}>{t}</option>)}</select></label>
           <label>Bank Name<input value={form.bankName} onChange={e => setForm({ ...form, bankName: e.target.value })} /></label>
           <label>Bank Branch<input value={form.bankBranch} onChange={e => setForm({ ...form, bankBranch: e.target.value })} /></label>
@@ -10252,11 +10400,27 @@ function EmployeeFormModal({ user, onClose, onSave, initial }) {
           <label>Annual Leave<input type="number" value={form.leaveBalanceAnnual} onChange={e => setForm({ ...form, leaveBalanceAnnual: Number(e.target.value) })} /></label>
           <label>Sick Leave<input type="number" value={form.leaveBalanceSick} onChange={e => setForm({ ...form, leaveBalanceSick: Number(e.target.value) })} /></label>
           <label>Casual Leave<input type="number" value={form.leaveBalanceCasual} onChange={e => setForm({ ...form, leaveBalanceCasual: Number(e.target.value) })} /></label>
+          <label>Maternity<input type="number" value={form.leaveBalanceMaternity || 90} onChange={e => setForm({ ...form, leaveBalanceMaternity: Number(e.target.value) })} /></label>
+          <label>Paternity<input type="number" value={form.leaveBalancePaternity || 14} onChange={e => setForm({ ...form, leaveBalancePaternity: Number(e.target.value) })} /></label>
         </div></fieldset>
-        {isEdit && form.status === 'Inactive' && (
+        {isEdit && (
+          <fieldset className="settings-fieldset"><legend>HR notes on this employee</legend><div>
+            <label>Note<textarea rows={2} value={noteText} onChange={e => setNoteText(e.target.value)} placeholder="Public note or private HR note..." /></label>
+            <label>Visibility<select value={notePrivate ? 'private' : 'public'} onChange={e => setNotePrivate(e.target.value === 'private')}><option value="public">Public (HR + Managers)</option><option value="private">Private HR only</option></select></label>
+            <button type="button" className="secondary-action" onClick={async () => {
+              if (!noteText.trim()) return;
+              try {
+                await rpc('saveHrNote', [user, { employeeId: form.id, text: noteText, visibility: notePrivate ? 'private' : 'public' }]);
+                setNoteText('');
+                alert('Note saved to HR timeline.');
+              } catch (err) { alert(err.message); }
+            }}>Save note</button>
+          </div></fieldset>
+        )}
+        {isEdit && ['Inactive', 'Resigned', 'Terminated', 'Retired'].includes(form.status) && (
           <fieldset className="settings-fieldset"><legend>Exit Info</legend><div>
-            <label>Exit Date<input type="date" value={form.exitDate} onChange={e => setForm({ ...form, exitDate: e.target.value })} /></label>
-            <label>Exit Reason<input value={form.exitReason} onChange={e => setForm({ ...form, exitReason: e.target.value })} placeholder="Resignation, Termination, Retirement..." /></label>
+            <label>Exit Date<input type="date" value={form.exitDate || ''} onChange={e => setForm({ ...form, exitDate: e.target.value })} /></label>
+            <label>Exit Reason<input value={form.exitReason || ''} onChange={e => setForm({ ...form, exitReason: e.target.value })} placeholder="Resignation, Termination, Retirement..." /></label>
           </div></fieldset>
         )}
         <button className="primary-action" type="submit">{isEdit ? 'Update Employee' : 'Save Employee'}</button>

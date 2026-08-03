@@ -3728,19 +3728,42 @@ function refreshAlerts(d) {
 
 // ── HR seed ──
 function employeeRecord(form) {
+  const firstName = clean(form.firstName || '');
+  const middleName = clean(form.middleName || '');
+  const lastName = clean(form.lastName || '');
+  const fullName = clean(form.name) || [firstName, middleName, lastName].filter(Boolean).join(' ').trim();
   return {
-    name: clean(form.name),
+    name: fullName,
+    firstName,
+    middleName,
+    lastName,
     email: clean(form.email),
+    companyEmail: clean(form.companyEmail || form.email),
+    personalEmail: clean(form.personalEmail || ''),
     phone: clean(form.phone),
+    altPhone: clean(form.altPhone || ''),
     address: clean(form.address),
+    county: clean(form.county || ''),
+    city: clean(form.city || ''),
+    postalCode: clean(form.postalCode || ''),
     nationalId: clean(form.nationalId),
+    passportNo: clean(form.passportNo || ''),
+    gender: clean(form.gender || ''),
+    dateOfBirth: dateOnly(form.dateOfBirth || ''),
+    nationality: clean(form.nationality || 'Kenyan'),
+    maritalStatus: clean(form.maritalStatus || ''),
     department: clean(form.department) || 'Sales',
     position: clean(form.position) || 'Officer',
+    jobGrade: clean(form.jobGrade || ''),
+    branch: clean(form.branch || ''),
     employmentType: clean(form.employmentType) || 'Full-time',
     joinDate: dateOnly(form.joinDate),
+    contractStart: dateOnly(form.contractStart || form.joinDate || ''),
+    contractEnd: dateOnly(form.contractEnd || ''),
+    probationEnd: dateOnly(form.probationEnd || ''),
     status: clean(form.status) || 'Active',
-    salary: num(form.salary),
-    hourlyRate: num(form.hourlyRate || 0),
+    salary: Math.max(0, num(form.salary)),
+    hourlyRate: Math.max(0, num(form.hourlyRate || 0)),
     payType: clean(form.payType) || 'Salary',
     manager: clean(form.manager),
     workSchedule: clean(form.workSchedule) || '08:00-17:00',
@@ -3748,6 +3771,9 @@ function employeeRecord(form) {
     overtimeEligible: form.overtimeEligible === false ? 'No' : clean(form.overtimeEligible) || 'Yes',
     location: clean(form.location),
     kraPin: clean(form.kraPin),
+    nssfNumber: clean(form.nssfNumber || ''),
+    nhifNumber: clean(form.nhifNumber || form.shifNumber || ''),
+    payrollNumber: clean(form.payrollNumber || ''),
     taxCategory: clean(form.taxCategory) || 'Resident',
     bankName: clean(form.bankName),
     bankBranch: clean(form.bankBranch),
@@ -3755,20 +3781,23 @@ function employeeRecord(form) {
     bankAccountName: clean(form.bankAccountName),
     mpesaNumber: clean(form.mpesaNumber),
     paymentMethod: clean(form.paymentMethod) || 'Bank Transfer',
-    houseAllowance: num(form.houseAllowance),
-    transportAllowance: num(form.transportAllowance),
-    medicalAllowance: num(form.medicalAllowance),
-    communicationAllowance: num(form.communicationAllowance),
-    riskAllowance: num(form.riskAllowance),
-    mealAllowance: num(form.mealAllowance),
-    responsibilityAllowance: num(form.responsibilityAllowance),
-    loanDeduction: num(form.loanDeduction || 0),
-    saccoDeduction: num(form.saccoDeduction || 0),
-    otherDeductions: num(form.otherDeductions || 0),
+    houseAllowance: Math.max(0, num(form.houseAllowance)),
+    transportAllowance: Math.max(0, num(form.transportAllowance)),
+    medicalAllowance: Math.max(0, num(form.medicalAllowance)),
+    communicationAllowance: Math.max(0, num(form.communicationAllowance)),
+    riskAllowance: Math.max(0, num(form.riskAllowance)),
+    mealAllowance: Math.max(0, num(form.mealAllowance)),
+    responsibilityAllowance: Math.max(0, num(form.responsibilityAllowance)),
+    otherAllowances: Math.max(0, num(form.otherAllowances || 0)),
+    loanDeduction: Math.max(0, num(form.loanDeduction || 0)),
+    saccoDeduction: Math.max(0, num(form.saccoDeduction || 0)),
+    otherDeductions: Math.max(0, num(form.otherDeductions || 0)),
     customDeductions: Array.isArray(form.customDeductions) ? form.customDeductions : [],
     emergencyContactName: clean(form.emergencyContactName || ''),
     emergencyContactPhone: clean(form.emergencyContactPhone || ''),
     emergencyContactRelation: clean(form.emergencyContactRelation || ''),
+    emergencyContactEmail: clean(form.emergencyContactEmail || ''),
+    emergencyContactAddress: clean(form.emergencyContactAddress || ''),
     nextOfKinName: clean(form.nextOfKinName || ''),
     nextOfKinPhone: clean(form.nextOfKinPhone || ''),
     nextOfKinRelation: clean(form.nextOfKinRelation || ''),
@@ -3776,7 +3805,11 @@ function employeeRecord(form) {
     exitReason: clean(form.exitReason || ''),
     leaveBalanceAnnual: num(form.leaveBalanceAnnual ?? 21),
     leaveBalanceSick: num(form.leaveBalanceSick ?? 10),
-    leaveBalanceCasual: num(form.leaveBalanceCasual ?? 5)
+    leaveBalanceCasual: num(form.leaveBalanceCasual ?? 5),
+    leaveBalanceMaternity: num(form.leaveBalanceMaternity ?? 90),
+    leaveBalancePaternity: num(form.leaveBalancePaternity ?? 14),
+    profilePhotoUrl: clean(form.profilePhotoUrl || ''),
+    documents: Array.isArray(form.documents) ? form.documents : []
   };
 }
 function candidateRecord(form) {
@@ -3833,6 +3866,30 @@ function ensureHrData() {
   db.reviews = Array.isArray(db.reviews) ? db.reviews : [];
   db.attendance = Array.isArray(db.attendance) ? db.attendance : [];
   db.leaveApplications = Array.isArray(db.leaveApplications) ? db.leaveApplications : [];
+  db.trainings = Array.isArray(db.trainings) ? db.trainings : [];
+  db.trainingEnrollments = Array.isArray(db.trainingEnrollments) ? db.trainingEnrollments : [];
+  db.benefits = Array.isArray(db.benefits) ? db.benefits : [];
+  db.employeeBenefits = Array.isArray(db.employeeBenefits) ? db.employeeBenefits : [];
+  db.hrNotes = Array.isArray(db.hrNotes) ? db.hrNotes : [];
+  db.hrTimeline = Array.isArray(db.hrTimeline) ? db.hrTimeline : [];
+  db.hrEmails = Array.isArray(db.hrEmails) ? db.hrEmails : [];
+  db.jobPositions = Array.isArray(db.jobPositions) ? db.jobPositions : [];
+  db.settings = db.settings || {};
+  if (!db.settings.hr_email) db.settings.hr_email = 'hr@farmtrack.co.ke';
+}
+
+function pushHrTimeline(employeeId, action, description, user) {
+  if (!db) return;
+  db.hrTimeline = db.hrTimeline || [];
+  db.hrTimeline.unshift({
+    id: gid(),
+    employeeId: employeeId || '',
+    action: clean(action),
+    description: clean(description),
+    by: user?.name || user?.email || 'System',
+    at: new Date().toISOString()
+  });
+  if (db.hrTimeline.length > 5000) db.hrTimeline = db.hrTimeline.slice(0, 5000);
 }
 
 function purgeDemoTransactionalData(d) {
@@ -10381,25 +10438,84 @@ territory: geo,
       payrollHistory: (d.payrollHistory || []).slice(0, 12),
       holidays: KENYA_HOLIDAYS_2026,
       currentMonth: new Date().toISOString().slice(0, 7),
-      stats: {
-        headcount: (d.employees || []).length,
-        departments: (d.departments || []).length,
-        activeCandidates: (d.candidates || []).filter(c => c.stage !== 'Hired' && c.stage !== 'Rejected').length,
-        pendingReviews: (d.reviews || []).filter(r => r.status === 'Pending').length,
-        presentToday: presentToday.length,
-        totalHoursToday: Math.round(totalHoursToday * 10) / 10,
-        presentInPeriod: presentInPeriod.length,
-        absentInPeriod: absentInPeriod.length,
-        totalHoursInPeriod: Math.round(hoursInPeriod * 10) / 10,
-        overtimeHours: Math.round(overtimeHours * 10) / 10,
-        lateArrivals,
-        missingCheckouts,
-        attendanceRate: attendanceInPeriod.length ? Math.round((presentInPeriod.length / attendanceInPeriod.length) * 100) : 0,
-        leaveApprovalRate: (pendingLeaves.length + leaveInPeriod.length) ? Math.round((leaveInPeriod.length / (pendingLeaves.length + leaveInPeriod.length)) * 100) : 0,
-        averageHoursPerRecord: attendanceInPeriod.length ? Math.round((hoursInPeriod / attendanceInPeriod.length) * 10) / 10 : 0,
-        attendanceRecords: (d.attendance || []).length,
-        payrollCost: (d.employees || []).reduce((s, e) => s + num(e.salary), 0)
-      },
+      stats: (() => {
+        const allEmp = d.employees || [];
+        const activeEmp = allEmp.filter(e => e.status === 'Active');
+        const monthStartStr = monthStart(today());
+        const newThisMonth = allEmp.filter(e => e.joinDate && e.joinDate >= monthStartStr).length;
+        const onLeaveIds = new Set((d.leaveApplications || []).filter(l => l.status === 'Approved' && l.startDate <= today() && l.endDate >= today()).map(l => l.applicantId || l.employeeId));
+        const birthdays = activeEmp.filter(e => {
+          if (!e.dateOfBirth) return false;
+          const dob = String(e.dateOfBirth).slice(5, 10);
+          const soon = [];
+          for (let i = 0; i < 30; i++) {
+            const dt = new Date(); dt.setDate(dt.getDate() + i);
+            soon.push(dt.toISOString().slice(5, 10));
+          }
+          return soon.includes(dob);
+        }).length;
+        const contractExpiring = activeEmp.filter(e => e.contractEnd && daysBetween(today(), dateOnly(e.contractEnd)) >= 0 && daysBetween(today(), dateOnly(e.contractEnd)) <= 60).length;
+        const trainings = d.trainings || [];
+        const enrollments = d.trainingEnrollments || [];
+        const trainingDone = enrollments.filter(x => x.status === 'Completed').length;
+        const trainingPct = enrollments.length ? Math.round((trainingDone / enrollments.length) * 100) : 0;
+        const avgRating = (d.reviews || []).length
+          ? Math.round(((d.reviews || []).reduce((s, r) => s + num(r.rating), 0) / (d.reviews || []).length) * 10) / 10
+          : 0;
+        const gender = { Male: 0, Female: 0, Other: 0 };
+        activeEmp.forEach(e => {
+          const g = String(e.gender || 'Other');
+          if (g === 'Male') gender.Male += 1;
+          else if (g === 'Female') gender.Female += 1;
+          else gender.Other += 1;
+        });
+        const deptDist = {};
+        activeEmp.forEach(e => { deptDist[e.department || 'Unassigned'] = (deptDist[e.department || 'Unassigned'] || 0) + 1; });
+        const funnel = {};
+        (d.candidates || []).forEach(c => { funnel[c.stage || 'Applied'] = (funnel[c.stage || 'Applied'] || 0) + 1; });
+        return {
+          headcount: allEmp.length,
+          activeEmployees: activeEmp.length,
+          newThisMonth,
+          onLeave: onLeaveIds.size,
+          departments: (d.departments || []).length,
+          activeCandidates: (d.candidates || []).filter(c => c.stage !== 'Hired' && c.stage !== 'Rejected').length,
+          pendingReviews: (d.reviews || []).filter(r => r.status === 'Pending').length,
+          pendingLeaves: pendingLeaves.length,
+          presentToday: presentToday.length,
+          lateToday: attendanceToday.filter(a => a.status === 'Late').length,
+          totalHoursToday: Math.round(totalHoursToday * 10) / 10,
+          presentInPeriod: presentInPeriod.length,
+          absentInPeriod: absentInPeriod.length,
+          totalHoursInPeriod: Math.round(hoursInPeriod * 10) / 10,
+          overtimeHours: Math.round(overtimeHours * 10) / 10,
+          lateArrivals,
+          missingCheckouts,
+          attendanceRate: attendanceInPeriod.length ? Math.round((presentInPeriod.length / attendanceInPeriod.length) * 100) : 0,
+          leaveApprovalRate: (pendingLeaves.length + leaveInPeriod.length) ? Math.round((leaveInPeriod.length / (pendingLeaves.length + leaveInPeriod.length)) * 100) : 0,
+          averageHoursPerRecord: attendanceInPeriod.length ? Math.round((hoursInPeriod / attendanceInPeriod.length) * 10) / 10 : 0,
+          attendanceRecords: (d.attendance || []).length,
+          payrollCost: activeEmp.reduce((s, e) => s + num(e.salary) + num(e.houseAllowance) + num(e.transportAllowance) + num(e.medicalAllowance), 0),
+          payrollStatus: (d.payrollHistory || []).length ? 'History available' : 'Not run',
+          upcomingBirthdays: birthdays,
+          contractExpiring,
+          trainingCompletion: trainingPct,
+          performanceAverage: avgRating,
+          satisfactionScore: avgRating ? Math.min(100, Math.round(avgRating * 20)) : 0,
+          genderDistribution: gender,
+          departmentDistribution: Object.entries(deptDist).map(([name, count]) => ({ name, count })),
+          recruitmentFunnel: Object.entries(funnel).map(([stage, count]) => ({ stage, count })),
+          hrEmail: (d.settings && d.settings.hr_email) || 'hr@farmtrack.co.ke'
+        };
+      })(),
+      trainings: d.trainings || [],
+      trainingEnrollments: d.trainingEnrollments || [],
+      benefits: d.benefits || [],
+      employeeBenefits: d.employeeBenefits || [],
+      hrNotes: d.hrNotes || [],
+      hrTimeline: (d.hrTimeline || []).slice(0, 100),
+      hrEmails: (d.hrEmails || []).slice(0, 50),
+      jobPositions: d.jobPositions || [],
       // ─── HR Reports (3 time-period views) ───────────────────────────
       reports: {
         monthly: {
@@ -10501,19 +10617,89 @@ territory: geo,
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER);
     const d = data();
     ensureHrData();
-    assertRequired(form.name, 'Employee name');
+    const fullName = clean(form.name) || [form.firstName, form.middleName, form.lastName].filter(Boolean).join(' ').trim();
+    if (!fullName) throw new Error('Employee name is required');
+    form.name = fullName;
+    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(form.email))) throw new Error('Invalid email format');
+    if (form.salary !== undefined && num(form.salary) < 0) throw new Error('Salary cannot be negative');
+    if (form.dateOfBirth && form.joinDate && dateOnly(form.joinDate) < dateOnly(form.dateOfBirth)) throw new Error('Hire date cannot be before date of birth');
+    if (form.contractStart && form.contractEnd && dateOnly(form.contractEnd) < dateOnly(form.contractStart)) throw new Error('Contract end cannot be before contract start');
     const id = clean(form.id);
+    const emailKey = String(form.email || form.companyEmail || '').toLowerCase();
+    const phoneKey = String(form.phone || '').replace(/\D/g, '');
+    const dupEmail = (d.employees || []).find(e => e.id !== id && emailKey && String(e.email || e.companyEmail || '').toLowerCase() === emailKey);
+    if (dupEmail) throw new Error(`Duplicate company/personal email: already used by ${dupEmail.name}`);
+    const dupPhone = (d.employees || []).find(e => e.id !== id && phoneKey && String(e.phone || '').replace(/\D/g, '') === phoneKey);
+    if (dupPhone) throw new Error(`Duplicate phone number: already used by ${dupPhone.name}`);
     if (id) {
       const emp = d.employees.find(e => e.id === id);
       if (!emp) throw new Error('Employee not found');
-      Object.assign(emp, employeeRecord(form));
+      Object.assign(emp, employeeRecord(form), { updatedAt: new Date().toISOString() });
+      pushHrTimeline(emp.id, 'Employee Updated', `Profile updated for ${emp.name}`, u);
       log(u, `Update employee ${emp.name}`, 'HR');
       return { success: true, employee: emp };
     }
-    const emp = { id: gid(), employeeNo: clean(form.employeeNo) || `EMP-${String(d.employees.length + 1).padStart(3, '0')}`, ...employeeRecord(form) };
+    const emp = {
+      id: gid(),
+      employeeNo: clean(form.employeeNo) || `EMP-${String((d.employees.length || 0) + 1).padStart(4, '0')}`,
+      ...employeeRecord(form),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
     d.employees.unshift(emp);
+    pushHrTimeline(emp.id, 'Employee Created', `Employee ${emp.name} (${emp.employeeNo}) created`, u);
     log(u, `Add employee ${emp.name}`, 'HR');
     return { success: true, employee: emp };
+  },
+  saveHrNote(user, payload = {}) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER);
+    const d = data();
+    ensureHrData();
+    assertRequired(payload.employeeId, 'Employee');
+    assertRequired(payload.text, 'Note text');
+    const note = {
+      id: gid(),
+      employeeId: clean(payload.employeeId),
+      visibility: payload.visibility === 'private' ? 'private' : 'public',
+      text: clean(payload.text),
+      by: u.name,
+      at: new Date().toISOString()
+    };
+    d.hrNotes.unshift(note);
+    pushHrTimeline(note.employeeId, note.visibility === 'private' ? 'Private HR Note' : 'Public Note', note.text, u);
+    return { success: true, note };
+  },
+  async sendHrEmail(user, payload = {}) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER);
+    const d = data();
+    ensureHrData();
+    const from = (d.settings && d.settings.hr_email) || 'hr@farmtrack.co.ke';
+    const to = clean(payload.to);
+    const subject = clean(payload.subject);
+    const body = clean(payload.body);
+    if (!to || !subject || !body) throw new Error('To, subject, and body are required');
+    const result = await deliverEmail(u, 'hr_email', to, () => EmailService.sendERPNotification({
+      to,
+      title: subject,
+      message: body,
+      module: 'hr',
+      priority: 'medium'
+    }), { subject: `[HR] ${subject}`, relatedModule: 'hr', from });
+    const row = {
+      id: gid(),
+      folder: 'sent',
+      from,
+      to,
+      subject,
+      body,
+      employeeId: clean(payload.employeeId || ''),
+      status: result?.sent ? 'sent' : 'logged',
+      at: new Date().toISOString(),
+      by: u.name
+    };
+    d.hrEmails.unshift(row);
+    if (row.employeeId) pushHrTimeline(row.employeeId, 'Email Sent', `To ${to}: ${subject}`, u);
+    return { success: true, email: row, result };
   },
   deleteEmployee(user, id) {
     const u = reqRole(user, ROLES.ADMIN);
@@ -10954,6 +11140,8 @@ const SYNC_AFTER_RPC = {
   submitERPInput: ['Dashboard', 'Customers', 'Leads', 'Products', 'Inventory', 'Sales', 'Invoices', 'Purchases', 'Manufacturing', 'Finance', 'Accounts', 'Activity'],
   // HR sync
   saveEmployee: ['Employees', 'Departments', 'Dashboard', 'Activity'],
+  saveHrNote: ['Employees', 'Activity'],
+  sendHrEmail: ['Employees', 'Activity', 'Email'],
   deleteEmployee: ['Employees', 'Departments', 'Dashboard', 'Activity'],
   recordAttendance: ['Attendance', 'Dashboard', 'Activity'],
   saveCandidate: ['Candidates', 'Dashboard', 'Activity'],
