@@ -10664,8 +10664,15 @@ function EmployeeFormModal({ user, onClose, onSave, initial, departments = [] })
     form.department,
     'Sales', 'Finance', 'Inventory', 'Procurement', 'Production', 'Admin', 'CRM', 'Field Operations', 'HR', 'Audit'
   ].filter(Boolean)));
-  const addCustomDeduction = () => setForm({ ...form, customDeductions: [...(form.customDeductions || []), { id: `ded-${Date.now()}`, label: '', amount: 0, type: 'One-time' }] });
-  const updateDeduction = (i, field, val) => { const next = [...(form.customDeductions || [])]; next[i] = { ...next[i], [field]: field === 'amount' ? Number(val) : val }; setForm({ ...form, customDeductions: next }); };
+  const addCustomDeduction = () => setForm({ ...form, customDeductions: [...(form.customDeductions || []), {
+    id: `ded-${Date.now()}`, label: '', method: 'Fixed', amount: 0, percent: 0, type: 'Recurring', taxExempt: false, active: true, notes: ''
+  }] });
+  const updateDeduction = (i, field, val) => {
+    const next = [...(form.customDeductions || [])];
+    const numeric = ['amount', 'percent'].includes(field);
+    next[i] = { ...next[i], [field]: field === 'taxExempt' || field === 'active' ? val === true || val === 'true' || val === 'Yes' : (numeric ? Number(val) : val) };
+    setForm({ ...form, customDeductions: next });
+  };
   const removeDeduction = i => setForm({ ...form, customDeductions: (form.customDeductions || []).filter((_, idx) => idx !== i) });
   const syncName = (patch) => {
     const next = { ...form, ...patch };
@@ -10759,22 +10766,54 @@ function EmployeeFormModal({ user, onClose, onSave, initial, departments = [] })
           <label>Meal Allowance<input type="number" value={form.mealAllowance} onChange={e => setForm({ ...form, mealAllowance: Number(e.target.value) })} /></label>
           <label>Responsibility Allowance<input type="number" value={form.responsibilityAllowance} onChange={e => setForm({ ...form, responsibilityAllowance: Number(e.target.value) })} /></label>
         </div></fieldset>
-        <fieldset className="settings-fieldset"><legend>Custom Deductions (KES)</legend><div>
-          <div className="quote-items-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <strong>Custom Payroll Deductions</strong>
-            <button type="button" className="mini-action" onClick={addCustomDeduction}><Plus size={14} /> Add Deduction</button>
+        <fieldset className="settings-fieldset"><legend>Deductions (fully editable)</legend><div>
+          <div className="quote-items-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <div>
+              <strong>Named deductions</strong>
+              <p style={{ margin: 0, fontSize: 12, color: '#667085' }}>Add as many as you need. Use Fixed (KES) or Percent of gross. Names, amounts, and % are fully editable.</p>
+            </div>
+            <button type="button" className="mini-action" onClick={addCustomDeduction}><Plus size={14} /> Add deduction</button>
           </div>
+          {(form.customDeductions || []).length === 0 && <div className="empty-state" style={{ padding: 12 }}>No custom deductions yet. Click Add deduction.</div>}
           {(form.customDeductions || []).map((ded, i) => (
-            <div key={ded.id || i} className="modal-grid" style={{ gridTemplateColumns: '1.5fr 1fr 1fr auto', gap: 6, alignItems: 'end', marginTop: 6 }}>
-              <label>Label<input value={ded.label} onChange={e => updateDeduction(i, 'label', e.target.value)} placeholder="e.g. Salary advance" /></label>
-              <label>Amount<input type="number" value={ded.amount} onChange={e => updateDeduction(i, 'amount', e.target.value)} /></label>
-              <label>Type<select value={ded.type} onChange={e => updateDeduction(i, 'type', e.target.value)}>{['One-time', 'Recurring'].map(t => <option key={t}>{t}</option>)}</select></label>
-              <button type="button" className="mini-action" onClick={() => removeDeduction(i)} style={{ marginBottom: 8, color: '#ef4444' }}><X size={14} /></button>
+            <div key={ded.id || i} style={{ border: '1px solid #eef0f3', borderRadius: 10, padding: 10, marginBottom: 8 }}>
+              <div className="modal-grid" style={{ gridTemplateColumns: '1.4fr 1fr 1fr 1fr 1fr auto', gap: 6, alignItems: 'end' }}>
+                <label>Name<input value={ded.label || ''} onChange={e => updateDeduction(i, 'label', e.target.value)} placeholder="e.g. Advance, HELB, Welfare" required /></label>
+                <label>Method
+                  <select value={ded.method || 'Fixed'} onChange={e => updateDeduction(i, 'method', e.target.value)}>
+                    <option value="Fixed">Fixed (KES)</option>
+                    <option value="Percent">Percent of gross</option>
+                  </select>
+                </label>
+                <label>Amount (KES)<input type="number" min="0" step="0.01" value={ded.amount ?? 0} onChange={e => updateDeduction(i, 'amount', e.target.value)} disabled={(ded.method || 'Fixed') === 'Percent'} /></label>
+                <label>Percent (%)<input type="number" min="0" max="100" step="0.01" value={ded.percent ?? 0} onChange={e => updateDeduction(i, 'percent', e.target.value)} disabled={(ded.method || 'Fixed') !== 'Percent'} /></label>
+                <label>Frequency
+                  <select value={ded.type || 'Recurring'} onChange={e => updateDeduction(i, 'type', e.target.value)}>
+                    {['Recurring', 'One-time', 'Tax', 'SHIF', 'Loan', 'SACCO', 'Other'].map(t => <option key={t}>{t}</option>)}
+                  </select>
+                </label>
+                <button type="button" className="mini-action" title="Remove" onClick={() => removeDeduction(i)} style={{ marginBottom: 8, color: '#ef4444' }}><X size={14} /></button>
+              </div>
+              <div className="modal-grid" style={{ gridTemplateColumns: '1fr 1fr 1.5fr', gap: 6, marginTop: 6 }}>
+                <label>Tax exempt
+                  <select value={ded.taxExempt ? 'Yes' : 'No'} onChange={e => updateDeduction(i, 'taxExempt', e.target.value === 'Yes')}>
+                    <option>No</option><option>Yes</option>
+                  </select>
+                </label>
+                <label>Active
+                  <select value={ded.active === false ? 'No' : 'Yes'} onChange={e => updateDeduction(i, 'active', e.target.value === 'Yes')}>
+                    <option>Yes</option><option>No</option>
+                  </select>
+                </label>
+                <label>Notes<input value={ded.notes || ''} onChange={e => updateDeduction(i, 'notes', e.target.value)} placeholder="Optional note" /></label>
+              </div>
             </div>
           ))}
-          <label>Loan Deduction<input type="number" value={form.loanDeduction} onChange={e => setForm({ ...form, loanDeduction: Number(e.target.value) })} /></label>
-          <label>Sacco Deduction<input type="number" value={form.saccoDeduction} onChange={e => setForm({ ...form, saccoDeduction: Number(e.target.value) })} /></label>
-          <label>Other Deductions<input type="number" value={form.otherDeductions} onChange={e => setForm({ ...form, otherDeductions: Number(e.target.value) })} /></label>
+          <div className="modal-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 10 }}>
+            <label>Loan (fixed KES)<input type="number" value={form.loanDeduction || 0} onChange={e => setForm({ ...form, loanDeduction: Number(e.target.value) })} /></label>
+            <label>SACCO (fixed KES)<input type="number" value={form.saccoDeduction || 0} onChange={e => setForm({ ...form, saccoDeduction: Number(e.target.value) })} /></label>
+            <label>Other fixed (KES)<input type="number" value={form.otherDeductions || 0} onChange={e => setForm({ ...form, otherDeductions: Number(e.target.value) })} /></label>
+          </div>
         </div></fieldset>
         <fieldset className="settings-fieldset"><legend>Leave Balances</legend><div>
           <label>Annual Leave<input type="number" value={form.leaveBalanceAnnual} onChange={e => setForm({ ...form, leaveBalanceAnnual: Number(e.target.value) })} /></label>

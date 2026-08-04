@@ -3849,7 +3849,17 @@ function employeeRecord(form) {
     loanDeduction: Math.max(0, num(form.loanDeduction || 0)),
     saccoDeduction: Math.max(0, num(form.saccoDeduction || 0)),
     otherDeductions: Math.max(0, num(form.otherDeductions || 0)),
-    customDeductions: Array.isArray(form.customDeductions) ? form.customDeductions : [],
+    customDeductions: Array.isArray(form.customDeductions) ? form.customDeductions.map(cd => ({
+      id: clean(cd.id) || gid(),
+      label: clean(cd.label) || 'Deduction',
+      method: clean(cd.method) === 'Percent' ? 'Percent' : 'Fixed',
+      amount: Math.max(0, num(cd.amount)),
+      percent: Math.max(0, Math.min(100, num(cd.percent))),
+      type: clean(cd.type) || 'Recurring',
+      taxExempt: Boolean(cd.taxExempt),
+      active: cd.active === false ? false : true,
+      notes: clean(cd.notes || '')
+    })).filter(cd => cd.label) : [],
     emergencyContactName: clean(form.emergencyContactName || ''),
     emergencyContactPhone: clean(form.emergencyContactPhone || ''),
     emergencyContactRelation: clean(form.emergencyContactRelation || ''),
@@ -10621,9 +10631,16 @@ territory: geo,
       const shif = applyShif ? Math.round(grossPay * 0.0275) : 0; // SHIF 2.75% optional
       const ahl = 0; // Housing levy not auto — add as custom deduction if required
       // Unlimited HR custom deductions (loan, sacco, tax adjustments, SHIF manual, etc.)
-      const customList = Array.isArray(emp.customDeductions) ? emp.customDeductions : [];
-      const customDeductionTotal = Math.round(customList.reduce((s, cd) => s + num(cd.amount), 0));
-      const taxExemptCustom = Math.round(customList.filter(cd => /exempt|relief|pension/i.test(`${cd.label || ''} ${cd.type || ''}`)).reduce((s, cd) => s + num(cd.amount), 0));
+      const customList = (Array.isArray(emp.customDeductions) ? emp.customDeductions : []).filter(cd => cd && cd.active !== false);
+      const resolvedCustom = customList.map(cd => {
+        const method = clean(cd.method) || 'Fixed';
+        const amount = method === 'Percent'
+          ? Math.round(grossPay * (num(cd.percent) / 100))
+          : Math.round(num(cd.amount));
+        return { ...cd, resolvedAmount: amount };
+      });
+      const customDeductionTotal = Math.round(resolvedCustom.reduce((s, cd) => s + num(cd.resolvedAmount), 0));
+      const taxExemptCustom = Math.round(resolvedCustom.filter(cd => cd.taxExempt || /exempt|relief|pension/i.test(`${cd.label || ''} ${cd.type || ''}`)).reduce((s, cd) => s + num(cd.resolvedAmount), 0));
       // PAYE on taxable pay after optional SHIF + tax-exempt customs (Kenya bands + 2,400 relief)
       const taxableIncome = Math.max(0, grossPay - shif - taxExemptCustom);
       let paye = calculateKenyaPaye(taxableIncome);
@@ -10680,7 +10697,7 @@ territory: geo,
         loanDeduction,
         sacco,
         otherDeductions,
-        customDeductions: Array.isArray(emp.customDeductions) ? emp.customDeductions : [],
+        customDeductions: typeof resolvedCustom !== 'undefined' ? resolvedCustom.map(cd => ({ id: cd.id, label: cd.label, method: cd.method || 'Fixed', amount: cd.resolvedAmount, percent: cd.percent, type: cd.type, taxExempt: !!cd.taxExempt })) : (Array.isArray(emp.customDeductions) ? emp.customDeductions : []),
         customDeductionTotal,
         deductions: totalDeductions,
         netPay
@@ -11140,7 +11157,19 @@ territory: geo,
     emp.customDeductions ||= [];
     const dedId = clean(deduction.id) || gid();
     const existing = emp.customDeductions.find(cd => cd.id === dedId);
-    const record = { id: dedId, label: clean(deduction.label) || 'Custom Deduction', amount: num(deduction.amount), type: clean(deduction.type) || 'One-time', createdAt: existing?.createdAt || new Date().toISOString() };
+    const record = {
+      id: dedId,
+      label: clean(deduction.label) || 'Custom Deduction',
+      method: clean(deduction.method) === 'Percent' ? 'Percent' : 'Fixed',
+      amount: Math.max(0, num(deduction.amount)),
+      percent: Math.max(0, Math.min(100, num(deduction.percent))),
+      type: clean(deduction.type) || 'Recurring',
+      taxExempt: Boolean(deduction.taxExempt),
+      active: deduction.active === false ? false : true,
+      notes: clean(deduction.notes || ''),
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
     if (existing) Object.assign(existing, record);
     else emp.customDeductions.unshift(record);
     log(u, `Save deduction ${record.label} for ${emp.name}`, 'HR');
