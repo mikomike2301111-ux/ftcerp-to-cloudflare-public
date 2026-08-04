@@ -4417,14 +4417,35 @@ function SalesModule({ user, setPage, globalPeriod }) {
   }, []);
 
   if (workspace.loading) return <Loading title="Sales" />;
-  if (workspace.error) return <ErrorState title="Sales" error={workspace.error} />;
+  // Sales must never hard-crash: if RPC fails, open empty workspace (zeros)
   if (renderError) return <ErrorState title="Sales" error={renderError} />;
 
   let data = {};
   try {
-    data = workspace.data && typeof workspace.data === 'object' ? workspace.data : {};
+    data = workspace.data && typeof workspace.data === 'object' && !Array.isArray(workspace.data) ? workspace.data : {};
   } catch (_) {
     data = {};
+  }
+  if (!data.overview) {
+    data = {
+      ...data,
+      overview: { revenue: 0, profit: 0, orders: 0, invoices: 0, pipeline: 0, expenses: 0, averageOrderValue: 0, pendingDelivery: 0, unpaidInvoices: 0, repeatCustomers: 0, topProducts: 0, quoteConversion: 0, forecast: 0 },
+      revenueTrend: Array.isArray(data.revenueTrend) ? data.revenueTrend : [],
+      teamComparison: Array.isArray(data.teamComparison) ? data.teamComparison : [],
+      pipeline: data.pipeline || { stages: [], leads: [] },
+      territory: data.territory || { counties: [], visits: [], routes: [], heatmap: [] },
+      analytics: data.analytics || {},
+      orders: Array.isArray(data.orders) ? data.orders : [],
+      invoices: Array.isArray(data.invoices) ? data.invoices : [],
+      quotes: Array.isArray(data.quotes) ? data.quotes : [],
+      visits: Array.isArray(data.visits) ? data.visits : [],
+      customers: Array.isArray(data.customers) ? data.customers : [],
+      reports: Array.isArray(data.reports) ? data.reports : [],
+      ai: Array.isArray(data.ai) ? data.ai : [],
+      products: Array.isArray(data.products) ? data.products : [],
+      salesPeople: data.salesPeople || ['Edna', 'Njoroge', 'Joseph', 'Purity'],
+      filters: data.filters || {}
+    };
   }
   const overview = {
     revenue: 0, profit: 0, orders: 0, invoices: 0, pipeline: 0, expenses: 0,
@@ -4458,6 +4479,11 @@ function SalesModule({ user, setPage, globalPeriod }) {
 
   return (
     <section className="page-stack sales-workspace">
+      {workspace.error && (
+        <div className="crm-sheet-message warn" style={{ margin: '8px 0' }}>
+          Sales data is loading empty because of a temporary server issue. You can still open the page. ({String(workspace.error).slice(0, 120)})
+        </div>
+      )}
       <div className="sales-hero">
         <div>
           <span>Revenue Operations Center</span>

@@ -8086,9 +8086,9 @@ const api = {
   getSalesWorkspaceData(user, filters = {}) {
     try {
     reqRole(user);
-    const d = data();
+    const d = data() || {};
     // Coerce collections so empty ERP never throws
-    ['sales','saleItems','invoices','quotations','expenses','leads','customers','deliveries','products','visits','salesVisits','saleItems','deliveries'].forEach(k => {
+    ['sales','saleItems','invoices','quotations','expenses','leads','customers','deliveries','products','visits','salesVisits','counties'].forEach(k => {
       if (!Array.isArray(d[k])) d[k] = [];
     });
     const scope = filters && filters.period ? { ...periodRange(filters.period), ...filters } : (filters || {});
@@ -8168,8 +8168,8 @@ const api = {
     }, {}));
     const unpaidInvoices = invoices.filter(invoice => num(invoice.balance) > 0);
     const overdueInvoices = invoices.filter(invoice => num(invoice.balance) > 0 && String(invoice.dueDate || today()) < today());
-    const deliveredCount = d.deliveries.filter(row => ['Delivered', 'Confirmed', 'Received'].includes(row.status) || row.deliveredConfirmed).length;
-    const pendingDeliveryCount = d.deliveries.filter(row => !['Delivered', 'Confirmed', 'Received', 'Cancelled'].includes(row.status) && !row.deliveredConfirmed).length;
+    const deliveredCount = (d.deliveries || []).filter(row => ['Delivered', 'Confirmed', 'Received'].includes(row.status) || row.deliveredConfirmed).length;
+    const pendingDeliveryCount = (d.deliveries || []).filter(row => !['Delivered', 'Confirmed', 'Received', 'Cancelled'].includes(row.status) && !row.deliveredConfirmed).length;
     const reportRows = [
       { name: 'Sales by Customer', value: customerSales.reduce((s, row) => s + row.revenue, 0), records: customerSales.length, exports: ['PDF', 'Excel', 'CSV', 'Email'] },
       { name: 'Sales by Product', value: productComparison.reduce((s, p) => s + p.revenue, 0), records: productComparison.length, exports: ['PDF', 'Excel', 'CSV', 'Email'] },
@@ -8309,8 +8309,9 @@ territory: geo,
     }
   },
   getGeoSalesData(user) {
+    try {
     reqRole(user);
-    const d = data();
+    const d = data() || {};
     d.salesVisits = Array.isArray(d.salesVisits) ? d.salesVisits : [];
     d.salesCheckins = Array.isArray(d.salesCheckins) ? d.salesCheckins : [];
     d.salesRoutes = Array.isArray(d.salesRoutes) ? d.salesRoutes : [];
@@ -8442,8 +8443,12 @@ territory: geo,
         'Expansion Recommendation Report'
       ]
     };
+    } catch (err) {
+      console.error('getGeoSalesData', err && err.message);
+      return { hero: {}, counties: [], visits: [], checkins: [], routes: [], repComparison: [], opportunityMap: [], heatmap: [], aiTerritoryIntelligence: [], reports: [] };
+    }
   },
-  getSaleItems: (user, id) => (reqRole(user), data().saleItems.filter(i => i.saleId === id)),
+  getSaleItems: (user, id) => (reqRole(user), (data().saleItems || []).filter(i => i.saleId === id)),
   async saveSale(user, row) {
     const d = data();
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.ACCOUNTANT);
