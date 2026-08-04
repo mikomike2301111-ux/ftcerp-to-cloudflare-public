@@ -3074,6 +3074,8 @@ function InventoryWorkspace({ user, setPage, globalPeriod }) {
   const [barcodeInput, setBarcodeInput] = useState('');
   const [barcodeLog, setBarcodeLog] = useState([]);
   const [issueReq, setIssueReq] = useState(null);
+  const [productOpen, setProductOpen] = useState(false);
+  const [productForm, setProductForm] = useState({ name: '', sku: '', category: 'Finished Goods', unit: 'pcs', costPrice: 0, sellingPrice: 0, minStock: 0, openingStock: 0, supplierName: '', status: 'Active' });
 
   if (workspace.loading) return <Loading title="Inventory" />;
   if (workspace.error) return <ErrorState title="Inventory" error={workspace.error} />;
@@ -3104,6 +3106,7 @@ function InventoryWorkspace({ user, setPage, globalPeriod }) {
         <button onClick={() => setTransferOpen(true)}><Route size={16} /> Transfer</button>
         <button onClick={() => setCountOpen(true)}><ClipboardCheck size={16} /> Cycle count</button>
         <button onClick={() => { setAuditOpen(true); setView('audits'); }}><ShieldCheck size={16} /> Audit</button>
+        <button onClick={() => setProductOpen(true)}><Plus size={16} /> Add Product</button>
         <button onClick={() => setReorderOpen(true)}><RefreshCw size={16} /> Reorder</button>
         <button onClick={() => setDamageOpen(true)}><AlertTriangle size={16} /> Damage</button>
         <button onClick={() => setLabelsOpen(true)}><Printer size={16} /> Labels</button>
@@ -3563,6 +3566,33 @@ function InventoryWorkspace({ user, setPage, globalPeriod }) {
         </div>
       )}
 
+      {productOpen && (
+        <div className="modal-scrim retractable-overlay" onClick={() => setProductOpen(false)}>
+          <div className="modal-card overlay-scrollable" onClick={e => e.stopPropagation()}>
+            <header><h2>Add product</h2><button type="button" onClick={() => setProductOpen(false)}><X size={18} /></button></header>
+            <form className="settings-form-grid" onSubmit={async e => {
+              e.preventDefault();
+              try {
+                await rpc('saveProduct', [user, productForm]);
+                setProductOpen(false);
+                setProductForm({ name: '', sku: '', category: 'Finished Goods', unit: 'pcs', costPrice: 0, sellingPrice: 0, minStock: 0, openingStock: 0, supplierName: '', status: 'Active' });
+                setRefreshKey(k => k + 1);
+              } catch (err) { alert(err.message); }
+            }}>
+              <label>Product name<input value={productForm.name} onChange={e => setProductForm({ ...productForm, name: e.target.value })} required placeholder="Farmtrack product name" /></label>
+              <label>SKU<input value={productForm.sku} onChange={e => setProductForm({ ...productForm, sku: e.target.value })} placeholder="SKU code" /></label>
+              <label>Category<input value={productForm.category} onChange={e => setProductForm({ ...productForm, category: e.target.value })} /></label>
+              <label>Unit<input value={productForm.unit} onChange={e => setProductForm({ ...productForm, unit: e.target.value })} /></label>
+              <label>Cost price<input type="number" value={productForm.costPrice} onChange={e => setProductForm({ ...productForm, costPrice: Number(e.target.value) })} /></label>
+              <label>Selling price<input type="number" value={productForm.sellingPrice} onChange={e => setProductForm({ ...productForm, sellingPrice: Number(e.target.value) })} /></label>
+              <label>Min stock<input type="number" value={productForm.minStock} onChange={e => setProductForm({ ...productForm, minStock: Number(e.target.value) })} /></label>
+              <label>Opening stock (Main Store Njiru)<input type="number" value={productForm.openingStock} onChange={e => setProductForm({ ...productForm, openingStock: Number(e.target.value) })} /></label>
+              <label>Supplier name<input value={productForm.supplierName} onChange={e => setProductForm({ ...productForm, supplierName: e.target.value })} placeholder="Type supplier name" /></label>
+              <button type="submit" className="primary-action">Save product</button>
+            </form>
+          </div>
+        </div>
+      )}
       {deepItem && (
         <div className="modal-backdrop" onClick={() => setDeepItem(null)}>
           <div className="modal-card wide" onClick={e => e.stopPropagation()}>
@@ -10309,13 +10339,15 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
       {deptModal !== null && (
         <DepartmentSetupModal
           user={user}
+          employees={data.employees || []}
           initial={deptModal && deptModal.id ? deptModal : null}
           onClose={() => setDeptModal(null)}
           onSave={async (form) => {
             try {
-              await rpc('saveDepartment', [user, form]);
+              const res = await rpc('saveDepartment', [user, form]);
               setDeptModal(null);
               setRefreshKey(k => k + 1);
+              if (res?.assigned) alert(`Department saved. ${res.assigned} people assigned.`);
             } catch (err) { alert(err.message); }
           }}
         />

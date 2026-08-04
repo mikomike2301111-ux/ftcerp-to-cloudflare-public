@@ -6820,7 +6820,7 @@ const api = {
     return { success: true, rows: visits.length, sheetName, spreadsheetId: targetSheetId, log: logEntry };
   },
   getProducts: user => (reqRole(user), list('products').map(p => ({ ...p, costPrice: num(p.costPrice), sellingPrice: num(p.sellingPrice), minStock: num(p.minStock), stock: data().inventory.filter(i => i.productName === p.name).reduce((s, i) => s + num(i.quantity), 0) }))),
-  saveProduct(user, row) { const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER); return save('products', u, row); },
+  saveProduct(user, row) { const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.WAREHOUSE, ROLES.PRODUCTION); const d = data(); const saved = save('products', u, row); if (saved && saved.id) { d.inventory = d.inventory || []; if (!d.inventory.some(i => i.productId === saved.id || i.productName === saved.name)) { d.inventory.unshift({ id: gid(), productId: saved.id, productName: saved.name, sku: saved.sku || '', warehouseName: 'Main Store Njiru', quantity: num(row.openingStock || 0), unitCost: num(saved.costPrice || row.costPrice), quantityReserved: 0, quantityIncoming: 0, quantityOutgoing: 0, damagedQuantity: 0, expiredQuantity: 0, quarantinedQuantity: 0, status: 'Active', createdAt: new Date().toISOString() }); try { if (typeof saveState === 'function') saveState(d); } catch (_) {} } } return saved; },
   getInventory: user => (reqRole(user), list('inventory').map(i => ({ ...i, quantity: num(i.quantity), unitCost: num(i.unitCost) }))),
   saveInventoryItem(user, row) { const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.WAREHOUSE); return save('inventory', u, row); },
   getInventoryWorkspaceData(user, filters = {}) {
@@ -10997,19 +10997,48 @@ territory: geo,
       headcount: num(form.headcount),
       updatedAt: new Date().toISOString()
     };
+    const memberIds = Array.isArray(form.memberIds) ? form.memberIds.map(clean).filter(Boolean) : null;
+    let dep;
     if (id) {
-      const dep = d.departments.find(x => x.id === id);
+      dep = d.departments.find(x => x.id === id);
       if (!dep) throw new Error('Department not found');
       Object.assign(dep, payload);
       log(u, `Update department ${dep.name}`, 'HR');
-      try { if (typeof saveState === 'function') saveState(d); } catch (_) {}
-      return { success: true, department: dep };
+    } else {
+      dep = { id: gid(), ...payload, createdAt: new Date().toISOString(), members: 0 };
+      d.departments.unshift(dep);
+      log(u, `Add department ${dep.name}`, 'HR');
     }
-    const dep = { id: gid(), ...payload, createdAt: new Date().toISOString(), members: 0 };
-    d.departments.unshift(dep);
-    log(u, `Add department ${dep.name}`, 'HR');
+    // Assign existing people to this department
+    if (memberIds) {
+      const memberSet = new Set(memberIds);
+      (d.employees || []).forEach(emp => {
+        if (memberSet.has(emp.id)) {
+          emp.department = dep.name;
+          emp.updatedAt = new Date().toISOString();
+        } else if (emp.department === dep.name && form.assignExisting) {
+          // left unchecked while editing this dept — only unassign if explicitly managing members
+          // keep assignment unless user cleared them via selected list: already handled by memberSet
+        }
+      });
+      // When assignExisting, people not in memberSet who were in this dept stay unless we re-home only selected
+      // Clear: unassign those previously in dept but not selected
+      if (form.assignExisting) {
+        (d.employees || []).forEach(emp => {
+          if (emp.department === dep.name && !memberSet.has(emp.id)) {
+            emp.department = '';
+            emp.updatedAt = new Date().toISOString();
+          }
+        });
+        (d.employees || []).forEach(emp => {
+          if (memberSet.has(emp.id)) emp.department = dep.name;
+        });
+      }
+      dep.members = (d.employees || []).filter(e => e.department === dep.name && e.status !== 'Deleted').length;
+      dep.headcount = dep.members || dep.headcount;
+    }
     try { if (typeof saveState === 'function') saveState(d); } catch (_) {}
-    return { success: true, department: dep };
+    return { success: true, department: dep, assigned: memberIds ? memberIds.length : 0 };
   },
   deleteDepartment(user, id) {
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.HR);
