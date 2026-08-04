@@ -1,7 +1,8 @@
--- Farmtrack ERP — HR departments + inventory product additions
--- Run in Supabase SQL editor (project rajnrkgcisgpxtzzfmcl)
+-- Farmtrack ERP — HR departments + inventory additions (fixed for existing schema)
+-- Project: https://supabase.com/dashboard/project/rajnrkgcisgpxtzzfmcl
+-- inventory_items already uses warehouse_id; we add warehouse_name safely.
 
--- Departments (normalized)
+-- Departments
 create table if not exists public.departments (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid,
@@ -19,20 +20,18 @@ create table if not exists public.departments (
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
-
 create unique index if not exists departments_name_uidx on public.departments (lower(name));
 
--- Employee department assignment is on employees.department (text) + optional department_id
 alter table if exists public.employees
   add column if not exists department text,
-  add column if not exists department_id uuid references public.departments(id) on delete set null,
+  add column if not exists department_id uuid,
   add column if not exists position text,
   add column if not exists salary numeric default 0,
   add column if not exists status text default 'Active';
 
 create index if not exists employees_department_idx on public.employees (department);
 
--- Products + inventory stock lines
+-- Products (if not already present)
 create table if not exists public.products (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid,
@@ -49,29 +48,30 @@ create table if not exists public.products (
   updated_at timestamptz default now()
 );
 
-create unique index if not exists products_sku_uidx on public.products (sku) where sku is not null and sku <> '';
+-- inventory_items may already exist with warehouse_id — only add missing text cols
+alter table if exists public.inventory_items
+  add column if not exists warehouse_name text,
+  add column if not exists product_name text,
+  add column if not exists sku text,
+  add column if not exists status text default 'Active';
 
-create table if not exists public.inventory_items (
-  id uuid primary key default gen_random_uuid(),
-  tenant_id uuid,
-  product_id uuid references public.products(id) on delete cascade,
-  product_name text,
-  sku text,
-  warehouse_name text default 'Main Store Njiru',
-  quantity numeric default 0,
-  unit_cost numeric default 0,
-  quantity_reserved numeric default 0,
-  quantity_incoming numeric default 0,
-  quantity_outgoing numeric default 0,
-  status text default 'Active',
-  created_at timestamptz default now(),
-  updated_at timestamptz default now()
-);
+-- Backfill warehouse_name from warehouses when possible
+do $$
+begin
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'warehouses') then
+    update public.inventory_items i
+    set warehouse_name = coalesce(i.warehouse_name, w.name, 'Main Store Njiru')
+    from public.warehouses w
+    where i.warehouse_id = w.id
+      and (i.warehouse_name is null or i.warehouse_name = '');
+  end if;
+  update public.inventory_items
+  set warehouse_name = 'Main Store Njiru'
+  where warehouse_name is null or warehouse_name = '';
+exception when undefined_table then
+  null;
+end $$;
 
-create index if not exists inventory_items_product_idx on public.inventory_items (product_id);
-create index if not exists inventory_items_warehouse_idx on public.inventory_items (warehouse_name);
-
--- Analytics helper views
 create or replace view public.analytics_department_headcount as
 select
   coalesce(nullif(trim(department), ''), 'Unassigned') as department,
@@ -80,9 +80,10 @@ select
 from public.employees
 group by 1;
 
-create or replace view public.analytics_inventory_by_warehouse as
+drop view if exists public.analytics_inventory_by_warehouse;
+create view public.analytics_inventory_by_warehouse as
 select
-  coalesce(warehouse_name, 'Main Store Njiru') as warehouse_name,
+  coalesce(nullif(trim(warehouse_name), ''), 'Main Store Njiru') as warehouse_name,
   count(*)::int as sku_count,
   coalesce(sum(quantity), 0) as total_qty,
   coalesce(sum(quantity * unit_cost), 0) as stock_value
