@@ -76,23 +76,68 @@ async function getNotificationsBrief(user) {
   }
 }
 
-async function getERPContext(module, user) {
+async function searchErpEntities(user, query) {
+  if (!invokeRpc || !query || query.length < 2) return '';
+  const q = String(query).toLowerCase();
+  const tokens = q.split(/\s+/).filter(t => t.length > 2).slice(0, 6);
+  if (!tokens.length) return '';
+  try {
+    const crm = await invokeRpc('getCRMWorkspaceData', user ? [user, {}] : [{}]);
+    const customers = Array.isArray(crm?.customers) ? crm.customers : [];
+    const leads = Array.isArray(crm?.leads) ? crm.leads : [];
+    const calls = Array.isArray(crm?.calls) ? crm.calls : [];
+    const match = (row) => {
+      const hay = `${row.name || ''} ${row.customerName || ''} ${row.phone || ''} ${row.email || ''} ${row.company || ''} ${row.salesOwner || ''} ${row.salesPerson || ''}`.toLowerCase();
+      return tokens.some(t => hay.includes(t));
+    };
+    const hitCustomers = customers.filter(match).slice(0, 8).map(c => ({
+      name: c.name, phone: c.phone, type: c.type, city: c.city,
+      salesOwner: c.salesOwner || c.salesPerson, status: c.status, orders: c.orders, balance: c.balance
+    }));
+    const hitLeads = leads.filter(match).slice(0, 5).map(l => ({
+      name: l.name, company: l.company, stage: l.stage, value: l.value, assignedTo: l.assignedTo
+    }));
+    const hitCalls = calls.filter(match).slice(0, 5).map(c => ({
+      name: c.customerName, stage: c.stage, date: c.date || c.followUpDate, comments: (c.comments || c.notes || '').slice(0, 80)
+    }));
+    if (!hitCustomers.length && !hitLeads.length && !hitCalls.length) return 'Search: no customer/lead/call matches for the query tokens.';
+    return [
+      hitCustomers.length ? `Matched customers:\n${JSON.stringify(hitCustomers, null, 2)}` : '',
+      hitLeads.length ? `Matched leads:\n${JSON.stringify(hitLeads, null, 2)}` : '',
+      hitCalls.length ? `Matched calls/follow-ups:\n${JSON.stringify(hitCalls, null, 2)}` : ''
+    ].filter(Boolean).join('\n');
+  } catch (e) {
+    return `Search unavailable: ${e.message}`;
+  }
+}
+
+async function getERPContext(module, user, query = '') {
   if (!invokeRpc) return '';
   try {
-    const fn = MODULE_RPC_MAP[String(module).toLowerCase()] || 'getDashboardData';
-    const [data, notifBrief] = await Promise.all([
+    const mod = String(module || 'dashboard').toLowerCase();
+    const fn = MODULE_RPC_MAP[mod] || 'getDashboardData';
+    const role = (user && (user.role || user.Role)) || 'Viewer';
+    const [data, notifBrief, searchHits] = await Promise.all([
       invokeRpc(fn, user ? [user] : []),
-      getNotificationsBrief(user)
+      getNotificationsBrief(user),
+      searchErpEntities(user, query)
     ]);
     const copy = JSON.parse(JSON.stringify(data || {}));
-    ['users', 'products', 'customers', 'inventory', 'sales', 'invoices', 'employees', 'rawMaterials', 'orders'].forEach(k => {
+    ['users', 'products', 'customers', 'inventory', 'sales', 'invoices', 'employees', 'rawMaterials', 'orders', 'leads', 'calls'].forEach(k => {
       if (Array.isArray(copy[k]) && copy[k].length > 40) {
         copy[k] = copy[k].slice(0, 40);
         copy[k]._truncated = true;
       }
     });
     const body = JSON.stringify(copy, null, 2).slice(0, 9000);
-    return `${body}\n\n--- ALERTS ---\n${notifBrief}`;
+    return [
+      `CURRENT PAGE MODULE: ${mod}`,
+      `USER ROLE: ${role}`,
+      `PAGE DATA (read-only):\n${body}`,
+      `--- NOTIFICATIONS (full access for guidance; actions only allowed on notifications page) ---`,
+      notifBrief,
+      searchHits ? `--- SEARCH RESULTS ---\n${searchHits}` : ''
+    ].filter(Boolean).join('\n\n');
   } catch (e) {
     return `ERP context unavailable: ${e.message}`;
   }
@@ -100,18 +145,37 @@ async function getERPContext(module, user) {
 
 // ─── System Prompt ────────────────────────────────────────────────────
 function systemPrompt() {
-  return `You are the FarmTrack ERP Copilot. You help users navigate, understand, and optimize their ERP. You are advisory only — you never create, edit, delete, or approve records. You explain workflows, interpret data, troubleshoot errors, and provide navigation guidance. Today's date is ${new Date().toISOString().slice(0, 10)}.
+  return `You are the FarmTrack ERP Guide Assistant for Farmtrack Biosciences Ltd.
+Today's date is ${new Date().toISOString().slice(0, 10)}.
 
-STYLE RULES (VERY IMPORTANT — FOLLOW STRICTLY):
-- Write like a calm colleague. Plain professional language only.
-- Every reply must be about TWO short paragraphs (2–4 sentences each). Never more.
-- Never invent long briefings, dump tables, or pad with filler.
-- Never use emojis or decorative symbols.
-- Never use markdown headers (# ## ###) or horizontal rules (--- ___ ***).
-- Bold is allowed only for a page name or one key figure.
-- If steps are needed, use at most 3 short numbered lines.
-- End with one short sentence offering a next step.
-- Match the user's length: short question → short answer.`;
+YOUR ROLE — GUIDE ONLY
+- You explain, search, and guide. You do not perform ERP work on behalf of the user.
+- You never create, edit, delete, approve, post, import, or send records — except when the user is on the Notifications page, where you may guide how to acknowledge, snooze, or prioritise alerts, and you may interpret alert content with full access to notification data.
+- Outside Notifications you only describe steps the human should take in the UI.
+
+PAGE-AWARE ANSWERS
+- Always answer for the CURRENT PAGE MODULE in the ERP context.
+- Prefer data from that module. If the user asks about another module, say which page to open and what they will see there.
+- Do not invent numbers. If data is missing or empty, say so clearly.
+
+DATABASE / SEARCH
+- You may use page data and search results (customers, leads, calls, stock, invoices, employees) that appear in the ERP context.
+- When the user asks for a customer or name, use SEARCH RESULTS and page data. If nothing matches, say no match was found.
+
+ROLE-BASED ACCESS
+- Respect USER ROLE in the context. Do not expose admin-only settings guidance to lower roles beyond what their page allows.
+- Never claim access to systems outside this ERP.
+
+TRUTH RULES
+- Speak the truth. If you do not know, say you do not know.
+- Never invent balances, stock, or employee records.
+- Never use filler greetings when the user already asked a question.
+
+STYLE
+- Plain professional language. No emojis.
+- No markdown headers (# ## ###) and no horizontal rules (---).
+- Prefer 1–3 short paragraphs. Use short bullet lists only when listing clear steps.
+- Be direct and practical.`;
 }
 
 // ─── Reply cleanup: strip emojis, excessive markdown, horizontal rules ─
@@ -265,10 +329,10 @@ module.exports = async (req, res) => {
 
   // Build messages — always include module data + notification/alert access
   let context = '';
-  try { context = await getERPContext(module, user); } catch (e) { context = ''; }
+  try { context = await getERPContext(module, user, query); } catch (e) { context = ''; }
   const safeHistory = Array.isArray(history) ? history.filter(m => m && m.role && m.content).slice(-10) : [];
   const messages = [
-    { role: 'system', content: systemPrompt() + '\nYou have access to notification/alert summaries in the ERP context. Prefer actionable help over greetings. Never repeat a generic welcome if the user already asked something.' },
+    { role: 'system', content: systemPrompt() + '\nGuide only. Full notification data access. Write/change actions only when CURRENT PAGE MODULE is notifications. Search customers/leads from context. Answer for the current page. Speak the truth. Role-limited.' },
     ...(context ? [{ role: 'system', content: `ERP Context (${module}):\n${context}` }] : []),
     ...safeHistory,
     { role: 'user', content: query || 'Summarize current alerts and what I should do next on this page.' },

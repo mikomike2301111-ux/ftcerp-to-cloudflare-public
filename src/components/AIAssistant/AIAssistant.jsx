@@ -51,6 +51,13 @@ function renderMarkdown(text) {
 }
 
 const MODULE_PROMPTS = {
+  notifications: [
+    'What alerts need attention now?',
+    'Summarise critical notifications',
+    'How do I acknowledge an alert?',
+    'Which alerts link to inventory?',
+    'What should I prioritise today?',
+  ],
   dashboard: [
     'Show me today\'s business summary',
     'What requires attention today?',
@@ -564,7 +571,7 @@ try {
             <textarea
               ref={textareaRef}
               rows={1}
-placeholder="Ask about workflows, reports, data, navigation, troubleshooting, or any ERP topic... You can write long questions for detailed responses."
+placeholder="Ask for guidance on this page — search a customer, explain a number, or review alerts. Guide only (actions only on Notifications)."
                value={input}
                onChange={e => setInput(e.target.value)}
                onKeyDown={handleKeyDown}
