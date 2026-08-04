@@ -9646,6 +9646,7 @@ territory: geo,
   getSalesReport: user => (reqRole(user), { summary: { totalRevenue: Math.round(data().sales.reduce((s, x) => s + num(x.total), 0)), totalOrders: data().sales.length, totalCost: Math.round(data().saleItems.reduce((s, x) => s + num(x.cost) * num(x.quantity), 0)), grossProfit: 0, margin: 0 } }),
   getProductionReport: user => (reqRole(user), { totals: { totalJobs: data().production.length, completed: data().production.filter(x => x.status === 'Completed').length, pending: data().production.filter(x => x.status === 'Pending').length } }),
   getFinanceWorkspaceData(user, filters = {}) {
+    try {
     reqRole(user);
     const d = data();
     ensureFinanceData();
@@ -9830,7 +9831,7 @@ territory: geo,
       accounts: d.financeAccounts,
       journals: allEntries,
       journalLines: allLines,
-      ledger: [...(d.financeManualLedger || []), ...d.generalLedger],
+      ledger: [...(Array.isArray(d.financeManualLedger) ? d.financeManualLedger : []), ...(Array.isArray(d.generalLedger) ? d.generalLedger : [])],
       receivables,
       payables,
       bankAccounts,
@@ -9857,15 +9858,28 @@ territory: geo,
       paymentAllocations: d.paymentAllocations || [],
       customerStatements: customerFinance,
       sourceFlows: [
-        { module: 'Sales', records: d.sales.length, journals: allEntries.filter(x => x.sourceModule === 'Sales').length, status: 'Posting' },
-        { module: 'Inventory', records: d.inventory.length, journals: allEntries.filter(x => x.sourceModule === 'Inventory').length, status: 'Posting' },
-        { module: 'Procurement', records: d.purchaseOrders.length, journals: allEntries.filter(x => x.sourceModule === 'Procurement').length, status: 'Posting' },
-        { module: 'Production', records: d.production.length, journals: allEntries.filter(x => x.sourceModule === 'Production').length, status: 'Posting' },
-        { module: 'Taxes', records: d.taxRecords.length, journals: allEntries.filter(x => x.sourceModule === 'Taxes').length, status: 'Posting' },
+        { module: 'Sales', records: (d.sales || []).length, journals: allEntries.filter(x => x.sourceModule === 'Sales').length, status: 'Posting' },
+        { module: 'Inventory', records: (d.inventory || []).length, journals: allEntries.filter(x => x.sourceModule === 'Inventory').length, status: 'Posting' },
+        { module: 'Procurement', records: (d.purchaseOrders || []).length, journals: allEntries.filter(x => x.sourceModule === 'Procurement').length, status: 'Posting' },
+        { module: 'Production', records: (d.production || []).length, journals: allEntries.filter(x => x.sourceModule === 'Production').length, status: 'Posting' },
+        { module: 'Taxes', records: (d.taxRecords || []).length, journals: allEntries.filter(x => x.sourceModule === 'Taxes').length, status: 'Posting' },
         { module: 'Banking', records: generatedBankTransactions.length, journals: allEntries.filter(x => x.sourceModule === 'Banking' || generatedBankTransactions.some(tx => tx.reference === x.reference)).length, status: 'Posting' },
         { module: 'Manual Inputs', records: manualEntries.length, journals: manualEntries.length, status: 'Posting' }
       ]
     };
+    } catch (err) {
+      console.error('getFinanceWorkspaceData', err && err.message);
+      return {
+        filters: { dateRange: 'This Fiscal Year', currency: 'KES', entity: 'Farmtrack Biosciences Ltd' },
+        overview: { revenue: 0, expenses: 0, grossProfit: 0, netProfit: 0, cashPosition: 0, accountsReceivable: 0, accountsPayable: 0, inventoryValue: 0, payrollCost: 0, taxLiability: 0, bankBalances: 0, operatingCashFlow: 0, budgetVariance: 0, monthlyProfit: 0, yearlyProfit: 0, financialHealthScore: 50 },
+        integrity: { journals: 0, lines: 0, unbalanced: 0, immutable: true },
+        trend: [], accounts: [], journals: [], journalLines: [], ledger: [], receivables: [], payables: [],
+        bankAccounts: [], bankTransactions: [], expenses: [], payroll: [], taxes: [], assets: [], budgets: [],
+        costCenters: [], forecasts: [], reports: [], audit: [], ai: [], customerFinance: [], agingSummary: [],
+        collectionQueue: [], paymentTermsSummary: [], statementPreview: [], quotations: [], payments: [],
+        sourceFlows: [], errorSafe: true, errorMessage: err && err.message
+      };
+    }
   },
   getAccountsData(user) {
     return api.getFinanceWorkspaceData(user);

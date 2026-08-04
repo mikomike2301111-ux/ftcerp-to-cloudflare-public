@@ -3166,7 +3166,7 @@ function InventoryWorkspace({ user, setPage, globalPeriod }) {
       )}
 
       <div className="sales-filter-bar">
-        <button><Calendar size={16} />{data.filters.dateRange}</button>
+        <button><Calendar size={16} />{(data.filters || filters || {}).dateRange || 'All dates'}</button>
         <button><Warehouse size={16} />{data.filters.warehouse}</button>
         <button><Package size={16} />{data.filters.category}</button>
         <button><CheckCircle2 size={16} />{data.filters.status}</button>
@@ -4008,7 +4008,7 @@ function ProcurementWorkspace({ user, setPage, globalPeriod }) {
       <div className="inline-actions"><CreateRequisitionButton user={user} module="purchasing" /></div>
 
       <div className="sales-filter-bar">
-        <button><Calendar size={16} />{data.filters.dateRange}</button>
+        <button><Calendar size={16} />{((data.filters || filters || {}).dateRange || "All dates")}</button>
         <button><Truck size={16} />{data.filters.supplier}</button>
         <button><Warehouse size={16} />{data.filters.warehouse}</button>
         <button><MapPin size={16} />{data.filters.county}</button>
@@ -6285,19 +6285,22 @@ function AccountsWorkspace({ user, setPage, globalPeriod }) {
   if (loading) return <Loading title="Accounts" />;
   if (error) return <ErrorState title="Accounts" error={error} />;
   const refresh = () => setRefreshKey(x => x + 1);
-  const cashPosition = data.overview.cashBalance ?? data.overview.cashPosition ?? 0;
+  const dataSafe = data || {};
+  const overview = dataSafe.overview || {};
+  const integrity = dataSafe.integrity || {};
+  const cashPosition = overview.cashBalance ?? overview.cashPosition ?? 0;
   const accountCards = [
-    ['Accounts Receivable', data.overview.accountsReceivable, ReceiptText, 'Customer balances still to collect'],
-    ['Accounts Payable', data.overview.accountsPayable, ClipboardCheck, 'Supplier bills and purchase liabilities'],
+    ['Accounts Receivable', overview.accountsReceivable || 0, ReceiptText, 'Customer balances still to collect'],
+    ['Accounts Payable', overview.accountsPayable || 0, ClipboardCheck, 'Supplier bills and purchase liabilities'],
     ['Cash Position', cashPosition, Landmark, 'Bank and cash accounts'],
-    ['Net Profit', data.overview.netProfit, LineChart, 'Posted income less posted costs']
+    ['Net Profit', overview.netProfit || 0, LineChart, 'Posted income less posted costs']
   ];
   const movementMetrics = ['revenue', 'expenses', 'cash', 'ar', 'ap', 'profit'];
   const riskRows = [
-    { area: 'Receivables', amount: data.overview.accountsReceivable, focus: `${(data.receivables || []).filter(row => num(row.balance) > 0).length} open invoices`, action: 'Collect and confirm paid' },
-    { area: 'Payables', amount: data.overview.accountsPayable, focus: `${(data.payables || []).filter(row => num(row.outstandingBalance) > 0).length} supplier bills`, action: 'Schedule payment' },
+    { area: 'Receivables', amount: overview.accountsReceivable || 0, focus: `${(data.receivables || []).filter(row => num(row.balance) > 0).length} open invoices`, action: 'Collect and confirm paid' },
+    { area: 'Payables', amount: overview.accountsPayable || 0, focus: `${(data.payables || []).filter(row => num(row.outstandingBalance) > 0).length} supplier bills`, action: 'Schedule payment' },
     { area: 'Cash', amount: cashPosition, focus: `${(data.bankTransactions || []).length} bank movements`, action: 'Reconcile deposits' },
-    { area: 'Profit', amount: data.overview.netProfit, focus: `${(data.journals || []).length} posted journals`, action: 'Review expense pressure' }
+    { area: 'Profit', amount: (overview.netProfit ?? data?.overview?.netProfit ?? 0), focus: `${(data.journals || []).length} posted journals`, action: 'Review expense pressure' }
   ];
   return (
     <section className="page-stack sales-workspace accounts-workspace">
@@ -6945,6 +6948,10 @@ function Finance({ user, setPage, globalPeriod }) {
   if (error) return <ErrorState title="Finance" error={error} />;
   const metrics = ['revenue', 'expenses', 'profit', 'cash', 'ar', 'ap'];
   const refresh = () => setRefreshKey(x => x + 1);
+  const dataSafe = data || {};
+  const overview = dataSafe.overview || {};
+  const integrity = dataSafe.integrity || { unbalanced: 0, journals: 0, lines: 0 };
+  const filters = dataSafe.filters || { dateRange: 'This Fiscal Year', currency: 'KES', entity: 'Farmtrack Biosciences Ltd' };
   return (
     <section className="page-stack sales-workspace finance-workspace">
       <div className="sales-hero finance-hero">
@@ -6954,9 +6961,9 @@ function Finance({ user, setPage, globalPeriod }) {
           <p>Sales, procurement, inventory, payments, expenses, tax, payroll, assets, budgets, and manual journals now flow into one balanced, auditable financial engine.</p>
         </div>
         <HeroStats items={[
-          [data.overview.cashPosition, 'Cash'],
-          [data.overview.netProfit, 'Net Profit'],
-          [data.integrity.unbalanced, 'Unbalanced']
+          [overview.cashPosition || 0, 'Cash'],
+          [overview.netProfit || 0, 'Net Profit'],
+          [integrity.unbalanced || 0, 'Unbalanced']
         ]} />
       </div>
 
@@ -6972,7 +6979,7 @@ function Finance({ user, setPage, globalPeriod }) {
       <FinanceHealthStrip data={data} />
 
       <div className="sales-filter-bar">
-        <button><Calendar size={16} />{data.filters.dateRange}</button>
+        <button><Calendar size={16} />{((data.filters || filters || {}).dateRange || "All dates")}</button>
         <button><CircleDollarSign size={16} />{data.filters.currency}</button>
         <button><BriefcaseBusiness size={16} />{data.filters.entity}</button>
         <button><CheckCircle2 size={16} />{data.integrity.journals} Journals / {data.integrity.lines} Lines</button>
@@ -6985,12 +6992,12 @@ function Finance({ user, setPage, globalPeriod }) {
       {view === 'dashboard' && (
         <>
           <div className="control-grid">
-            <KpiCard icon={CircleDollarSign} label="Total Revenue" value={currency(data.overview.revenue)} change={12} tone="green" />
-            <KpiCard icon={BriefcaseBusiness} label="Total Expenses" value={currency(data.overview.expenses)} change={-4} tone="red" />
-            <KpiCard icon={LineChart} label="Net Profit" value={currency(data.overview.netProfit)} change={9} tone="green" />
-            <KpiCard icon={Gauge} label="Health Score" value={`${data.overview.financialHealthScore}%`} change={5} tone="blue" />
-            <KpiCard icon={ReceiptText} label="Receivables" value={currency(data.overview.accountsReceivable)} change={-2} tone="blue" />
-            <KpiCard icon={ClipboardCheck} label="Payables" value={currency(data.overview.accountsPayable)} change={3} tone="red" />
+            <KpiCard icon={CircleDollarSign} label="Total Revenue" value={currency((overview.revenue ?? data?.overview?.revenue ?? 0))} change={12} tone="green" />
+            <KpiCard icon={BriefcaseBusiness} label="Total Expenses" value={currency((overview.expenses ?? data?.overview?.expenses ?? 0))} change={-4} tone="red" />
+            <KpiCard icon={LineChart} label="Net Profit" value={currency((overview.netProfit ?? data?.overview?.netProfit ?? 0))} change={9} tone="green" />
+            <KpiCard icon={Gauge} label="Health Score" value={`${(overview.financialHealthScore ?? data?.overview?.financialHealthScore ?? 0)}%`} change={5} tone="blue" />
+            <KpiCard icon={ReceiptText} label="Receivables" value={currency((overview.accountsReceivable ?? data?.overview?.accountsReceivable ?? 0))} change={-2} tone="blue" />
+            <KpiCard icon={ClipboardCheck} label="Payables" value={currency((overview.accountsPayable ?? data?.overview?.accountsPayable ?? 0))} change={3} tone="red" />
           </div>
           <div className="dashboard-grid">
             <Panel className="span-12 sales-main-chart" title="Financial Storyline" action={label(metric)}>
@@ -7093,10 +7100,10 @@ function Finance({ user, setPage, globalPeriod }) {
           <Panel className="span-6" title="Finance operating notes" action="From posted books">
             <SimpleTable
               rows={[
-                { focus: 'Cash position', value: currency(data.overview.cashPosition), note: 'Bank and cash combined' },
-                { focus: 'Net profit', value: currency(data.overview.netProfit), note: 'Income less posted costs' },
-                { focus: 'Receivables', value: currency(data.overview.accountsReceivable), note: 'Open customer balances' },
-                { focus: 'Payables', value: currency(data.overview.accountsPayable), note: 'Open supplier bills' },
+                { focus: 'Cash position', value: currency((overview.cashPosition ?? data?.overview?.cashPosition ?? 0)), note: 'Bank and cash combined' },
+                { focus: 'Net profit', value: currency((overview.netProfit ?? data?.overview?.netProfit ?? 0)), note: 'Income less posted costs' },
+                { focus: 'Receivables', value: currency((overview.accountsReceivable ?? data?.overview?.accountsReceivable ?? 0)), note: 'Open customer balances' },
+                { focus: 'Payables', value: currency((overview.accountsPayable ?? data?.overview?.accountsPayable ?? 0)), note: 'Open supplier bills' },
                 { focus: 'Unbalanced journals', value: data.integrity?.unbalanced || 0, note: 'Must be zero before close' }
               ]}
               columns={['focus', 'value', 'note']}
@@ -7121,7 +7128,7 @@ function FinanceHealthStrip({ data }) {
   const debit = (data.journalLines || []).reduce((sum, row) => sum + Number(row.debit || 0), 0);
   const credit = (data.journalLines || []).reduce((sum, row) => sum + Number(row.credit || 0), 0);
   const checks = [
-    ['Journal Balance', data.integrity.unbalanced === 0 ? 'Balanced' : `${data.integrity.unbalanced} exceptions`, data.integrity.unbalanced === 0],
+    ['Journal Balance', (integrity.unbalanced ?? data?.integrity?.unbalanced ?? 0) === 0 ? 'Balanced' : `${(integrity.unbalanced ?? data?.integrity?.unbalanced ?? 0)} exceptions`, (integrity.unbalanced ?? data?.integrity?.unbalanced ?? 0) === 0],
     ['Audit Lock', data.integrity.immutable ? 'Immutable' : 'Review needed', data.integrity.immutable],
     ['Trial Balance', Math.round(debit) === Math.round(credit) ? 'Debit = Credit' : 'Out of balance', Math.round(debit) === Math.round(credit)],
     ['Posting Coverage', `${data.sourceFlows.filter(x => x.journals > 0).length}/${data.sourceFlows.length} modules`, data.sourceFlows.filter(x => x.journals > 0).length >= 5]
@@ -7177,7 +7184,7 @@ function FinanceTrialBalance({ journalLines = [] }) {
   );
 }
 
-function FinanceControls({ data }) {
+function FinanceControls({ data = {} }) {
   const overdueAr = (data.receivables || []).filter(x => x.risk === 'High' || x.status === 'Overdue').length;
   const overdueAp = (data.payables || []).filter(x => x.risk === 'High' || x.paymentStatus === 'Overdue').length;
   const taxDue = (data.taxes || []).filter(x => x.status !== 'Filed' && x.status !== 'Paid').length;
@@ -7190,7 +7197,7 @@ function FinanceControls({ data }) {
   );
 }
 
-function FinanceReconciliation({ data }) {
+function FinanceReconciliation({ data = {} }) {
   const rows = (data.bankTransactions || []).map(row => ({
     ...row,
     expectedLedger: Number(row.deposit || 0) || Number(row.withdrawal || 0),
@@ -7200,7 +7207,7 @@ function FinanceReconciliation({ data }) {
     <div className="dashboard-grid">
       <Panel className="span-4" title="Bank Reconciliation Status">
         <div className="finance-control-list">
-          <article><span>Bank Accounts</span><strong>{data.bankAccounts.length}</strong><em>Active cash locations</em></article>
+          <article><span>Bank Accounts</span><strong>{(data.bankAccounts || []).length}</strong><em>Active cash locations</em></article>
           <article><span>Transactions</span><strong>{data.bankTransactions.length}</strong><em>Bank movements imported/generated</em></article>
           <article><span>Open Items</span><strong>{rows.filter(x => x.matchStatus === 'Open').length}</strong><em>Need matching or review</em></article>
         </div>
