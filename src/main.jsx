@@ -1934,7 +1934,7 @@ function DataPage({ user, title, icon, fn, columns }) {
 }
 
 function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
-  const tabs = ['overview', 'pipeline', 'customers', 'followups', 'paid-followups', 'leads', 'calls', 'activities', 'reports', 'analytics'];
+  const tabs = ['overview', 'pipeline', 'customers', 'followups', 'leads', 'calls', 'activities', 'reports', 'analytics'];
   const [refreshKey, setRefreshKey] = useState(0);
   const { loading, data, error } = useServer(user, 'getCRMWorkspaceData', [{ period: globalPeriod }], [refreshKey, globalPeriod]);
   const [view, setView] = useRouteTab('customers', tabs, 'overview');
@@ -1948,6 +1948,10 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
     customerId: '', customerName: '', phone: '', followUpDate: '', nextStep: '', comments: '', assignedTo: user?.name || '', stage: 'To Be Called'
   });
   const [followBusy, setFollowBusy] = useState(false);
+  const [receptionForm, setReceptionForm] = useState({
+    customerName: '', comments: '', transferredTo: '', receivedBy: user?.name || '', date: new Date().toISOString().slice(0, 10)
+  });
+  const [receptionBusy, setReceptionBusy] = useState(false);
   if (loading) return <Loading title="CRM" />;
   if (error) return <ErrorState title="CRM" error={error} />;
   const allCustomers = Array.isArray(data.customers) ? data.customers : [];
@@ -2060,8 +2064,8 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
         <>
           <div className="inline-actions">
             <button type="button" className="primary-action" onClick={() => setModal('customer')}><Plus size={16} /> Add Customer</button>
-            <button type="button" onClick={() => setModal('call')}><Phone size={16} /> Log Call for Customer</button>
-            <button type="button" onClick={() => setView('followups')}><Calendar size={16} /> Follow-ups</button>
+            <button type="button" onClick={() => setView('calls')}><Phone size={16} /> Reception calls</button>
+            <button type="button" onClick={() => setView('followups')}><Calendar size={16} /> Follow-up report</button>
           </div>
           <p className="crm-hint">Click any customer card to open the full detail overlay (orders, calls, deliveries, comments).</p>
           <CRMCustomersGrid customers={customers} query={query} setQuery={setQuery} onNew={() => setModal('customer')} onSelect={setSelectedCustomer} pageSize={10} />
@@ -2069,94 +2073,144 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
       )}
       {view === 'followups' && (
         <div className="dashboard-grid">
-          <Panel className="span-5" title="Log customer follow-up" action="Dates · numbers · comments">
+          <Panel className="span-5" title="New customer · Follow-up entry" action="DATE · NAME · COMMENTS · STAGE">
             <form className="settings-form-grid" onSubmit={async e => {
               e.preventDefault();
-              if (!followForm.customerName && !followForm.customerId) return alert('Select or type a customer');
-              if (!followForm.followUpDate) return alert('Follow-up date is required');
+              if (!followForm.customerName && !followForm.customerId) return alert('Customer name is required');
+              if (!followForm.followUpDate) return alert('Date is required');
               setFollowBusy(true);
               try {
                 const cust = allCustomers.find(c => c.id === followForm.customerId) || allCustomers.find(c => c.name === followForm.customerName);
                 await rpc('saveCall', [user, {
+                  recordType: 'followup',
                   customerId: followForm.customerId || cust?.id || '',
                   customerName: followForm.customerName || cust?.name || '',
                   phone: followForm.phone || cust?.phone || '',
-                  stage: followForm.stage || 'To Be Called',
+                  stage: followForm.stage || 'Follow-up',
                   followUpDate: followForm.followUpDate,
-                  notes: followForm.nextStep || '',
                   comments: followForm.comments || '',
+                  notes: followForm.comments || '',
                   assignedTo: followForm.assignedTo || user.name,
-                  date: new Date().toISOString().slice(0, 10)
+                  salesOwner: cust?.salesOwner || cust?.salesPerson || '',
+                  date: followForm.followUpDate || new Date().toISOString().slice(0, 10)
                 }]);
-                setFollowForm({ customerId: '', customerName: '', phone: '', followUpDate: '', nextStep: '', comments: '', assignedTo: user?.name || '', stage: 'To Be Called' });
+                setFollowForm({ customerId: '', customerName: '', phone: '', followUpDate: '', nextStep: '', comments: '', assignedTo: user?.name || '', stage: 'Follow-up' });
                 setRefreshKey(x => x + 1);
               } catch (err) { alert(err.message); }
               finally { setFollowBusy(false); }
             }}>
-              <label>Customer
-                <select value={followForm.customerId} onChange={e => {
-                  const c = allCustomers.find(x => x.id === e.target.value);
-                  setFollowForm(f => ({
-                    ...f,
-                    customerId: e.target.value,
-                    customerName: c?.name || f.customerName,
-                    phone: c?.phone || f.phone
-                  }));
-                }}>
-                  <option value="">Select customer</option>
-                  {allCustomers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+              <label>Date<input type="date" value={followForm.followUpDate} onChange={e => setFollowForm({ ...followForm, followUpDate: e.target.value })} required /></label>
+              <label>Name
+                <input list="crm-follow-customers" value={followForm.customerName} onChange={e => setFollowForm({ ...followForm, customerName: e.target.value })} placeholder="Customer name" required />
+                <datalist id="crm-follow-customers">{allCustomers.map(c => <option key={c.id} value={c.name} />)}</datalist>
               </label>
-              <label>Or type name<input value={followForm.customerName} onChange={e => setFollowForm({ ...followForm, customerName: e.target.value })} placeholder="Customer / shop name" /></label>
-              <label>Phone / WhatsApp<input value={followForm.phone} onChange={e => setFollowForm({ ...followForm, phone: e.target.value })} placeholder="+254..." /></label>
-              <label>Follow-up date<input type="date" value={followForm.followUpDate} onChange={e => setFollowForm({ ...followForm, followUpDate: e.target.value })} required /></label>
+              <label>Comments<textarea value={followForm.comments} onChange={e => setFollowForm({ ...followForm, comments: e.target.value })} rows={3} placeholder="What was discussed / next action" required /></label>
               <label>Stage
                 <select value={followForm.stage} onChange={e => setFollowForm({ ...followForm, stage: e.target.value })}>
-                  {['To Be Called', 'Pending Calls', 'To Be Meeting', 'Follow-up', 'Closed'].map(s => <option key={s} value={s}>{s}</option>)}
+                  {['Follow-up', 'To Be Called', 'Pending Calls', 'To Be Meeting', 'Closed'].map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </label>
-              <label>Assigned to<input value={followForm.assignedTo} onChange={e => setFollowForm({ ...followForm, assignedTo: e.target.value })} /></label>
-              <label>Next step<input value={followForm.nextStep} onChange={e => setFollowForm({ ...followForm, nextStep: e.target.value })} placeholder="Call back, send quote, visit..." /></label>
-              <label>Customer comments / notes<textarea value={followForm.comments} onChange={e => setFollowForm({ ...followForm, comments: e.target.value })} rows={3} placeholder="What the customer said, promises, concerns" /></label>
-              <button type="submit" className="primary-action" disabled={followBusy}>{followBusy ? 'Saving...' : 'Save follow-up'}</button>
+              <button type="submit" className="primary-action" disabled={followBusy}>{followBusy ? 'Saving…' : 'Save follow-up'}</button>
             </form>
           </Panel>
-          <Panel className="span-7" title="Scheduled follow-ups" action={`${crmAnalytics.followUps.length} open`}>
-            <CRMFollowUpBoard
-              rows={(allCalls || []).filter(row => row.followUpDate || ['To Be Called', 'Pending Calls', 'To Be Meeting', 'Follow-up'].includes(row.stage))}
-              onLogCall={() => setModal('call')}
-              onOpenCustomers={() => setView('customers')}
-            />
+          <Panel className="span-7" title="Follow-up report" action={`${(allCalls || []).filter(r => r.recordType === 'followup' || r.followUpDate || ['Follow-up', 'To Be Called', 'Pending Calls', 'To Be Meeting'].includes(r.stage)).length} rows`}>
+            <div className="table-wrap">
+              <table>
+                <thead><tr><th>Date</th><th>Name</th><th>Comments</th><th>Stage</th><th>Sales person</th></tr></thead>
+                <tbody>
+                  {(allCalls || [])
+                    .filter(r => r.recordType === 'followup' || r.followUpDate || ['Follow-up', 'To Be Called', 'Pending Calls', 'To Be Meeting', 'Closed'].includes(r.stage))
+                    .filter(r => r.recordType !== 'reception')
+                    .sort((a, b) => String(b.followUpDate || b.date || '').localeCompare(String(a.followUpDate || a.date || '')))
+                    .map(row => {
+                      const cust = allCustomers.find(c => c.id === row.customerId || c.name === row.customerName);
+                      const owner = row.salesOwner || cust?.salesOwner || cust?.salesPerson || row.assignedTo || '—';
+                      return (
+                        <tr key={row.id}>
+                          <td>{row.followUpDate || row.date || '—'}</td>
+                          <td>
+                            <strong>{row.customerName || '—'}</strong>
+                            {owner && owner !== '—' && <span className="crm-owner-tag" style={{ display: 'block', marginTop: 4 }}>Sales: {owner}</span>}
+                          </td>
+                          <td>{row.comments || row.notes || '—'}</td>
+                          <td><span className="status active">{row.stage || 'Follow-up'}</span></td>
+                          <td>{owner}</td>
+                        </tr>
+                      );
+                    })}
+                  {(allCalls || []).filter(r => r.recordType === 'followup' || r.followUpDate).length === 0 && (
+                    <tr><td colSpan={5}><div className="empty-state">No follow-ups yet. Add one on the left.</div></td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </Panel>
         </div>
       )}
-      {view === 'paid-followups' && (
-        <div className="dashboard-grid">
-          <Panel className="span-12" title="Follow-up · customers who have paid" action="Live payments + CRM">
-            <CRMFollowUpBoard
-              rows={(allCalls || []).filter(row => {
-                const name = row.customerName || '';
-                const paidCustomer = (allCustomers || []).some(c => (c.id === row.customerId || c.name === name) && (num(c.revenue) > 0 || num(c.balance) === 0 && num(c.orders) > 0));
-                const hasPayment = (data.orders || []).some(o => (o.customerName === name || o.customerId === row.customerId) && num(o.paid) > 0);
-                return (paidCustomer || hasPayment) && (row.followUpDate || row.comments || ['To Be Called', 'Pending Calls', 'Follow-up', 'To Be Meeting'].includes(row.stage));
-              })}
-              onLogCall={() => setModal('call')}
-              onOpenCustomers={() => setView('customers')}
-            />
-          </Panel>
-        </div>
-      )}
-      {view === 'leads' && <Panel title="Leads and Opportunities" action="Live"><SimpleTable rows={allLeads} columns={['name', 'company', 'phone', 'stage', 'assignedTo', 'status']} /></Panel>}
+
+{view === 'leads' && <Panel title="Leads and Opportunities" action="Live"><SimpleTable rows={allLeads} columns={['name', 'company', 'phone', 'stage', 'assignedTo', 'status']} /></Panel>}
       {view === 'calls' && (
-        <>
-          <div className="inline-actions">
-            <button type="button" className="primary-action" onClick={() => setModal('call')}><Phone size={16} /> Log New Call</button>
-            <button type="button" onClick={() => setModal('customer')}><Plus size={16} /> New Customer</button>
-          </div>
-          <CRMCallsListV2 user={user} calls={allCalls} onUpdated={() => setRefreshKey(x => x + 1)} onStageChange={async (id, stage) => { try { await rpc('saveCall', [user, { id, stage }]); setRefreshKey(x => x + 1); } catch (err) { alert(err.message); } }} />
-        </>
+        <div className="dashboard-grid">
+          <Panel className="span-5" title="Log call · Reception" action="DATE · NAME · COMMENTS · TRANSFERRED / RECEIVED">
+            <form className="settings-form-grid" onSubmit={async e => {
+              e.preventDefault();
+              if (!receptionForm.customerName) return alert('Name is required');
+              if (!receptionForm.comments) return alert('Comments are required');
+              setReceptionBusy(true);
+              try {
+                await rpc('saveCall', [user, {
+                  recordType: 'reception',
+                  customerName: receptionForm.customerName,
+                  comments: receptionForm.comments,
+                  notes: receptionForm.comments,
+                  transferredTo: receptionForm.transferredTo || '',
+                  receivedBy: receptionForm.receivedBy || user.name,
+                  assignedTo: receptionForm.transferredTo || receptionForm.receivedBy || user.name,
+                  stage: 'Reception',
+                  date: receptionForm.date || new Date().toISOString().slice(0, 10)
+                }]);
+                setReceptionForm({ customerName: '', comments: '', transferredTo: '', receivedBy: user?.name || '', date: new Date().toISOString().slice(0, 10) });
+                setRefreshKey(x => x + 1);
+              } catch (err) { alert(err.message); }
+              finally { setReceptionBusy(false); }
+            }}>
+              <label>Date<input type="date" value={receptionForm.date} onChange={e => setReceptionForm({ ...receptionForm, date: e.target.value })} required /></label>
+              <label>Name<input value={receptionForm.customerName} onChange={e => setReceptionForm({ ...receptionForm, customerName: e.target.value })} placeholder="Caller or customer name" required /></label>
+              <label>Comments<textarea value={receptionForm.comments} onChange={e => setReceptionForm({ ...receptionForm, comments: e.target.value })} rows={3} placeholder="What the call was about" required /></label>
+              <label>Transferred to<input value={receptionForm.transferredTo} onChange={e => setReceptionForm({ ...receptionForm, transferredTo: e.target.value })} placeholder="Staff member transferred to" list="crm-staff-list" /></label>
+              <label>Received by<input value={receptionForm.receivedBy} onChange={e => setReceptionForm({ ...receptionForm, receivedBy: e.target.value })} placeholder="Who took the call" list="crm-staff-list" /></label>
+              <datalist id="crm-staff-list">{['Edna', 'Njoroge', 'Joseph', 'Purity', user?.name].filter(Boolean).map(n => <option key={n} value={n} />)}</datalist>
+              <button type="submit" className="primary-action" disabled={receptionBusy}>{receptionBusy ? 'Saving…' : 'Save reception call'}</button>
+            </form>
+          </Panel>
+          <Panel className="span-7" title="Reception calls" action={`${(allCalls || []).filter(r => r.recordType === 'reception' || r.stage === 'Reception').length} calls`}>
+            <div className="table-wrap">
+              <table>
+                <thead><tr><th>Date</th><th>Name</th><th>Comments</th><th>Transferred to</th><th>Received by</th></tr></thead>
+                <tbody>
+                  {(allCalls || [])
+                    .filter(r => r.recordType === 'reception' || r.stage === 'Reception')
+                    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
+                    .map(row => (
+                      <tr key={row.id}>
+                        <td>{row.date || '—'}</td>
+                        <td><strong>{row.customerName || '—'}</strong></td>
+                        <td>{row.comments || row.notes || '—'}</td>
+                        <td>{row.transferredTo || '—'}</td>
+                        <td>{row.receivedBy || row.assignedTo || '—'}</td>
+                      </tr>
+                    ))}
+                  {(allCalls || []).filter(r => r.recordType === 'reception' || r.stage === 'Reception').length === 0 && (
+                    <tr><td colSpan={5}><div className="empty-state">No reception calls yet.</div></td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
+        </div>
       )}
-      {view === 'activities' && <Panel title="Activity Timeline"><CRMActivityList activities={data.activities} /></Panel>}
+
+{view === 'activities' && <Panel title="Activity Timeline"><CRMActivityList activities={data.activities} /></Panel>}
       {view === 'reports' && <CRMReportsCenter user={user} data={data} globalPeriod={globalPeriod} onUpdated={() => setRefreshKey(x => x + 1)} />}
       {view === 'analytics' && (
         <div className="dashboard-grid">
@@ -2392,9 +2446,9 @@ function CRMCustomersGrid({ customers, query, setQuery, title = 'Customer Direct
             <small>{customer.phone} · {customer.email}</small>
             <div><b>—</b><i>{customer.orders || 0} orders</i></div>
             <small>{customer.lastOrderNo ? `Last order ${customer.lastOrderNo}` : 'No purchases yet'}</small>
-            {(customer.salesOwner || customer.salesPerson) && (
-              <span className="crm-owner-tag" title="Sales owner">Sales: {customer.salesOwner || customer.salesPerson}</span>
-            )}
+            <span className="crm-owner-tag" title="Sales person who owns this customer" style={{ display: 'inline-block', marginTop: 6, background: '#eef2ff', color: '#3730a3', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>
+              {customer.salesOwner || customer.salesPerson ? `Sales: ${customer.salesOwner || customer.salesPerson}` : 'Sales: Unassigned'}
+            </span>
             <mark>{customer.health || customer.status || 'Active'}</mark>
           </article>
         ))}

@@ -6648,6 +6648,7 @@ const api = {
     if (!customer && row.customerName) customer = (d.customers || []).find(c => String(c.name).toLowerCase() === String(row.customerName).toLowerCase());
     const payload = {
       ...row,
+      recordType: clean(row.recordType) || (clean(row.stage) === 'Reception' ? 'reception' : (row.followUpDate ? 'followup' : 'call')),
       customerId: customer?.id || row.customerId || '',
       customerName: customer?.name || clean(row.customerName) || 'Walk-in',
       phone: clean(row.phone || customer?.phone || ''),
@@ -6656,7 +6657,9 @@ const api = {
       comments: clean(row.comments || ''),
       followUpDate: dateOnly(row.followUpDate || '') || '',
       assignedTo: clean(row.assignedTo) || u.name,
-      salesOwner: customer?.salesOwner || customer?.salesPerson || u.name,
+      transferredTo: clean(row.transferredTo || ''),
+      receivedBy: clean(row.receivedBy || row.assignedTo || u.name),
+      salesOwner: clean(row.salesOwner) || customer?.salesOwner || customer?.salesPerson || u.name,
       outcome: clean(row.outcome || ''),
       date: dateOnly(row.date) || today(),
       updatedAt: new Date().toISOString()
