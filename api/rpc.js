@@ -6646,7 +6646,22 @@ const api = {
   saveSupplier(user, row) { const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.PROCUREMENT); return save('suppliers', u, row); },
   deleteSupplier: (user, id) => (reqRole(user, ROLES.ADMIN, ROLES.MANAGER), softDelete('suppliers', id)),
   getLeads: user => (reqRole(user), list('leads')),
-  saveLead(user, row) { const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD); return save('leads', u, row); },
+  saveLead(user, row = {}) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD);
+    const payload = {
+      ...row,
+      name: clean(row.name) || clean(row.company) || 'Lead',
+      company: clean(row.company || ''),
+      phone: clean(row.phone || ''),
+      email: clean(row.email || ''),
+      stage: clean(row.stage) || 'New',
+      status: clean(row.status) || 'Active',
+      value: num(row.value || row.estimatedValue),
+      assignedTo: clean(row.assignedTo) || u.name,
+      source: clean(row.source) || 'Manual'
+    };
+    return save('leads', u, payload);
+  },
   deleteLead: (user, id) => (reqRole(user, ROLES.ADMIN, ROLES.MANAGER), softDelete('leads', id)),
   getCalls: user => (reqRole(user), list('calls')),
   saveCall(user, row = {}) {

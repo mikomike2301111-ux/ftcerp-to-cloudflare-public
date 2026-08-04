@@ -2064,7 +2064,18 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
         </>
       )}
 
-      {view === 'pipeline' && <CRMPipelineBoard leads={allLeads} stages={pipelineStages} onMoveLead={async (id, stage) => { try { await rpc('saveLead', [user, { id, stage }]); setRefreshKey(x => x + 1); } catch (err) { alert(err.message); } }} />}
+      {view === 'pipeline' && <CRMPipelineBoard
+        leads={allLeads}
+        stages={pipelineStages}
+        onMoveLead={async (id, stage) => {
+          await rpc('saveLead', [user, { id, stage }]);
+          setRefreshKey(x => x + 1);
+        }}
+        onAddLead={async (row) => {
+          await rpc('saveLead', [user, row]);
+          setRefreshKey(x => x + 1);
+        }}
+      />}
       {view === 'customers' && (
         <>
           <div className="inline-actions">
@@ -2219,29 +2230,39 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
       {view === 'reports' && <CRMReportsCenter user={user} data={data} globalPeriod={globalPeriod} onUpdated={() => setRefreshKey(x => x + 1)} />}
       {view === 'analytics' && (
         <div className="dashboard-grid">
-          <Panel className="span-6" title="Customer Growth" action={globalPeriod}><SalesTrendChart data={data.monthly} metric="customers" /></Panel>
-          <Panel className="span-6" title="Opportunity Value" action={globalPeriod}><SalesTrendChart data={data.monthly} metric="opportunities" /></Panel>
-          <Panel className="span-4" title="Pipeline Stage Health"><SimpleTable rows={crmAnalytics.stageRows} columns={['stage', 'opportunities']} /></Panel>
-          <Panel className="span-4" title="Follow-up Pressure"><SimpleTable rows={crmAnalytics.followUps} columns={['customerName', 'phone', 'stage', 'followUpDate', 'assignedTo']} /></Panel>
-          <Panel className="span-4" title="Delivery Watch"><SimpleTable rows={crmAnalytics.deliveryRows} columns={['deliveryNo', 'customerName', 'destination', 'status', 'arrival']} /></Panel>
-          <Panel className="span-6" title="Customer Profitability"><SimpleTable rows={data.topCustomers} columns={['name', 'city', 'type', 'orders', 'health']} /></Panel>
-          <Panel className="span-6" title="Recent Purchase Signals"><SimpleTable rows={crmAnalytics.purchaseRows} columns={['saleNo', 'customerName', 'deliveryStatus']} /></Panel>
-          <Panel className="span-6" title="Churn Prediction"><div className="metric-stack">
-            {(data.customers || []).slice(0, 8).map(c => {
-              const daysSinceOrder = Math.min(365, Math.round((Date.now() - new Date(c.lastOrderDate || c.createdAt || Date.now()).getTime()) / 86400000));
-              const churnRisk = daysSinceOrder > 90 ? 'High' : daysSinceOrder > 45 ? 'Medium' : 'Low';
-              const riskColor = churnRisk === 'High' ? '#d92d20' : churnRisk === 'Medium' ? '#f79009' : '#12b76a';
-              return <div key={c.id}><span>{c.name}</span><strong style={{ color: riskColor }}>{churnRisk}</strong><em>{daysSinceOrder}d since order</em></div>;
-            })}
-          </div></Panel>
-          <Panel className="span-6" title="Customer Lifetime Value (CLV)"><div className="metric-stack">
-            {(data.customers || []).filter(c => num(c.balance) > 0 || num(c.creditLimit) > 0).slice(0, 8).map(c => {
-              const clv = num(c.creditLimit) * 0.4 + num(c.balance) * 2;
-              return <div key={c.id}><span>{c.name}</span><strong>{currency(clv)}</strong><em>{c.type} · credit {currency(num(c.creditLimit))}</em></div>;
-            })}
-          </div></Panel>
+          <Panel className="span-12" title="CRM Analytics" action={globalPeriod}>
+            <p style={{ margin: '0 0 8px', color: '#667085', fontSize: 13 }}>Live from customers, leads, calls, and sales for this period. Empty charts mean no records yet — add data in CRM tabs.</p>
+          </Panel>
+          <Panel className="span-6" title="Customer growth / revenue" action={globalPeriod}>
+            <SalesTrendChart data={Array.isArray(data.monthly) ? data.monthly : []} metric="revenue" />
+          </Panel>
+          <Panel className="span-6" title="Opportunities" action={globalPeriod}>
+            <SalesTrendChart data={Array.isArray(data.monthly) ? data.monthly : []} metric="opportunities" />
+          </Panel>
+          <Panel className="span-4" title="Pipeline by stage">
+            <SimpleTable rows={crmAnalytics.stageRows || []} columns={['stage', 'opportunities', 'value']} />
+          </Panel>
+          <Panel className="span-4" title="Follow-up pressure">
+            <SimpleTable rows={crmAnalytics.followUps || []} columns={['customerName', 'stage', 'followUpDate', 'assignedTo']} />
+          </Panel>
+          <Panel className="span-4" title="Delivery watch">
+            <SimpleTable rows={crmAnalytics.deliveryRows || []} columns={['deliveryNo', 'customerName', 'status', 'arrival']} />
+          </Panel>
+          <Panel className="span-6" title="Top customers">
+            <SimpleTable rows={Array.isArray(data.topCustomers) ? data.topCustomers : []} columns={['name', 'city', 'type', 'orders', 'health']} />
+          </Panel>
+          <Panel className="span-6" title="Recent purchases">
+            <SimpleTable rows={crmAnalytics.purchaseRows || []} columns={['saleNo', 'customerName', 'deliveryStatus']} />
+          </Panel>
+          <Panel className="span-6" title="Funnel">
+            <SimpleTable rows={Array.isArray(data.funnel) ? data.funnel : (crmAnalytics.stageRows || []).map(r => ({ stage: r.stage, count: r.opportunities, value: r.value }))} columns={['stage', 'count', 'value']} />
+          </Panel>
+          <Panel className="span-6" title="Call activity">
+            <SimpleTable rows={(allCalls || []).slice(0, 12).map(c => ({ date: c.date, name: c.customerName, stage: c.stage, type: c.recordType || 'call' }))} columns={['date', 'name', 'stage', 'type']} />
+          </Panel>
         </div>
       )}
+
       {modal && <CRMInputModal user={user} type={modal.type || modal} customers={data.customers} preset={modal.preset} onClose={() => setModal(null)} onSaved={onSaved} />}
       {selectedCustomer && (
         <CRMCustomerDetail
@@ -2268,59 +2289,123 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
   );
 }
 
-function CRMPipelineBoard({ leads, stages, onMoveLead }) {
-  const [localLeads, setLocalLeads] = useState(leads || []);
+function CRMPipelineBoard({ leads = [], stages = [], onMoveLead, onAddLead }) {
+  const [localLeads, setLocalLeads] = useState(Array.isArray(leads) ? leads : []);
   const [dragId, setDragId] = useState(null);
   const [dragOver, setDragOver] = useState(null);
-  useEffect(() => setLocalLeads(leads || []), [leads]);
+  const [adding, setAdding] = useState(false);
+  const [form, setForm] = useState({ name: '', company: '', phone: '', value: 0, stage: stages[0] || 'New', assignedTo: '' });
+  useEffect(() => setLocalLeads(Array.isArray(leads) ? leads : []), [leads]);
+
   const handleDrop = async (stage) => {
     const id = dragId;
-    if (id && onMoveLead) {
-      const previous = localLeads;
-      setLocalLeads(rows => rows.map(lead => lead.id === id ? { ...lead, stage } : lead));
-      try {
-        await onMoveLead(id, stage);
-      } catch {
-        setLocalLeads(previous);
-      }
+    if (!id || !onMoveLead) { setDragId(null); setDragOver(null); return; }
+    const previous = localLeads;
+    setLocalLeads(rows => rows.map(lead => lead.id === id ? { ...lead, stage } : lead));
+    try {
+      await onMoveLead(id, stage);
+    } catch (err) {
+      setLocalLeads(previous);
+      alert(err?.message || 'Could not move lead');
     }
     setDragId(null);
     setDragOver(null);
   };
+
+  const moveTo = async (id, stage) => {
+    if (!onMoveLead) return;
+    const previous = localLeads;
+    setLocalLeads(rows => rows.map(lead => lead.id === id ? { ...lead, stage } : lead));
+    try {
+      await onMoveLead(id, stage);
+    } catch (err) {
+      setLocalLeads(previous);
+      alert(err?.message || 'Could not move lead');
+    }
+  };
+
+  async function submitLead(e) {
+    e.preventDefault();
+    if (!form.name) return alert('Lead name is required');
+    if (!onAddLead) return;
+    try {
+      await onAddLead({ ...form, value: Number(form.value) || 0, status: 'Active' });
+      setForm({ name: '', company: '', phone: '', value: 0, stage: stages[0] || 'New', assignedTo: '' });
+      setAdding(false);
+    } catch (err) {
+      alert(err?.message || 'Could not add lead');
+    }
+  }
+
   return (
-    <div className="crm-kanban">
-      {stages.map(stage => {
-        const rows = localLeads
-          .filter(lead => lead.stage === stage || (stage === 'New' && lead.stage === 'Lead'))
-          .sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')));
-        return (
-          <section
-            key={stage}
-            className={dragOver === stage ? 'drop-active' : ''}
-            onDragOver={e => { e.preventDefault(); setDragOver(stage); }}
-            onDragLeave={() => setDragOver(null)}
-            onDrop={() => handleDrop(stage)}
-          >
-            <header><strong>{stage}</strong><span>{rows.length}</span></header>
-            {rows.map(lead => (
-              <article
-                key={lead.id}
-                className={stage === 'Lost' ? 'lost' : stage === 'Won' ? 'won' : ''}
-                draggable
-                onDragStart={() => setDragId(lead.id)}
-                onDragEnd={() => { setDragId(null); setDragOver(null); }}
+    <div className="dashboard-grid">
+      <Panel className="span-12" title="Sales pipeline" action={
+        <button type="button" className="mini-action" onClick={() => setAdding(x => !x)}><Plus size={14} /> {adding ? 'Close' : 'Add lead'}</button>
+      }>
+        {adding && (
+          <form className="settings-form-grid" onSubmit={submitLead} style={{ marginBottom: 12, gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))' }}>
+            <label>Name<input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required placeholder="Lead / contact name" /></label>
+            <label>Company<input value={form.company} onChange={e => setForm({ ...form, company: e.target.value })} placeholder="Business name" /></label>
+            <label>Phone<input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} /></label>
+            <label>Value (KES)<input type="number" value={form.value} onChange={e => setForm({ ...form, value: e.target.value })} /></label>
+            <label>Stage
+              <select value={form.stage} onChange={e => setForm({ ...form, stage: e.target.value })}>
+                {stages.map(s => <option key={s}>{s}</option>)}
+              </select>
+            </label>
+            <label>Assigned to<input value={form.assignedTo} onChange={e => setForm({ ...form, assignedTo: e.target.value })} placeholder="Sales person" /></label>
+            <button type="submit" className="primary-action">Save lead</button>
+          </form>
+        )}
+        <div className="crm-kanban">
+          {stages.map(stage => {
+            const rows = localLeads
+              .filter(lead => {
+                const s = lead.stage || 'New';
+                return s === stage || (stage === 'New' && (s === 'Lead' || s === 'New'));
+              })
+              .sort((a, b) => String(b.updatedAt || b.createdAt || '').localeCompare(String(a.updatedAt || a.createdAt || '')));
+            const stageValue = rows.reduce((sum, row) => sum + Number(row.value || 0), 0);
+            return (
+              <section
+                key={stage}
+                className={dragOver === stage ? 'drop-active' : ''}
+                onDragOver={e => { e.preventDefault(); setDragOver(stage); }}
+                onDragLeave={() => setDragOver(null)}
+                onDrop={() => handleDrop(stage)}
               >
-                <div className="drag-handle">⠿</div>
-                <strong>{lead.name}</strong>
-                <span>{lead.company || lead.email || 'Opportunity'}</span>
-                <em>{lead.phone}</em>
-                <b>—</b>
-                <small>{lead.assignedTo || 'Unassigned'} · {lead.status || 'Active'}</small>
-              </article>
-            ))}
-          </section>
-        );
-      })}
+                <header>
+                  <strong>{stage}</strong>
+                  <span>{rows.length}</span>
+                </header>
+                <small style={{ display: 'block', color: '#667085', marginBottom: 8 }}>{stageValue ? `KES ${stageValue.toLocaleString('en-KE')}` : 'No value'}</small>
+                {rows.length === 0 && <div className="empty-state" style={{ padding: 8, fontSize: 12 }}>Drop leads here or add one</div>}
+                {rows.map(lead => (
+                  <article
+                    key={lead.id}
+                    className={stage === 'Lost' ? 'lost' : stage === 'Won' ? 'won' : ''}
+                    draggable
+                    onDragStart={() => setDragId(lead.id)}
+                    onDragEnd={() => { setDragId(null); setDragOver(null); }}
+                  >
+                    <div className="drag-handle">⠿</div>
+                    <strong>{lead.name || 'Lead'}</strong>
+                    <span>{lead.company || lead.email || 'Opportunity'}</span>
+                    <em>{lead.phone || '—'}</em>
+                    <b>{Number(lead.value) ? `KES ${Number(lead.value).toLocaleString('en-KE')}` : '—'}</b>
+                    <small>{lead.assignedTo || 'Unassigned'}</small>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+                      {stages.filter(s => s !== stage).slice(0, 3).map(s => (
+                        <button key={s} type="button" className="mini-action" style={{ fontSize: 11, padding: '2px 6px' }} onClick={() => moveTo(lead.id, s)}>{s}</button>
+                      ))}
+                    </div>
+                  </article>
+                ))}
+              </section>
+            );
+          })}
+        </div>
+      </Panel>
     </div>
   );
 }
