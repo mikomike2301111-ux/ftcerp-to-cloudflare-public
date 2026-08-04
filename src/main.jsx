@@ -4243,25 +4243,33 @@ function SalesModule({ user, setPage, globalPeriod }) {
           <h1>Sales Workspace</h1>
           <p>Pipeline, quotes, orders, invoices, team, territory, reports, and analytics operating as one shared workspace.</p>
         </div>
-        <HeroStats items={
-          [[currency(data.overview.revenue), 'Revenue'],
-          [data.overview.orders, 'Orders'],
-          [currency(data.overview.pipeline), 'Pipeline']]
-        } />
+        <HeroStats items={[
+          [currency(overview.revenue || 0), 'Revenue'],
+          [overview.orders || 0, 'Orders'],
+          [currency(overview.pipeline || 0), 'Pipeline']
+        ]} />
       </div>
       <div className="inline-actions">
         <button onClick={() => setSaleFormOpen(true)}><Plus size={16} /> New Sales Order</button>
         <button onClick={() => { setView('quotes'); setQuoteFormOpen(true); }}><FileText size={16} /> New Quote</button>
         <button onClick={() => setView('orders')}><Truck size={16} /> Delivery Queue</button>
+        <button onClick={() => setView('visits')}><MapPin size={16} /> Visits</button>
+        <button onClick={async () => {
+          try {
+            const r = await rpc('pullAllSalesFieldData', [user, {}]);
+            alert(r?.message || `Synced visits ${r?.visitsImported || 0}, orders ${r?.ordersImported || 0}`);
+            setRefreshKey(x => x + 1);
+          } catch (e) { alert(e.message || 'Sheet sync failed'); }
+        }}><RefreshCw size={16} /> Sync Sheets</button>
         <button onClick={() => setView('reports')}><FileText size={16} /> Sales Reports</button>
         <CreateRequisitionButton user={user} module="sales" />
       </div>
 
       <div className="sales-filter-bar">
-        <button><Calendar size={16} />{data.filters.dateRange}</button>
-        <button><MapPin size={16} />{data.filters.territory}</button>
-        <button><Users size={16} />{data.filters.salesRep}</button>
-        <button><Package size={16} />{data.filters.product}</button>
+        <button><Calendar size={16} />{(data.filters || {}).dateRange || 'All dates'}</button>
+        <button><MapPin size={16} />{(data.filters || {}).territory || 'All Kenya'}</button>
+        <button><Users size={16} />{(data.filters || {}).salesRep || 'All Reps'}</button>
+        <button><Package size={16} />{(data.filters || {}).product || 'All Products'}</button>
       </div>
 
       <div className="sales-tabs">
@@ -4346,10 +4354,10 @@ function SalesImportWorkspace({ user, products = [], onDone }) {
   async function syncFromSheet() {
     setSyncing(true); setSyncMsg('');
     try {
-      const res = await rpc('pullSalesFromSheet', [user, {}]);
-      const tabInfo = (res.tabs || []).map(t => `${t.sheetName}: ${t.rows}`).join(', ');
-      if (res.imported > 0) { setSyncMsg(`Synced ${res.imported} order(s) from Google Sheet (${tabInfo}).`); onDone?.(); }
-      else setSyncMsg(res.message || `No new orders found. Tabs: ${tabInfo}`);
+      const res = await rpc('pullAllSalesFieldData', [user, {}]);
+      const msg = res.message || `Synced visits ${res.visitsImported || 0}, orders ${res.ordersImported || 0}`;
+      setSyncMsg(msg);
+      if ((res.ordersImported || 0) + (res.visitsImported || 0) > 0) onDone?.();
     } catch (err) { setSyncMsg('Sync failed: ' + (err.message || 'unknown error')); }
     finally { setSyncing(false); }
   }
@@ -4600,9 +4608,9 @@ function SalesVisitsWorkspace({ user, visits = [], salesPeople = [], onDone }) {
   async function syncFromSheet() {
     setSyncing(true); setSyncMsg('');
     try {
-      const res = await rpc('pullVisitsFromSheet', [user, {}]);
-      if (res.imported > 0) { setSyncMsg(`Synced ${res.imported} visit(s) from Google Sheet.`); onDone?.(); }
-      else setSyncMsg(res.message || 'No new visits found in the sheet.');
+      const res = await rpc('pullAllSalesFieldData', [user, {}]);
+      setSyncMsg(res.message || `Synced ${res.visitsImported || 0} visits from all rep sheets.`);
+      if ((res.visitsImported || 0) > 0) onDone?.();
     } catch (err) { setSyncMsg('Sync failed: ' + (err.message || 'unknown error')); }
     finally { setSyncing(false); }
   }

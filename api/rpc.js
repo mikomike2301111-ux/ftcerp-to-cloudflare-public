@@ -1408,6 +1408,26 @@ const STATE_ID = 'farmtrack-demo';
 const TENANT_SLUG = 'farmtrack-demo';
 const TENANT_ID = uuidFromString(`tenant:${TENANT_SLUG}`);
 const GOOGLE_SHEETS_DEFAULT_ID = process.env.GOOGLE_SHEETS_DEFAULT_ID || '1ZGX71pFHkJPNA17s5LRCFT_T58eskby9zpj8RPHveYA';
+
+
+/** Field sales Google Forms → Sheets (visits per rep + shared sales-order workbook) */
+const SALES_FIELD_SOURCES = {
+  visits: [
+    { rep: 'Edna', spreadsheetId: '1CvpTd26OLLOfSbVT3rLEQt62DI_SlEFE3OujFIK3m2k', gid: '1418179458', formUrl: 'https://docs.google.com/forms/d/e/1FAIpQLSfpabQbCcjmPflzWccaqXR62ZNsP9-2ImEi6dBrc7zEbue4mg/viewform' },
+    { rep: 'Joseph', spreadsheetId: '18PmXlxErj5t7dGc1I1fKHvk29c4tSLupZW8jU7b-4OE', gid: '6226406', formUrl: 'https://docs.google.com/forms/d/e/1FAIpQLSdfgMyHbdqlRnemBQjVeLhEUXWkB6Aw1YKIGTLY2rXiUNcn1Q/viewform' },
+    { rep: 'Njoroge', spreadsheetId: '1EkoTqKTp4DrBm-wE_V4lApnkIeabYC9Tot7LWykumPo', gid: '2009153025', formUrl: 'https://docs.google.com/forms/d/e/1FAIpQLSfknUdFLoHPmOCpPDqWK6HslNu5KWymxG0E1QVrYLg_8zEeEw/viewform' },
+    { rep: 'Purity', spreadsheetId: '1Dt_VDE4nepDmDEWRPwF48Qv3WQB6GQZMIbCPP1bdzKs', gid: '1073923333', formUrl: 'https://docs.google.com/forms/d/e/1FAIpQLSdoowdRLmCaSo5lbSDsHYqVhM67l07d4_jUQGl0er2MZ6nN2g/viewform' }
+  ],
+  orders: {
+    spreadsheetId: process.env.SALES_SHEET_ID || '1Ki9B7NjGLaJaKvEfJbicf8pK3IPOafoyF084QdK7QMs',
+    tabs: [
+      { rep: 'Edna', gid: '372670467', formUrl: 'https://docs.google.com/forms/d/e/1FAIpQLSeFA0zeHIWv3e55nHCSC5Id54NQcUYLBmPgqWYt_fSodZuRvQ/viewform' },
+      { rep: 'Joseph', gid: '220358081', formUrl: 'https://docs.google.com/forms/d/e/1FAIpQLSdg7RCVcaEzWrw_9WG_4VnWfuA_-3z8QJnyDxo_b4FVwjUHaA/viewform' },
+      { rep: 'Njoroge', gid: '702603212', formUrl: 'https://docs.google.com/forms/d/e/1FAIpQLSe1FgRR1F35rfzViwnjmpu2JLYIFaj8yP0M7oX_g2K5WZIYXg/viewform' },
+      { rep: 'Purity', gid: '603206959', formUrl: 'https://docs.google.com/forms/d/e/1FAIpQLSeqYnx70crMfEy1d3zxw22S2o-CsZ--A9tMz4u-2-Ygv55faw/viewform' }
+    ]
+  }
+};
 const GOOGLE_SHEETS_SERVICE_EMAIL = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || (() => {
   try {
     const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
@@ -5859,8 +5879,9 @@ const api = {
       serviceAccountConfigured: Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_CLIENT_EMAIL || process.env.GOOGLE_PRIVATE_KEY),
       serviceAccountEmail: GOOGLE_SHEETS_SERVICE_EMAIL,
       defaultSpreadsheetId: ERP_SHEET_ID,
-      visitsSheetId: process.env.VISITS_SHEET_ID || '1R7X0asU4pHy4--YBb1A0JVZ_wuDWVi5A9pfq7tFUQHo',
-      salesSheetId: process.env.SALES_SHEET_ID || '1Ki9B7NjGLaJaKvEfJbicf8pK3IPOafoyF084QdK7QMs',
+      visitsSheetId: process.env.VISITS_SHEET_ID || SALES_FIELD_SOURCES.visits[0].spreadsheetId,
+      salesSheetId: SALES_FIELD_SOURCES.orders.spreadsheetId,
+      fieldSources: SALES_FIELD_SOURCES,
       note: `Google Sheets uses a server-side service account. Share the target Google Sheet with ${GOOGLE_SHEETS_SERVICE_EMAIL} before syncing.`
     };
   },
@@ -6692,7 +6713,11 @@ const api = {
   },
   async pullVisitsFromSheet(user, options = {}) {
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD);
-    const VISITS_SHEET_ID = options.spreadsheetId || process.env.VISITS_SHEET_ID || '1R7X0asU4pHy4--YBb1A0JVZ_wuDWVi5A9pfq7tFUQHo';
+    if (!options.spreadsheetId) {
+      // Pull all four field-visit workbooks
+      return api.pullAllSalesFieldData(user, { ...options, ordersOnly: false });
+    }
+    const VISITS_SHEET_ID = options.spreadsheetId || process.env.VISITS_SHEET_ID || SALES_FIELD_SOURCES.visits[0].spreadsheetId;
     const sheetName = options.sheetName || 'Form Responses 1';
     const service = new GoogleSheetsService();
     const result = await service.readObjects(VISITS_SHEET_ID, sheetName);
@@ -7915,6 +7940,74 @@ const api = {
     return { success: true, message: 'Production completed with full traceability.', batch: finished, counts: { consumption: d.rawMaterialConsumption.length, productionBatches: d.productionBatches.length, storageHistory: d.productionStorageHistory.length } };
   },
   getSales: user => (reqRole(user), list('sales')),
+
+  async pullAllSalesFieldData(user, options = {}) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD);
+    const service = new GoogleSheetsService();
+    const visitResults = [];
+    let visitsImported = 0;
+    const visitErrors = [];
+    for (const src of SALES_FIELD_SOURCES.visits) {
+      try {
+        const result = await service.readObjects(src.spreadsheetId, options.sheetName || 'Form Responses 1');
+        const rows = (result.rows || []).filter(row => row && (row['Shop / Customer Name'] || row['Salesperson'] || row['Shop/Customer'] || Object.keys(row).length > 2));
+        const mapped = rows.map(row => ({
+          salesperson: row['Salesperson'] || row.Salesperson || src.rep,
+          shopOrCustomer: row['Shop / Customer Name'] || row['Shop/Customer'] || row['Customer Name'] || '',
+          contactPerson: row['Contact Person'] || '',
+          phone: row['Phone'] || row['Phone Number'] || '',
+          email: row['Email'] || '',
+          location: row['location'] || row['Location'] || '',
+          visitDate: row['Visit Date'] || (row['Timestamp'] ? String(row['Timestamp']).slice(0, 10) : today()),
+          productDiscussed: row['Product Discussed'] || '',
+          purpose: row['purpose of the Visit'] || row['Purpose of the Visit'] || row['purpose'] || '',
+          outcome: row['Outcome'] || row['outcome'] || '',
+          stockLevels: row['Stock Levels Observed'] || row['Stock Levels'] || '',
+          nextAppointment: row['Next Expected Appointment'] || '',
+          comments: row['comment'] || row['Comment'] || row['Comments'] || '',
+          potentialValue: num(row['Potential Value'] || 0),
+          status: 'Open',
+          sourceSheet: src.spreadsheetId,
+          sourceRep: src.rep
+        }));
+        const importResult = await api.importVisits(user, mapped);
+        visitsImported += importResult.imported || 0;
+        visitResults.push({ rep: src.rep, imported: importResult.imported || 0, errors: importResult.errors || [] });
+        if (importResult.errors?.length) visitErrors.push(...importResult.errors);
+      } catch (e) {
+        visitResults.push({ rep: src.rep, imported: 0, errors: [e.message] });
+        visitErrors.push(`${src.rep}: ${e.message}`);
+      }
+    }
+
+    let ordersImported = 0;
+    const orderResults = [];
+    const orderErrors = [];
+    try {
+      const orderPull = await api.pullSalesFromSheet(user, {
+        spreadsheetId: SALES_FIELD_SOURCES.orders.spreadsheetId,
+        sheetName: options.orderSheetName
+      });
+      ordersImported = orderPull.imported || 0;
+      orderResults.push(orderPull);
+      if (orderPull.errors?.length) orderErrors.push(...orderPull.errors);
+    } catch (e) {
+      orderErrors.push(e.message);
+    }
+
+    log(u, 'Pull all field sales data', 'Sales', `visits ${visitsImported}, orders ${ordersImported}`);
+    return {
+      success: visitErrors.length === 0 && orderErrors.length === 0,
+      visitsImported,
+      ordersImported,
+      visitResults,
+      orderResults,
+      errors: [...visitErrors, ...orderErrors],
+      sources: SALES_FIELD_SOURCES,
+      message: `Synced ${visitsImported} visits and ${ordersImported} order rows from Google Forms sheets.`
+    };
+  },
+
   getSalesWorkspaceData(user, filters = {}) {
     try {
     reqRole(user);
