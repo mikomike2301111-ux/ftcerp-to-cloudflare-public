@@ -4201,6 +4201,7 @@ function SalesModule({ user, setPage, globalPeriod }) {
   const [selectedCounty, setSelectedCounty] = useState('Nairobi');
   const [saleFormOpen, setSaleFormOpen] = useState(false);
   const [quoteFormOpen, setQuoteFormOpen] = useState(false);
+  const [renderError, setRenderError] = useState('');
 
   useEffect(() => {
     const open = () => setSaleFormOpen(true);
@@ -4210,9 +4211,14 @@ function SalesModule({ user, setPage, globalPeriod }) {
 
   if (workspace.loading) return <Loading title="Sales" />;
   if (workspace.error) return <ErrorState title="Sales" error={workspace.error} />;
+  if (renderError) return <ErrorState title="Sales" error={renderError} />;
 
   const data = workspace.data || {};
-  const overview = data.overview || {};
+  const overview = data.overview || {
+    revenue: 0, profit: 0, orders: 0, invoices: 0, pipeline: 0, expenses: 0,
+    averageOrderValue: 0, pendingDelivery: 0, unpaidInvoices: 0, repeatCustomers: 0,
+    topProducts: 0, quoteConversion: 0
+  };
   const territory = data.territory || { counties: [], visits: [], routes: [], heatmap: [] };
   const counties = Array.isArray(territory.counties) ? territory.counties : [];
   const county = counties.find(c => c.name === selectedCounty) || counties[0] || { name: 'Nairobi', revenue: 0, profit: 0, visits: 0 };
@@ -4289,22 +4295,22 @@ function SalesModule({ user, setPage, globalPeriod }) {
             </Panel>
             <Panel className="span-12" title="Sales Team Comparison">
               <div className="metric-toggle">{metrics.map(x => <button key={x} className={metric === x ? 'active' : ''} onClick={() => setMetric(x)}>{label(x)}</button>)}</div>
-              <SalesTeamTable rows={data.teamComparison} metric={metric} />
+              <SalesTeamTable rows={data.teamComparison || []} metric={metric} />
             </Panel>
           </div>
         </>
       )}
 
-      {view === 'pipeline' && <SalesPipeline stages={data.pipeline.stages} leads={data.pipeline.leads} />}
-      {view === 'quotes' && <QuotesWorkspace user={user} quotes={data.quotes} onDone={() => setRefreshKey(x => x + 1)} customers={data.customers} />}
-      {view === 'orders' && <SalesOrdersWorkspace user={user} orders={data.orders} deliveries={data.deliveries} onDone={() => setRefreshKey(x => x + 1)} />}
-      {view === 'invoices' && <Panel title="Invoices" action="Printable"><InvoiceDocumentTable user={user} rows={data.invoices} columns={['invNo', 'customerName', 'total', 'paid', 'balance', 'liveStatus']} /></Panel>}
-      {view === 'team' && <TeamWorkspace data={data} metric={metric} />}
+      {view === 'pipeline' && <SalesPipeline stages={(data.pipeline || {}).stages || []} leads={(data.pipeline || {}).leads || []} />}
+      {view === 'quotes' && <QuotesWorkspace user={user} quotes={data.quotes || []} onDone={() => setRefreshKey(x => x + 1)} customers={data.customers || []} />}
+      {view === 'orders' && <SalesOrdersWorkspace user={user} orders={data.orders || []} deliveries={data.deliveries || []} onDone={() => setRefreshKey(x => x + 1)} />}
+      {view === 'invoices' && <Panel title="Invoices" action="Printable"><InvoiceDocumentTable user={user} rows={data.invoices || []} columns={['invNo', 'customerName', 'total', 'paid', 'balance', 'liveStatus']} /></Panel>}
+      {view === 'team' && <TeamWorkspace data={data || {}} metric={metric} />}
       {view === 'territory' && <TerritoryWorkspace territory={territory} county={county} setSelectedCounty={setSelectedCounty} />}
-      {view === 'reports' && <InventoryReports reports={data.reports} user={user} module="Sales" />}
-      {view === 'analytics' && <SalesAnalytics analytics={data.analytics} />}
-      {view === 'insights' && <SalesAi insights={data.ai} overview={data.overview} team={data.teamComparison} />}
-      {view === 'import' && <SalesImportWorkspace user={user} products={data.products} onDone={() => setRefreshKey(x => x + 1)} />}
+      {view === 'reports' && <InventoryReports reports={data.reports || []} user={user} module="Sales" />}
+      {view === 'analytics' && <SalesAnalytics analytics={data.analytics || {}} />}
+      {view === 'insights' && <SalesAi insights={data.ai || []} overview={overview} team={data.teamComparison || []} />}
+      {view === 'import' && <SalesImportWorkspace user={user} products={data.products || []} onDone={() => setRefreshKey(x => x + 1)} />}
       {view === 'visits' && <SalesVisitsWorkspace user={user} visits={data.visits || []} salesPeople={data.salesPeople || ['Edna', 'Njoroge', 'Joseph', 'Purity']} onDone={() => setRefreshKey(x => x + 1)} />}
 {saleFormOpen && <NewSaleModal user={user} onClose={() => setSaleFormOpen(false)} onSaved={() => { setSaleFormOpen(false); setRefreshKey(x => x + 1); setView('orders'); }} />}
        {quoteFormOpen && <QuotationModal user={user} customers={data.customers} onClose={() => setQuoteFormOpen(false)} onSaved={() => { setQuoteFormOpen(false); setRefreshKey(x => x + 1); setView('quotes'); }} />}
@@ -4929,13 +4935,15 @@ function TeamPerformanceChart({ data, period = 'monthly', onPeriodChange }) {
 }
 
 function SalesTeamTable({ rows, metric }) {
+  const list = Array.isArray(rows) ? rows : [];
   return (
     <div className="team-comparison-table">
-      {rows.map(row => (
-        <article key={row.rep}>
-          <strong>{row.rep}</strong>
-          <span>Revenue {currency(row.revenue)} · Profit {currency(row.profit)} · {row.customers} customers</span>
-          <b>{['revenue', 'profit', 'expenses', 'pipeline'].includes(metric) ? currency(row[metric]) : row[metric]}</b>
+      {list.length === 0 && <div className="empty-state">No team sales yet. Sync sheets or create an order.</div>}
+      {list.map(row => (
+        <article key={row.rep || row.name || Math.random()}>
+          <strong>{row.rep || row.name || 'Rep'}</strong>
+          <span>Revenue {currency(row.revenue)} · Profit {currency(row.profit)} · {row.customers || 0} customers</span>
+          <b>{['revenue', 'profit', 'expenses', 'pipeline'].includes(metric) ? currency(row[metric] || 0) : (row[metric] ?? 0)}</b>
         </article>
       ))}
     </div>
@@ -4943,11 +4951,14 @@ function SalesTeamTable({ rows, metric }) {
 }
 
 function SalesPipeline({ stages, leads }) {
+  const stageList = Array.isArray(stages) ? stages : [];
+  const leadList = Array.isArray(leads) ? leads : [];
   return (
     <div className="dashboard-grid">
       <Panel className="span-12" title="Pipeline Flow">
         <div className="pipeline-board">
-          {stages.map(stage => (
+          {stageList.length === 0 && <div className="empty-state">No pipeline stages yet.</div>}
+          {stageList.map(stage => (
             <article key={stage.stage}>
               <strong>{stage.stage}</strong>
               <b>{stage.count}</b>
@@ -4957,13 +4968,13 @@ function SalesPipeline({ stages, leads }) {
         </div>
       </Panel>
       <Panel className="span-12" title="Open Opportunities">
-        <SimpleTable rows={leads} columns={['name', 'company', 'stage', 'value', 'assignedTo']} />
+        <SimpleTable rows={leadList} columns={['name', 'company', 'stage', 'value', 'assignedTo']} />
       </Panel>
     </div>
   );
 }
 
-function QuotesWorkspace({ user, quotes, onDone, customers }) {
+function QuotesWorkspace({ user, quotes = [], onDone, customers = [] }) {
   const [busy, setBusy] = useState('');
   const [statusMsg, setStatusMsg] = useState('');
   const [quoteModalOpen, setQuoteModalOpen] = useState(false);
@@ -5377,7 +5388,7 @@ function TeamWorkspace({ data, metric }) {
         <TeamPerformanceChart data={data.teamPerformance} />
       </Panel>
       <Panel className="span-12" title="Rep Comparison">
-        <SalesTeamTable rows={data.teamComparison} metric={metric} />
+        <SalesTeamTable rows={data.teamComparison || []} metric={metric} />
       </Panel>
     </div>
   );
@@ -5433,10 +5444,10 @@ function SalesAnalytics({ analytics = {} }) {
       <Panel className="span-6" title="Profit Trend"><SalesTrendChart data={a.revenueTrend || []} metric="profit" /></Panel>
       <Panel className="span-6" title="Territory Comparison"><SimpleTable rows={a.territoryComparison || []} columns={['county', 'revenue', 'profit', 'visits']} /></Panel>
       <Panel className="span-6" title="Product Comparison"><SimpleTable rows={a.productComparison || []} columns={['product', 'revenue', 'profit', 'quantity']} /></Panel>
-      <Panel className="span-6" title="Customer Growth"><SalesTrendChart data={analytics.customerGrowth} metric="customers" /></Panel>
-      <Panel className="span-6" title="Quotation Conversion"><SalesTrendChart data={analytics.quotationConversion} metric="conversion" /></Panel>
-      <Panel className="span-6" title="Pipeline Value"><SalesTrendChart data={analytics.pipelineValue} metric="pipeline" /></Panel>
-      <Panel className="span-6" title="Forecast"><SalesTrendChart data={analytics.forecast} metric="forecast" /></Panel>
+      <Panel className="span-6" title="Customer Growth"><SalesTrendChart data={a.customerGrowth || []} metric="customers" /></Panel>
+      <Panel className="span-6" title="Quotation Conversion"><SalesTrendChart data={a.quotationConversion || []} metric="conversion" /></Panel>
+      <Panel className="span-6" title="Pipeline Value"><SalesTrendChart data={a.pipelineValue || []} metric="pipeline" /></Panel>
+      <Panel className="span-6" title="Forecast"><SalesTrendChart data={a.forecast || []} metric="forecast" /></Panel>
     </div>
   );
 }

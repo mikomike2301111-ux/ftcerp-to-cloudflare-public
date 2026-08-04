@@ -8225,8 +8225,9 @@ territory: geo,
         quotationItems: [],
         ai: [],
         visits: [],
-        salesPeople: [],
+        salesPeople: ['Edna', 'Njoroge', 'Joseph', 'Purity'],
         products: [],
+        teamComparison: [],
         errorSafe: true,
         errorMessage: err && err.message
       };
