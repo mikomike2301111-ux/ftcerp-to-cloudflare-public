@@ -10302,8 +10302,8 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
 
       {paySlipEmp && <PaySlip employee={paySlipEmp.employee} payroll={paySlipEmp.payroll} company={data.company || {}} period={{ from: data.period?.startDate || '—', to: data.period?.endDate || '—', date: new Date().toISOString().slice(0, 10) }} onClose={() => setPaySlipEmp(null)} onPrint={(ref) => { window.print(); }} />}
 
-      {modal === 'employee' && <EmployeeFormModal user={user} onClose={() => setModal(null)} onSave={handleSaveEmployee} />}
-      {editEmp && <EmployeeFormModal user={user} initial={editEmp} onClose={() => setEditEmp(null)} onSave={handleSaveEmployee} />}
+      {modal === 'employee' && <EmployeeFormModal user={user} departments={data.departments || []} onClose={() => setModal(null)} onSave={handleSaveEmployee} />}
+      {editEmp && <EmployeeFormModal user={user} departments={data.departments || []} initial={editEmp} onClose={() => setEditEmp(null)} onSave={handleSaveEmployee} />}
       {modal === 'candidate' && <CandidateFormModal onClose={() => setModal(null)} onSave={handleSaveCandidate} />}
       {modal === 'review' && <ReviewFormModal employees={data.employees} onClose={() => setModal(null)} onSave={handleSaveReview} />}
       {deptModal !== null && (
@@ -10550,7 +10550,7 @@ function HREmailCenter({ user, hrEmail, employees = [], emails = [], onSent }) {
   );
 }
 
-function EmployeeFormModal({ user, onClose, onSave, initial }) {
+function EmployeeFormModal({ user, onClose, onSave, initial, departments = [] }) {
   const [form, setForm] = useState(initial && initial.id ? { ...initial } : {
     name: '', firstName: '', middleName: '', lastName: '', email: '', companyEmail: '', personalEmail: '', phone: '', altPhone: '',
     department: 'Sales', position: 'Officer', employmentType: 'Full-time', joinDate: new Date().toISOString().slice(0, 10), status: 'Active',
@@ -10566,6 +10566,11 @@ function EmployeeFormModal({ user, onClose, onSave, initial }) {
   const [noteText, setNoteText] = useState('');
   const [notePrivate, setNotePrivate] = useState(false);
   const isEdit = Boolean(form.id);
+  const deptOptions = Array.from(new Set([
+    ...(Array.isArray(departments) ? departments.map(d => d.name || d).filter(Boolean) : []),
+    form.department,
+    'Sales', 'Finance', 'Inventory', 'Procurement', 'Production', 'Admin', 'CRM', 'Field Operations', 'HR', 'Audit'
+  ].filter(Boolean)));
   const addCustomDeduction = () => setForm({ ...form, customDeductions: [...(form.customDeductions || []), { id: `ded-${Date.now()}`, label: '', amount: 0, type: 'One-time' }] });
   const updateDeduction = (i, field, val) => { const next = [...(form.customDeductions || [])]; next[i] = { ...next[i], [field]: field === 'amount' ? Number(val) : val }; setForm({ ...form, customDeductions: next }); };
   const removeDeduction = i => setForm({ ...form, customDeductions: (form.customDeductions || []).filter((_, idx) => idx !== i) });
@@ -10612,7 +10617,13 @@ function EmployeeFormModal({ user, onClose, onSave, initial }) {
           <label>Next of Kin Relationship<input value={form.nextOfKinRelation} onChange={e => setForm({ ...form, nextOfKinRelation: e.target.value })} placeholder="e.g. Father, Sibling" /></label>
         </div></fieldset>
         <fieldset className="settings-fieldset"><legend>Employment</legend><div>
-          <label>Department<select value={form.department} onChange={e => setForm({ ...form, department: e.target.value })}>{['Sales', 'Finance', 'Inventory', 'Procurement', 'Production', 'Admin', 'CRM', 'Field Operations', 'HR', 'Audit', 'Administrator'].map(d => <option key={d}>{d}</option>)}</select></label>
+          <label>Department
+            <select value={form.department || ''} onChange={e => setForm({ ...form, department: e.target.value })}>
+              <option value="">Select department...</option>
+              {deptOptions.map(d => <option key={d} value={d}>{d}</option>)}
+            </select>
+            <small style={{ color: '#667085' }}>Manage the list under HR → Departments</small>
+          </label>
           <label>Position<input value={form.position} onChange={e => setForm({ ...form, position: e.target.value })} /></label>
           <label>Job grade<input value={form.jobGrade || ''} onChange={e => setForm({ ...form, jobGrade: e.target.value })} /></label>
           <label>Type<select value={form.employmentType} onChange={e => setForm({ ...form, employmentType: e.target.value })}>{['Full-time', 'Part-time', 'Contract', 'Intern', 'Casual'].map(t => <option key={t}>{t}</option>)}</select></label>
@@ -10740,7 +10751,9 @@ function CandidateFormModal({ onClose, onSave }) {
         </div></fieldset>
         <fieldset className="settings-fieldset"><legend>Position</legend><div>
           <label>Position<input value={form.position} onChange={e => setForm({ ...form, position: e.target.value })} /></label>
-          <label>Department<select value={form.department} onChange={e => setForm({ ...form, department: e.target.value })}>{['Sales', 'Finance', 'Inventory', 'Procurement', 'Production', 'Admin', 'CRM', 'Field Operations', 'HR'].map(d => <option key={d}>{d}</option>)}</select></label>
+          <label>Department<input list="hr-dept-list" value={form.department || ''} onChange={e => setForm({ ...form, department: e.target.value })} placeholder="Type or pick department" />
+            <datalist id="hr-dept-list">{['Sales', 'Finance', 'Inventory', 'Procurement', 'Production', 'Admin', 'CRM', 'Field Operations', 'HR'].map(d => <option key={d} value={d} />)}</datalist>
+          </label>
           <label>Source<input value={form.source} onChange={e => setForm({ ...form, source: e.target.value })} placeholder="LinkedIn, Referral, Direct..." /></label>
           <label>Expected Salary (KES)<input type="number" value={form.expectedSalary} onChange={e => setForm({ ...form, expectedSalary: Number(e.target.value) })} /></label>
         </div></fieldset>

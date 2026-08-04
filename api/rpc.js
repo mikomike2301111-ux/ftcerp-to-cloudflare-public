@@ -10973,11 +10973,16 @@ territory: geo,
     return { success: true };
   },
   saveDepartment(user, form = {}) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.HR);
     const d = data();
     ensureHrData();
     assertRequired(form.name, 'Department name');
     d.departments = d.departments || [];
+    // prevent exact duplicate names on create
+    const nameKey = clean(form.name).toLowerCase();
+    if (!clean(form.id) && d.departments.some(x => String(x.name || '').toLowerCase() === nameKey)) {
+      throw new Error('A department with this name already exists');
+    }
     const id = clean(form.id);
     const payload = {
       name: clean(form.name),
@@ -10997,19 +11002,24 @@ territory: geo,
       if (!dep) throw new Error('Department not found');
       Object.assign(dep, payload);
       log(u, `Update department ${dep.name}`, 'HR');
+      try { if (typeof saveState === 'function') saveState(d); } catch (_) {}
       return { success: true, department: dep };
     }
-    const dep = { id: gid(), ...payload, createdAt: new Date().toISOString() };
+    const dep = { id: gid(), ...payload, createdAt: new Date().toISOString(), members: 0 };
     d.departments.unshift(dep);
     log(u, `Add department ${dep.name}`, 'HR');
+    try { if (typeof saveState === 'function') saveState(d); } catch (_) {}
     return { success: true, department: dep };
   },
   deleteDepartment(user, id) {
-    const u = reqRole(user, ROLES.ADMIN);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.HR);
     const d = data();
     const idx = (d.departments || []).findIndex(x => x.id === id);
     if (idx < 0) throw new Error('Department not found');
-    const [removed] = d.departments.splice(idx, 1);
+    const removed = d.departments[idx];
+    const inUse = (d.employees || []).filter(e => e.department === removed.name && e.status !== 'Deleted').length;
+    if (inUse > 0) throw new Error(`Cannot delete "${removed.name}" — ${inUse} employee(s) still assigned. Reassign them first.`);
+    d.departments.splice(idx, 1);
     log(u, `Delete department ${removed.name}`, 'HR');
     return { success: true };
   },

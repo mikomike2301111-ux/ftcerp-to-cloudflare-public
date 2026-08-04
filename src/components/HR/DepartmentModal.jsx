@@ -3,13 +3,13 @@ import { X, Plus, Trash2 } from 'lucide-react';
 
 function ModalCard({ title, onClose, children, wide }) {
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className={`modal-card ${wide ? 'wide' : ''}`} onClick={e => e.stopPropagation()}>
+    <div className="modal-scrim retractable-overlay" onClick={onClose}>
+      <div className={`modal-card overlay-scrollable ${wide ? 'wide wide-full' : ''}`} onClick={e => e.stopPropagation()}>
         <header>
           <h2>{title}</h2>
           <button type="button" onClick={onClose}><X size={18} /></button>
         </header>
-        {children}
+        <div className="modal-card-body overlay-scroll-body">{children}</div>
       </div>
     </div>
   );
