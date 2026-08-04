@@ -10204,7 +10204,7 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
           </Panel>
           <Panel className="span-12" title="Payroll Actions" action={`${(data.payrollPreview || []).length} employees`}>
             <div className="hr-payroll-actions">
-              <p className="hr-payroll-note">Run these steps in order to close the payroll period. Hours auto-reset on the 1st of each month. Late arrivals are auto-deducted from net pay. Kenya public holidays & weekends are not counted as absent.</p>
+              <p className="hr-payroll-note">Payroll uses Mon–Fri 8–5 and Sat 8–1 attendance. PAYE follows Kenya bands (KES 2,400 relief). NSSF and NHIF are not deducted. Add unlimited custom deductions (including tax/SHIF) on each employee. Email payslips from the payslip screen.</p>
               <div className="hr-payroll-step-row">
                 <button className="panel-action-button" type="button" onClick={() => downloadRowsFile('hr-payroll-preview', data.payrollPreview || [], 'CSV')}><Download size={14} /> Export Payroll CSV</button>
                 <button className="panel-action-button" type="button" onClick={async () => { try { const file = await rpc('generateReportExport', [user, { module: 'Payroll', reportName: `Payroll ${data.period?.label || globalPeriod}`, rows: (data.payrollPreview || []).map(r => ({ Employee: r.name, Department: r.department, PayType: r.payType, Hours: r.hours, Overtime: r.overtime, LateHours: r.lateHours, GrossPay: r.grossPay, Deductions: r.deductions, NetPay: r.netPay })) }, 'PDF']); handleGeneratedFile(file, 'PDF'); } catch (err) { alert(err.message); } }}><FileText size={14} /> Export Payroll PDF</button>
@@ -10337,7 +10337,7 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
       )}
       {view === 'reports' && <HRReports data={data.reports} employees={employees} payrollPreview={payrollPreview} employeeMetrics={employeeMetrics} user={user} globalPeriod={globalPeriod} />}
 
-      {paySlipEmp && <PaySlip employee={paySlipEmp.employee} payroll={paySlipEmp.payroll} company={data.company || {}} period={{ from: data.period?.startDate || '—', to: data.period?.endDate || '—', date: new Date().toISOString().slice(0, 10) }} onClose={() => setPaySlipEmp(null)} onPrint={(ref) => { window.print(); }} />}
+      {paySlipEmp && <PaySlip user={user} rpc={rpc} employee={paySlipEmp.employee} payroll={paySlipEmp.payroll} company={data.company || {}} period={{ from: data.period?.startDate || '—', to: data.period?.endDate || '—', date: new Date().toISOString().slice(0, 10) }} onClose={() => setPaySlipEmp(null)} onPrint={(ref) => { window.print(); }} />}
 
       {modal === 'employee' && <EmployeeFormModal user={user} departments={data.departments || []} onClose={() => setModal(null)} onSave={handleSaveEmployee} />}
       {editEmp && <EmployeeFormModal user={user} departments={data.departments || []} initial={editEmp} onClose={() => setEditEmp(null)} onSave={handleSaveEmployee} />}
@@ -10685,8 +10685,8 @@ function EmployeeFormModal({ user, onClose, onSave, initial, departments = [] })
         </div></fieldset>
         <fieldset className="settings-fieldset"><legend>Tax & Banking</legend><div>
           <label>KRA PIN<input value={form.kraPin} onChange={e => setForm({ ...form, kraPin: e.target.value })} placeholder="A001234567B" /></label>
-          <label>NSSF number<input value={form.nssfNumber || ''} onChange={e => setForm({ ...form, nssfNumber: e.target.value })} /></label>
-          <label>NHIF / SHIF number<input value={form.nhifNumber || ''} onChange={e => setForm({ ...form, nhifNumber: e.target.value })} /></label>
+          <label>SHIF number (optional)<input value={form.nhifNumber || form.shifNumber || ''} onChange={e => setForm({ ...form, nhifNumber: e.target.value, shifNumber: e.target.value })} placeholder="SHIF member number" /></label>
+          <label>Apply SHIF 2.75% auto<select value={form.applyShif || 'No'} onChange={e => setForm({ ...form, applyShif: e.target.value })}><option>No</option><option>Yes</option></select></label>
           <label>Payroll number<input value={form.payrollNumber || ''} onChange={e => setForm({ ...form, payrollNumber: e.target.value })} /></label>
           <label>Tax Category<select value={form.taxCategory} onChange={e => setForm({ ...form, taxCategory: e.target.value })}>{['Resident', 'Non-Resident'].map(t => <option key={t}>{t}</option>)}</select></label>
           <label>Bank Name<input value={form.bankName} onChange={e => setForm({ ...form, bankName: e.target.value })} /></label>

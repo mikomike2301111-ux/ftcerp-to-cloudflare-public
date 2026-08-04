@@ -3935,6 +3935,53 @@ function ensureHrData() {
   if (!db.settings.hr_email) db.settings.hr_email = 'hr@farmtrack.co.ke';
 }
 
+
+/** Expected work hours for a calendar day (Mon–Fri 08:00–17:00 = 8h, Sat 08:00–13:00 = 5h, Sun 0) */
+function expectedHoursForWorkday(dateStr) {
+  if (!dateStr) return 0;
+  const d = new Date(String(dateStr).slice(0, 10) + 'T12:00:00');
+  if (Number.isNaN(d.getTime())) return 0;
+  const day = d.getDay(); // 0 Sun … 6 Sat
+  if (day === 0) return 0;
+  if (day === 6) return 5;
+  return 8;
+}
+
+function expectedHoursInRange(startDate, endDate) {
+  const start = new Date(String(startDate).slice(0, 10) + 'T12:00:00');
+  const end = new Date(String(endDate).slice(0, 10) + 'T12:00:00');
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return 0;
+  let total = 0;
+  const cur = new Date(start);
+  while (cur <= end) {
+    total += expectedHoursForWorkday(cur.toISOString().slice(0, 10));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return total;
+}
+
+/** Kenya monthly PAYE (resident) bands + personal relief 2,400. No NSSF relief (NSSF removed from system). */
+function calculateKenyaPaye(taxableIncome) {
+  const taxable = Math.max(0, num(taxableIncome));
+  const bands = [
+    { upTo: 24000, rate: 0.10 },
+    { upTo: 32333, rate: 0.25 },
+    { upTo: 500000, rate: 0.30 },
+    { upTo: 800000, rate: 0.325 },
+    { upTo: Infinity, rate: 0.35 }
+  ];
+  let tax = 0;
+  let prev = 0;
+  for (const band of bands) {
+    if (taxable <= prev) break;
+    const slice = Math.min(taxable, band.upTo) - prev;
+    if (slice > 0) tax += slice * band.rate;
+    prev = band.upTo;
+  }
+  const PERSONAL_RELIEF = 2400;
+  return Math.max(0, Math.round(tax - PERSONAL_RELIEF));
+}
+
 function pushHrTimeline(employeeId, action, description, user) {
   if (!db) return;
   db.hrTimeline = db.hrTimeline || [];
@@ -10557,40 +10604,34 @@ territory: geo,
       const mealAllowance = num(emp.mealAllowance);
       const responsibilityAllowance = num(emp.responsibilityAllowance);
       const totalAllowances = houseAllowance + transportAllowance + medicalAllowance + communicationAllowance + riskAllowance + mealAllowance + responsibilityAllowance;
-      const basePay = payType === 'Hourly' ? Math.round(hours * hourlyRate) : num(emp.salary);
+      const expectedHoursPeriod = expectedHoursInRange(range.startDate, range.endDate) || (22 * 8);
+      // Attendance-driven pay: Mon–Fri 8h, Sat 5h. Pro-rate monthly salary by hours worked vs expected.
+      const attendanceFactor = expectedHoursPeriod > 0 ? Math.min(1.25, hours / expectedHoursPeriod) : 1;
+      const basePay = payType === 'Hourly'
+        ? Math.round(hours * hourlyRate)
+        : Math.round(num(emp.salary) * (Number.isFinite(attendanceFactor) ? attendanceFactor : 1));
       const grossPay = Math.round(basePay + totalAllowances + overtimePay);
-      // Kenyan statutory deductions (simplified approximations — configurable in real implementation)
-      const nssf = Math.min(Math.round(grossPay * 0.06), 2160); // NSSF tiered max approx
-      const nhif = grossPay <= 5999 ? 150 : grossPay <= 7999 ? 300 : grossPay <= 11999 ? 400 : grossPay <= 14999 ? 500 : grossPay <= 19999 ? 600 : grossPay <= 24999 ? 750 : grossPay <= 29999 ? 850 : grossPay <= 34999 ? 900 : grossPay <= 39999 ? 950 : grossPay <= 44999 ? 1000 : grossPay <= 49999 ? 1100 : grossPay <= 59999 ? 1200 : grossPay <= 69999 ? 1300 : grossPay <= 79999 ? 1400 : grossPay <= 89999 ? 1500 : grossPay <= 99999 ? 1600 : 1700;
-      const shif = Math.round(grossPay * 0.0275); // SHIF 2.75%
-      const ahl = Math.round(grossPay * 0.015); // Affordable Housing Levy 1.5%
-      // PAYE approximation (simplified Kenyan tax brackets)
-      let taxable = grossPay - nssf - (2400); // personal relief approx
-      let paye = 0;
-      if (taxable > 0) {
-        const brackets = [
-          { limit: 24000, rate: 0.10 },
-          { limit: 32333, rate: 0.25 },
-          { limit: 500000, rate: 0.30 },
-          { limit: 800000, rate: 0.325 },
-          { limit: Infinity, rate: 0.35 }
-        ];
-        let remaining = taxable;
-        let prevLimit = 0;
-        for (const b of brackets) {
-          if (remaining <= 0) break;
-          const band = Math.min(remaining, b.limit - prevLimit);
-          paye += band * b.rate;
-          remaining -= band;
-          prevLimit = b.limit;
-        }
-        paye = Math.max(0, Math.round(paye - 2400)); // personal relief
-      }
-      const loanDeduction = num(emp.loanDeduction || 0);
-      const sacco = num(emp.saccoDeduction || 0);
-      const otherDeductions = num(emp.otherDeductions || 0);
-      const customDeductionTotal = (Array.isArray(emp.customDeductions) ? emp.customDeductions : []).reduce((s, cd) => s + num(cd.amount || 0), 0);
-      const totalDeductions = nssf + nhif + shif + ahl + paye + loanDeduction + sacco + otherDeductions + lateDeduction + customDeductionTotal;
+      // Statutory: NSSF removed. NHIF removed (use SHIF only if HR enables on employee).
+      const nssf = 0;
+      const nhif = 0;
+      const applyShif = String(emp.applyShif || emp.shifEnabled || '').toLowerCase() === 'yes' || emp.applyShif === true;
+      const shif = applyShif ? Math.round(grossPay * 0.0275) : 0; // SHIF 2.75% optional
+      const ahl = 0; // Housing levy not auto — add as custom deduction if required
+      // Unlimited HR custom deductions (loan, sacco, tax adjustments, SHIF manual, etc.)
+      const customList = Array.isArray(emp.customDeductions) ? emp.customDeductions : [];
+      const customDeductionTotal = Math.round(customList.reduce((s, cd) => s + num(cd.amount), 0));
+      const taxExemptCustom = Math.round(customList.filter(cd => /exempt|relief|pension/i.test(`${cd.label || ''} ${cd.type || ''}`)).reduce((s, cd) => s + num(cd.amount), 0));
+      // PAYE on taxable pay after optional SHIF + tax-exempt customs (Kenya bands + 2,400 relief)
+      const taxableIncome = Math.max(0, grossPay - shif - taxExemptCustom);
+      let paye = calculateKenyaPaye(taxableIncome);
+      // HR can override PAYE with a custom deduction labeled PAYE Override
+      const payeOverride = customList.find(cd => /paye\s*override/i.test(cd.label || ''));
+      if (payeOverride) paye = Math.max(0, Math.round(num(payeOverride.amount)));
+      const loanDeduction = num(emp.loanDeduction);
+      const sacco = num(emp.saccoDeduction);
+      const otherDeductions = num(emp.otherDeductions);
+      // custom total already includes all HR lines — do not double-count override amount separately beyond list
+      const totalDeductions = paye + shif + loanDeduction + sacco + otherDeductions + lateDeduction + customDeductionTotal;
       const netPay = Math.max(0, grossPay - totalDeductions);
       return {
         employeeId: emp.id,
@@ -10599,7 +10640,7 @@ territory: geo,
         department: emp.department,
         position: emp.position,
         hours: Math.round(hours * 10) / 10,
-        expectedHours: Math.round(expectedHours * 10) / 10,
+        expectedHours: Math.round((expectedHoursPeriod || expectedHours) * 10) / 10,
         overtime: Math.round(overtime * 10) / 10,
         lateHours,
         lateDeduction,
@@ -10923,8 +10964,30 @@ territory: geo,
     pushHrTimeline(note.employeeId, note.visibility === 'private' ? 'Private HR Note' : 'Public Note', note.text, u);
     return { success: true, note };
   },
+  async sendPayslipEmail(user, payload = {}) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.HR);
+    const to = clean(payload.to || payload.email);
+    if (!to) throw new Error('Recipient email is required');
+    const empName = clean(payload.employeeName || payload.name || 'Employee');
+    const periodLabel = clean(payload.period || 'Current period');
+    const netPay = num(payload.netPay);
+    const grossPay = num(payload.grossPay);
+    const subject = clean(payload.subject) || `Payslip for ${empName} — ${periodLabel}`;
+    const body = clean(payload.body) || (
+      `Dear ${empName},\n\nPlease find your payslip summary for ${periodLabel}.\n\n` +
+      `Gross pay: KES ${grossPay.toLocaleString('en-KE')}\n` +
+      `Net pay: KES ${netPay.toLocaleString('en-KE')}\n\n` +
+      `This message was sent from Farmtrack Biosciences Ltd HR (hr@farmtrack.co.ke).\n`
+    );
+    return api.sendHrEmail(u, {
+      to,
+      subject,
+      body,
+      employeeId: clean(payload.employeeId || '')
+    });
+  },
   async sendHrEmail(user, payload = {}) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.HR);
     const d = data();
     ensureHrData();
     const from = (d.settings && d.settings.hr_email) || 'hr@farmtrack.co.ke';
@@ -11434,6 +11497,7 @@ const SYNC_AFTER_RPC = {
   // HR sync
   saveEmployee: ['Employees', 'Departments', 'Dashboard', 'Activity'],
   saveHrNote: ['Employees', 'Activity'],
+  sendPayslipEmail: ['Employees', 'Activity', 'Email'],
   sendHrEmail: ['Employees', 'Activity', 'Email'],
   deleteEmployee: ['Employees', 'Departments', 'Dashboard', 'Activity'],
   recordAttendance: ['Attendance', 'Dashboard', 'Activity'],
