@@ -2600,14 +2600,15 @@ function CRMCustomerDetail({ customer, orders = [], calls = [], deliveries = [],
     ...customerDeliveries.map(d => ({ type: 'Delivery', date: d.date || d.createdAt, title: d.deliveryNo, detail: `${d.destination || ''} · ${d.status || ''}`, icon: Truck, color: '#f79009' }))
   ].sort((a, b) => String(b.date || '').localeCompare(String(a.date || ''))).slice(0, 25);
   return (
-    <div className="retractable-overlay" onClick={onClose}>
-      <div className={`modal-card overlay-scrollable crm-customer-detail ${sizeClass || 'wide-full'}`} onClick={e => e.stopPropagation()}>
+    <div className="retractable-overlay crm-detail-overlay" onClick={onClose}>
+      <div className={`modal-card overlay-scrollable crm-customer-detail wide-full ${sizeClass}`} onClick={e => e.stopPropagation()} style={{ width: 'min(96vw, 1200px)', maxHeight: '92vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div className="overlay-resize-handle">
           <button type="button" className={overlaySize === 'default' ? 'active' : ''} onClick={() => setOverlaySize('default')} title="Default">1x</button>
           <button type="button" className={overlaySize === 'wide-50' ? 'active' : ''} onClick={() => setOverlaySize('wide-50')} title="50% wider">2x</button>
           <button type="button" className={overlaySize === 'wide-full' ? 'active' : ''} onClick={() => setOverlaySize('wide-full')} title="Full width">3x</button>
         </div>
-        <header><h2>{customer.name}</h2><button type="button" onClick={onClose}><X size={18} /></button></header>
+        <header style={{ flex: '0 0 auto' }}><h2>{customer.name}</h2><button type="button" onClick={onClose}><X size={18} /></button></header>
+        <div className="overlay-scroll-body crm-customer-detail-body" style={{ flex: '1 1 auto', overflowX: 'auto', overflowY: 'auto', WebkitOverflowScrolling: 'touch', maxHeight: 'none', padding: '0 16px 20px', minWidth: 0 }}>
         <div className="crm-customer-actions">
           <button type="button" className="primary-action" onClick={() => onLogCall?.(customer)}><Phone size={14} /> Log Call</button>
           <button type="button" className="secondary-action" onClick={() => onEmailCustomer?.(customer)}><Mail size={14} /> Send Email</button>
@@ -2676,6 +2677,7 @@ function CRMCustomerDetail({ customer, orders = [], calls = [], deliveries = [],
           <Panel className="span-12" title="Purchase Records"><SimpleTable rows={customerOrders} columns={['saleNo', 'date', 'total', 'paid', 'balance', 'deliveryStatus']} /></Panel>
           <Panel className="span-12" title="Call + Follow-up Records"><SimpleTable rows={customerCalls} columns={['date', 'stage', 'notes', 'comments', 'followUpDate', 'assignedTo']} /></Panel>
           <Panel className="span-12" title="Delivery Records"><SimpleTable rows={customerDeliveries} columns={['deliveryNo', 'date', 'destination', 'method', 'driver', 'status', 'arrival']} /></Panel>
+        </div>
         </div>
       </div>
     </div>

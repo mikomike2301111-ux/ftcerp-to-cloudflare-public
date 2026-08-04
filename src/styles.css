@@ -9621,3 +9621,37 @@ select {
   max-height: none !important;
   min-width: min(100%, 720px);
 }
+
+
+/* CRM customer detail: full vertical + horizontal scroll */
+.crm-detail-overlay.retractable-overlay {
+  overflow: auto !important;
+  align-items: flex-start !important;
+  padding: 24px 12px !important;
+}
+.modal-card.crm-customer-detail {
+  width: min(96vw, 1200px) !important;
+  max-width: 96vw !important;
+  max-height: 92vh !important;
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+.crm-customer-detail-body.overlay-scroll-body {
+  flex: 1 1 auto !important;
+  overflow-x: auto !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  max-height: none !important;
+  min-height: 0 !important;
+}
+.crm-customer-detail .dashboard-grid,
+.crm-customer-detail .settings-kv-grid,
+.crm-customer-detail .settings-form-grid,
+.crm-customer-detail .table-wrap,
+.crm-customer-detail table {
+  min-width: min(100%, 720px);
+}
+.crm-customer-detail .table-wrap {
+  overflow-x: auto !important;
+}
