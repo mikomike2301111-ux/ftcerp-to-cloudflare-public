@@ -469,30 +469,63 @@ const pageFromRoute = () => {
   return page;
 };
 const routeParts = () => window.location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
+const REMOVED_TABS = {
+  'paid-followups': 'followups',
+  'paid_followups': 'followups',
+  'paidFollowups': 'followups',
+  'paid-follow-ups': 'followups'
+};
+
 const tabFromRoute = (tabs, fallback) => {
   const sub = routeParts()[1];
+  if (!sub) return fallback;
+  if (REMOVED_TABS[sub]) return REMOVED_TABS[sub];
   return tabs.includes(sub) ? sub : fallback;
 };
 
 function useRouteTab(pageId, tabs, fallback) {
   const tabsKey = tabs.join('|');
   const normalizeTab = (tab) => {
-    // Removed CRM tab — never show paid follow-ups
-    if (tab === 'paid-followups' || tab === 'paid_followups' || tab === 'paidFollowups') return 'followups';
+    if (REMOVED_TABS[tab]) return REMOVED_TABS[tab];
     return tabs.includes(tab) ? tab : fallback;
   };
-  const [view, setViewState] = useState(() => normalizeTab(tabFromRoute(tabs, fallback)));
+  const rewriteRemovedHash = () => {
+    const parts = routeParts();
+    const sub = parts[1];
+    if (sub && REMOVED_TABS[sub] && pageFromRoute() === pageId) {
+      const route = routeForPage(pageId);
+      const next = REMOVED_TABS[sub];
+      const target = `#/${route}/${next}`;
+      if (window.location.hash !== target) {
+        window.history.replaceState(null, '', target);
+      }
+      return next;
+    }
+    return null;
+  };
+  const [view, setViewState] = useState(() => {
+    const rewritten = (() => {
+      const sub = routeParts()[1];
+      if (sub && REMOVED_TABS[sub]) return REMOVED_TABS[sub];
+      return null;
+    })();
+    return normalizeTab(rewritten || tabFromRoute(tabs, fallback));
+  });
   useEffect(() => {
-    const onHash = () => {
-      if (pageFromRoute() === pageId) setViewState(normalizeTab(tabFromRoute(tabs, fallback)));
+    const apply = () => {
+      if (pageFromRoute() !== pageId) return;
+      const forced = rewriteRemovedHash();
+      setViewState(normalizeTab(forced || tabFromRoute(tabs, fallback)));
     };
-    window.addEventListener('hashchange', onHash);
-    return () => window.removeEventListener('hashchange', onHash);
+    apply();
+    window.addEventListener('hashchange', apply);
+    return () => window.removeEventListener('hashchange', apply);
   }, [pageId, tabsKey, fallback]);
   const setView = next => {
-    setViewState(next);
+    const safe = normalizeTab(next);
+    setViewState(safe);
     const route = routeForPage(pageId);
-    if (window.location.hash !== `#/${route}/${next}`) window.location.hash = `/${route}/${next}`;
+    if (window.location.hash !== `#/${route}/${safe}`) window.location.hash = `/${route}/${safe}`;
   };
   return [view, setView];
 }
