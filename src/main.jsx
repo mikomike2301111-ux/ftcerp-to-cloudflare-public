@@ -4387,12 +4387,20 @@ function SalesModule({ user, setPage, globalPeriod }) {
   if (workspace.error) return <ErrorState title="Sales" error={workspace.error} />;
   if (renderError) return <ErrorState title="Sales" error={renderError} />;
 
-  const data = workspace.data || {};
-  const overview = data.overview || {
+  let data = {};
+  try {
+    data = workspace.data && typeof workspace.data === 'object' ? workspace.data : {};
+  } catch (_) {
+    data = {};
+  }
+  const overview = {
     revenue: 0, profit: 0, orders: 0, invoices: 0, pipeline: 0, expenses: 0,
     averageOrderValue: 0, pendingDelivery: 0, unpaidInvoices: 0, repeatCustomers: 0,
-    topProducts: 0, quoteConversion: 0
+    topProducts: 0, quoteConversion: 0, forecast: 0, overdueInvoices: 0, delivered: 0,
+    ...(data.overview && typeof data.overview === 'object' ? data.overview : {})
   };
+  overview.revenue = num(overview.revenue);
+  overview.profit = num(overview.profit);
   const territory = data.territory || { counties: [], visits: [], routes: [], heatmap: [] };
   const counties = Array.isArray(territory.counties) ? territory.counties : [];
   const county = counties.find(c => c.name === selectedCounty) || counties[0] || { name: 'Nairobi', revenue: 0, profit: 0, visits: 0 };
@@ -5569,19 +5577,21 @@ function TeamWorkspace({ data, metric }) {
 }
 
 function TerritoryWorkspace({ territory, county, setSelectedCounty }) {
+  const t = territory || { counties: [], visits: [], routes: [], heatmap: [] };
+  const c = county || { name: 'Njiru', revenue: 0, profit: 0, visits: 0, topProducts: [], salesRep: '—' };
   return (
     <div className="dashboard-grid">
-      <Panel className="span-7" title="Kenya Territory Coverage" action="47 Counties">
-        <CountyMap counties={territory.counties} selected={county.name} onSelect={setSelectedCounty} />
+      <Panel className="span-7" title="Kenya Territory Coverage" action="Counties">
+        <CountyMap counties={Array.isArray(t.counties) ? t.counties : []} selected={c.name} onSelect={setSelectedCounty} />
       </Panel>
-      <Panel className="span-5" title={`${county.name} County Details`} action="Drawer">
-        <CountyProfile county={county} />
+      <Panel className="span-5" title={`${c.name} County Details`} action="Drawer">
+        <CountyProfile county={c} />
       </Panel>
       <Panel className="span-6" title="County Performance">
-        <SimpleTable rows={territory.counties} columns={['name', 'revenue', 'profit', 'visits', 'orders', 'quotations']} />
+        <SimpleTable rows={Array.isArray(t.counties) ? t.counties : []} columns={['name', 'revenue', 'profit', 'visits', 'orders', 'quotations']} />
       </Panel>
       <Panel className="span-6" title="Visit Tracking & Routes">
-        <VisitTimeline visits={territory.visits} />
+        <VisitTimeline visits={Array.isArray(t.visits) ? t.visits : []} />
       </Panel>
     </div>
   );
@@ -5589,6 +5599,7 @@ function TerritoryWorkspace({ territory, county, setSelectedCounty }) {
 
 function SalesReports({ reports, user }) {
   const [filters, setFilters] = useState(() => ({ ...defaultReportDates(), module: 'Sales' }));
+  const list = Array.isArray(reports) ? reports : [];
   async function exportReport(report, format) {
     const file = await rpc('generateReportExport', [user, { ...filters, module: 'Sales', reportName: report.name }, format]);
     handleGeneratedFile(file, format);
@@ -5597,7 +5608,8 @@ function SalesReports({ reports, user }) {
     <Panel title="Sales Reports" action="Generate">
       <ReportDateControls filters={filters} setFilters={setFilters} />
       <div className="sales-report-grid">
-        {reports.map(report => (
+        {list.length === 0 && <div className="empty-state">No sales reports yet.</div>}
+        {list.map(report => (
           <article key={report.name}>
             <strong>{report.name}</strong>
             <span>{filters.startDate} to {filters.endDate} · {report.records} records</span>
@@ -5678,6 +5690,7 @@ function SalesAi({ insights, overview = {}, team = [] }) {
 }
 
 function CountyMap({ counties, selected, onSelect }) {
+  const list = Array.isArray(counties) ? counties : [];
   return (
     <div className="kenya-map">
       <div className="map-legend">
@@ -5686,7 +5699,8 @@ function CountyMap({ counties, selected, onSelect }) {
         <span className="red">Neglected territory</span>
       </div>
       <div className="county-grid">
-        {counties.map(county => (
+        {list.length === 0 && <div className="empty-state">No territory data yet.</div>}
+        {list.map(county => (
           <button key={county.name} className={`${county.color} ${selected === county.name ? 'selected' : ''}`} onClick={() => onSelect(county.name)} title={`${county.name}: score ${county.score}`}>
             <strong>{county.name}</strong>
             <span>{county.score}</span>
@@ -5698,8 +5712,9 @@ function CountyMap({ counties, selected, onSelect }) {
 }
 
 function CountyProfile({ county }) {
+  county = county || { name: '—', revenue: 0, profit: 0, visits: 0, topProducts: [], salesRep: '—' };
   const stats = [
-    ['Revenue', currency(county.revenue)],
+    ['Revenue', currency(county.revenue || 0)],
     ['Customers', county.customers],
     ['Active Customers', county.activeCustomers],
     ['Dormant Customers', county.dormantCustomers],
@@ -5721,7 +5736,7 @@ function CountyProfile({ county }) {
       </div>
       <div className="county-products">
         <span>Top Products</span>
-        <p>{county.topProducts.filter(Boolean).join(', ') || 'No product movement yet'}</p>
+        <p>{(Array.isArray(county?.topProducts) ? county.topProducts : []).filter(Boolean).join(', ') || 'No product movement yet'}</p>
         <span>Sales Rep</span>
         <p>{county.salesRep}</p>
       </div>
@@ -5730,15 +5745,17 @@ function CountyProfile({ county }) {
 }
 
 function RepComparison({ reps }) {
+  const list = Array.isArray(reps) ? reps : [];
   return (
     <div className="rep-comparison">
-      {reps.map(rep => (
-        <article key={rep.salesRepId}>
+      {list.length === 0 && <div className="empty-state">No rep comparison data yet.</div>}
+      {list.map(rep => (
+        <article key={rep.salesRepId || rep.name}>
           <div>
-            <strong>{rep.name}</strong>
-            <span>{rep.countiesCovered} counties · {rep.visits} visits · {rep.orders} orders</span>
+            <strong>{rep.name || 'Rep'}</strong>
+            <span>{rep.countiesCovered || 0} counties · {rep.visits || 0} visits · {rep.orders || 0} orders</span>
           </div>
-          <b>{currency(rep.revenue)}</b>
+          <b>{currency(rep.revenue || 0)}</b>
           <em>ROI {rep.roi}x</em>
         </article>
       ))}
@@ -5747,9 +5764,11 @@ function RepComparison({ reps }) {
 }
 
 function VisitTimeline({ visits }) {
+  const list = Array.isArray(visits) ? visits : [];
   return (
     <div className="visit-timeline">
-      {visits.map(visit => (
+      {list.length === 0 && <div className="empty-state">No visits logged yet.</div>}
+      {list.map(visit => (
         <article key={visit.id}>
           <MapPin size={18} />
           <div>
