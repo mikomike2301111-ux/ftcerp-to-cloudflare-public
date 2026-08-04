@@ -476,10 +476,15 @@ const tabFromRoute = (tabs, fallback) => {
 
 function useRouteTab(pageId, tabs, fallback) {
   const tabsKey = tabs.join('|');
-  const [view, setViewState] = useState(() => tabFromRoute(tabs, fallback));
+  const normalizeTab = (tab) => {
+    // Removed CRM tab — never show paid follow-ups
+    if (tab === 'paid-followups' || tab === 'paid_followups' || tab === 'paidFollowups') return 'followups';
+    return tabs.includes(tab) ? tab : fallback;
+  };
+  const [view, setViewState] = useState(() => normalizeTab(tabFromRoute(tabs, fallback)));
   useEffect(() => {
     const onHash = () => {
-      if (pageFromRoute() === pageId) setViewState(tabFromRoute(tabs, fallback));
+      if (pageFromRoute() === pageId) setViewState(normalizeTab(tabFromRoute(tabs, fallback)));
     };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
