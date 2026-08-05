@@ -3259,10 +3259,11 @@ function InventoryWorkspace({ user, setPage, globalPeriod }) {
   if (workspace.loading) return <Loading title="Inventory" />;
   if (workspace.error) return <ErrorState title="Inventory" error={workspace.error} />;
 
-  const data = workspace.data;
+  const data = workspace.data || {};
+  const overview = data.overview || {};
   const pendingMfg = Array.isArray(data.pendingProductionIssues) ? data.pendingProductionIssues : [];
   const metrics = ['inventoryValue', 'incomingStock', 'outgoingStock', 'damagedStock', 'expiredStock', 'warehouseStock', 'stockTurnover', 'stockCosts'];
-  const filteredSearch = query.length < 2 ? [] : data.searchIndex.filter(row => `${row.type} ${row.label} ${row.sub}`.toLowerCase().includes(query.toLowerCase())).slice(0, 8);
+  const filteredSearch = query.length < 2 ? [] : (data.searchIndex || []).filter(row => `${row.type} ${row.label} ${row.sub}`.toLowerCase().includes(query.toLowerCase())).slice(0, 8);
 
   return (
     <section className="page-stack sales-workspace inventory-workspace">
@@ -3273,9 +3274,9 @@ function InventoryWorkspace({ user, setPage, globalPeriod }) {
           <p>Stock control, warehouse operations, movements, adjustments, transfers, audits, expiry, damaged stock, reports, forecasting, and AI reorder intelligence.</p>
         </div>
         <div className="sales-hero-stats">
-          <strong>{data.overview.totalSkus}</strong><span>SKUs</span>
-          <strong>{currency(data.overview.totalStockValue)}</strong><span>Stock Value</span>
-          <strong>{data.overview.inventoryAccuracy}%</strong><span>Accuracy</span>
+          <strong>{overview.totalSkus || 0}</strong><span>SKUs</span>
+          <strong>{currency(overview.totalStockValue || 0)}</strong><span>Stock Value</span>
+          <strong>{overview.inventoryAccuracy || 0}%</strong><span>Accuracy</span>
         </div>
       </div>
 
@@ -3346,10 +3347,10 @@ function InventoryWorkspace({ user, setPage, globalPeriod }) {
 
       <div className="sales-filter-bar">
         <button><Calendar size={16} />{(data.filters || filters || {}).dateRange || 'All dates'}</button>
-        <button><Warehouse size={16} />{data.filters.warehouse}</button>
-        <button><Package size={16} />{data.filters.category}</button>
-        <button><CheckCircle2 size={16} />{data.filters.status}</button>
-        <button><CircleDollarSign size={16} />{data.filters.valuation}</button>
+        <button><Warehouse size={16} />{(data.filters || {}).warehouse || 'All warehouses'}</button>
+        <button><Package size={16} />{(data.filters || {}).category || 'All categories'}</button>
+        <button><CheckCircle2 size={16} />{(data.filters || {}).status || 'All statuses'}</button>
+        <button><CircleDollarSign size={16} />{(data.filters || {}).valuation || 'FIFO'}</button>
       </div>
 
       <div className="procurement-search">
@@ -4166,9 +4167,10 @@ function ProcurementWorkspace({ user, setPage, globalPeriod }) {
   if (workspace.loading) return <Loading title="Purchases" />;
   if (workspace.error) return <ErrorState title="Purchases" error={workspace.error} />;
 
-  const data = workspace.data;
+  const data = workspace.data || {};
+  const overview = data.overview || {};
   const metrics = ['spend', 'deliveries', 'leadTime', 'supplierPerformance', 'creditPurchases', 'outstandingBalances', 'purchaseOrders', 'receivedGoods'];
-  const filteredSearch = query.length < 2 ? [] : data.searchIndex.filter(row => `${row.type} ${row.label} ${row.sub}`.toLowerCase().includes(query.toLowerCase())).slice(0, 8);
+  const filteredSearch = query.length < 2 ? [] : (data.searchIndex || []).filter(row => `${row.type} ${row.label} ${row.sub}`.toLowerCase().includes(query.toLowerCase())).slice(0, 8);
 
   return (
     <section className="page-stack sales-workspace procurement-workspace">
@@ -4179,19 +4181,19 @@ function ProcurementWorkspace({ user, setPage, globalPeriod }) {
           <p>Purchase requests, purchase orders, suppliers, deliveries, goods receiving, credit, accounts payable, reports, analytics, and AI in one connected workflow.</p>
         </div>
         <HeroStats items={
-          [[data.overview.totalPOs, 'POs'],
-          [currency(data.overview.procurementSpend), 'Spend'],
-          [currency(data.overview.outstandingSupplierBalances), 'Payables']]
+          [[overview.totalPOs || 0, 'POs'],
+          [currency(overview.procurementSpend || 0), 'Spend'],
+          [currency(overview.outstandingSupplierBalances || 0), 'Payables']]
         } />
       </div>
       <div className="inline-actions"><CreateRequisitionButton user={user} module="purchasing" /></div>
 
       <div className="sales-filter-bar">
         <button><Calendar size={16} />{((data.filters || filters || {}).dateRange || "All dates")}</button>
-        <button><Truck size={16} />{data.filters.supplier}</button>
-        <button><Warehouse size={16} />{data.filters.warehouse}</button>
-        <button><MapPin size={16} />{data.filters.county}</button>
-        <button><Package size={16} />{data.filters.product}</button>
+        <button><Truck size={16} />{(data.filters || {}).supplier || 'All suppliers'}</button>
+        <button><Warehouse size={16} />{(data.filters || {}).warehouse || 'All warehouses'}</button>
+        <button><MapPin size={16} />{(data.filters || {}).county || 'All counties'}</button>
+        <button><Package size={16} />{(data.filters || {}).product || 'All products'}</button>
       </div>
 
       <div className="procurement-search">
@@ -4207,12 +4209,12 @@ function ProcurementWorkspace({ user, setPage, globalPeriod }) {
       {view === 'overview' && (
         <>
           <div className="control-grid">
-            <KpiCard icon={ClipboardCheck} label="Total POs" value={data.overview.totalPOs} change={8.2} tone="blue" />
+            <KpiCard icon={ClipboardCheck} label="Total POs" value={(overview.totalPOs ?? data?.overview?.totalPOs ?? 0)} change={8.2} tone="blue" />
             <KpiCard icon={AlertTriangle} label="Pending POs" value={data.overview.pendingPOs} change={-2.1} tone="red" />
             <KpiCard icon={CheckCircle2} label="Approved POs" value={data.overview.approvedPOs} change={12.4} tone="green" />
             <KpiCard icon={Warehouse} label="Received POs" value={data.overview.receivedPOs} change={6.8} tone="green" />
             <KpiCard icon={Truck} label="Overdue Deliveries" value={data.overview.overdueDeliveries} change={-4.2} tone="red" />
-            <KpiCard icon={CircleDollarSign} label="Supplier Balances" value={currency(data.overview.outstandingSupplierBalances)} change={3.1} tone="blue" />
+            <KpiCard icon={CircleDollarSign} label="Supplier Balances" value={currency((overview.outstandingSupplierBalances ?? data?.overview?.outstandingSupplierBalances ?? 0))} change={3.1} tone="blue" />
           </div>
           <div className="dashboard-grid">
             <Panel className="span-12 sales-main-chart" title="Main Procurement Graph" action="Shared Filters">
@@ -7736,8 +7738,6 @@ function RequisitionModal({ user, module, onClose, onSaved }) {
     branch: 'Nairobi',
     priority: 'Low',
     requestedTo: 'Managing Director',
-    reason: '',
-    description: '',
     requiredDate: '',
     comments: '',
     items: [{ item: '', description: '', quantity: 1, unit: 'PCS', estimatedPrice: 0 }]
@@ -7809,8 +7809,6 @@ function RequisitionModal({ user, module, onClose, onSaved }) {
             {['Managing Director', 'Operations Manager', 'Store Manager', 'HR', 'Sales Manager', 'Finance', 'Administrator', 'Everyone'].map(r => <option key={r} value={r}>{r}</option>)}
           </select>
         </label>
-        <label>Reason<textarea value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} rows={3} placeholder="We require five new laptops for the development team." required /></label>
-        <label>Description<textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} rows={2} placeholder="Detailed explanation of the request..." /></label>
         <div className="modal-grid">
           <label>Required Date<input type="date" value={form.requiredDate} onChange={e => setForm({ ...form, requiredDate: e.target.value })} /></label>
           <label>Estimated Cost<input readOnly value={currency(estimatedCost)} /></label>
@@ -7952,7 +7950,7 @@ function RequisitionsPage({ user, setPage }) {
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
         <div className="command-search" style={{ flex: 1, minWidth: 200 }}>
           <Search size={16} />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by ref, requester, reason..." />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by ref, requester, module..." />
         </div>
         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid #d0d5dd' }}>
           <option value="">All Status</option>
@@ -7979,7 +7977,7 @@ function RequisitionsPage({ user, setPage }) {
                 <RequisitionStatusBadge status={req.status} />
               </div>
               <span style={{ color: '#667085' }}>{req.requester}{req.requesterEmail ? ` · ${req.requesterEmail}` : ''} · {req.module} · {req.requestedTo} · {req.requestDate}</span>
-              <div style={{ color: '#344054', marginTop: 4 }}>{String(req.reason || '').slice(0, 100)}</div>
+              <div style={{ color: '#344054', marginTop: 4 }}>{(req.items || []).map(i => i.item).filter(Boolean).slice(0, 3).join(', ') || req.module || 'Requisition'}</div>
             </div>
             <b style={{ whiteSpace: 'nowrap' }}>{currency(req.estimatedCost)}</b>
             <div className="quote-actions" onClick={e => e.stopPropagation()}>
@@ -8018,8 +8016,7 @@ function RequisitionsPage({ user, setPage }) {
               <RequisitionStatusBadge status={selectedReq.status} />
             </div>
             <div style={{ background: '#f9fafb', borderRadius: 8, padding: 12, marginBottom: 12 }}>
-              <strong>Reason:</strong><div>{selectedReq.reason}</div>
-              {selectedReq.description && <><strong style={{ marginTop: 8, display: 'block' }}>Description:</strong><div>{selectedReq.description}</div></>}
+              <strong>Items:</strong><div>{(selectedReq.items || []).map(i => i.item || i.description).filter(Boolean).join(', ') || '—'}</div>
             </div>
             {(selectedReq.items?.length > 0) && (
               <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 12, fontSize: 13 }}>
