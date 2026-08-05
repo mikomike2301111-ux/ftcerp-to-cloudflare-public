@@ -1533,37 +1533,41 @@ async function fetchPublicView(name, query = 'select=*') {
 async function loadState() {
   if (db) return;
   const stateLoadTimeout = Symbol('state-load-timeout');
-  const rows = await Promise.race([
-    supabaseFetch(`erp_state?id=eq.${encodeURIComponent(STATE_ID)}&select=data&limit=1`).catch(() => null),
-    new Promise(resolve => setTimeout(() => resolve(stateLoadTimeout), 1800))
+  async function fetchStateRows() {
+    return supabaseFetch(`erp_state?id=eq.${encodeURIComponent(STATE_ID)}&select=data&limit=1`).catch(() => null);
+  }
+  // Large erp_state payloads need more than 1.8s — do not seed over real Supabase data
+  let rows = await Promise.race([
+    fetchStateRows(),
+    new Promise(resolve => setTimeout(() => resolve(stateLoadTimeout), 12000))
   ]);
   if (rows === stateLoadTimeout) {
+    rows = await Promise.race([
+      fetchStateRows(),
+      new Promise(resolve => setTimeout(() => resolve(stateLoadTimeout), 12000))
+    ]);
+  }
+  if (rows === stateLoadTimeout || rows === null) {
+    // Keep empty in-memory seed ONLY for this instance — do NOT write back and wipe Supabase
     seed();
     applyQuickBooksSeed();
+    if (db) db._skipPersistUntilRemoteLoad = true;
     return;
   }
-  if (rows === null) {
-    seed();
-    applyQuickBooksSeed();
-    return;
-  }
-  if (Array.isArray(rows) && rows[0] && rows[0].data) {
+  if (Array.isArray(rows) && rows[0] && rows[0].data && typeof rows[0].data === 'object') {
     db = rows[0].data;
-    const repaired = ensureFarmtrackCatalogue(db);
-    if (applyQuickBooksSeed() || repaired) {
-      if (db) db.deferNormalizedSync = true;
-      await saveState();
-      if (db) delete db.deferNormalizedSync;
-    }
+    ensureFarmtrackCatalogue(db);
+    // Do not auto-save on load (prevents wiping remote with partial seed merges)
     return;
   }
   seed();
   applyQuickBooksSeed();
-  if (db) {
-    db.deferNormalizedSync = true;
-    await saveState();
-    if (db) delete db.deferNormalizedSync;
-  }
+  if (db) db._skipPersistUntilRemoteLoad = true;
+}
+
+async function loadStateForce() {
+  db = null;
+  await loadState();
 }
 
 const GENERATED_PERSISTENCE_KEYS = new Set([
@@ -1610,6 +1614,20 @@ async function reloadSharedState() {
 
 async function saveState() {
   if (!db || !supabaseEnabled()) return;
+  if (db._skipPersistUntilRemoteLoad) {
+    // Attempt one more remote load before first persist
+    const probe = await supabaseFetch(`erp_state?id=eq.${encodeURIComponent(STATE_ID)}&select=data&limit=1`).catch(() => null);
+    if (Array.isArray(probe) && probe[0] && probe[0].data && typeof probe[0].data === 'object') {
+      const remote = probe[0].data;
+      const remoteCount = (remote.customers||[]).length + (remote.employees||[]).length + (remote.products||[]).length;
+      const localCount = (db.customers||[]).length + (db.employees||[]).length + (db.products||[]).length;
+      if (remoteCount > localCount) {
+        db = remote;
+        ensureFarmtrackCatalogue(db);
+      }
+    }
+    delete db._skipPersistUntilRemoteLoad;
+  }
   const persistedState = compactStateForPersistence(db);
   persistedState._writeVersion = Number(persistedState._writeVersion || 0) + 1;
   persistedState._lastWriterAt = new Date().toISOString();
