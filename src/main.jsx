@@ -10913,6 +10913,7 @@ function EmployeeFormModal({ user, onClose, onSave, initial, departments = [] })
                 </label>
                 <label>Notes<input value={ded.notes || ''} onChange={e => updateDeduction(i, 'notes', e.target.value)} placeholder="Optional note" /></label>
               </div>
+              </div>
             </div>
           ))}
           <div className="modal-grid" style={{ gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginTop: 10 }}>
