@@ -2511,7 +2511,11 @@ function data() {
   if (!db.settings) db.settings = {};
   db.settings.demo_data_disabled = true;
   if (!db._demoPurgedOnce) {
-    purgeDemoTransactionalData(db);
+    const hasReal = (Array.isArray(db.customers) && db.customers.length > 0)
+      || (Array.isArray(db.employees) && db.employees.length > 0)
+      || (Array.isArray(db.visits) && db.visits.length > 0)
+      || (Array.isArray(db.sales) && db.sales.length > 0);
+    if (!hasReal) purgeDemoTransactionalData(db);
     db._demoPurgedOnce = true;
   }
   if (!Array.isArray(db.salesVisits)) db.salesVisits = [];
@@ -8289,9 +8293,30 @@ territory: geo,
           detail: geo.opportunityMap?.[0] ? `Increase coverage in ${geo.opportunityMap[0].county}; it has low coverage and high potential.` : 'Pipeline follow-up is the next highest-value action.'
         }
       ],
-      visits: (d.visits || []).filter(Boolean).sort((a, b) => String(b.visitDate || b.createdAt || '').localeCompare(String(a.visitDate || a.createdAt || ''))),
+      visits: (() => {
+        const merged = [...(d.visits || []), ...(d.salesVisits || [])].filter(Boolean);
+        const seen = new Set();
+        const uniq = [];
+        for (const v of merged) {
+          const key = String(v.id || '') + '|' + String(v.visitDate || '') + '|' + String(v.salesperson || v.salesRepName || '') + '|' + String(v.shopOrCustomer || v.customerName || '');
+          if (seen.has(key)) continue;
+          seen.add(key);
+          uniq.push({
+            ...v,
+            visitDate: v.visitDate || v.date || (v.createdAt || '').slice(0, 10),
+            salesperson: v.salesperson || v.salesRepName || v.sourceRep || '',
+            shopOrCustomer: v.shopOrCustomer || v.customerName || v.shop || '',
+            contactPerson: v.contactPerson || v.contact || '',
+            productDiscussed: v.productDiscussed || v.product || '',
+            outcome: v.outcome || v.status || '',
+            status: v.status || 'Open'
+          });
+        }
+        return uniq.sort((a, b) => String(b.visitDate || b.createdAt || '').localeCompare(String(a.visitDate || a.createdAt || '')));
+      })(),
       salesPeople: ['Edna', 'Njoroge', 'Joseph', 'Purity'],
-      products: d.products || []
+      products: d.products || [],
+      fieldSources: typeof SALES_FIELD_SOURCES !== 'undefined' ? SALES_FIELD_SOURCES : undefined
     };
     } catch (err) {
       console.error('getSalesWorkspaceData', err && err.message, err);
