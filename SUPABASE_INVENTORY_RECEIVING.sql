@@ -1,27 +1,29 @@
--- Inventory receiving + warehouse + suppliers (safe to re-run)
--- Project: rajnrkgcisgpxtzzfmcl
+-- Inventory receiving — safe for existing warehouses table (no capacity yet)
 
-create table if not exists public.warehouses (
-  id uuid primary key default gen_random_uuid(),
-  name text unique,
-  code text,
-  location text default 'Njiru',
-  capacity numeric default 0,
-  used numeric default 0,
-  status text default 'Active',
-  created_at timestamptz default now()
-);
+alter table public.warehouses add column if not exists code text;
+alter table public.warehouses add column if not exists location text default 'Njiru';
+alter table public.warehouses add column if not exists capacity numeric default 0;
+alter table public.warehouses add column if not exists used numeric default 0;
+alter table public.warehouses add column if not exists status text default 'Active';
+alter table public.warehouses add column if not exists created_at timestamptz default now();
 
-create table if not exists public.suppliers (
-  id uuid primary key default gen_random_uuid(),
-  tenant_id uuid,
-  supplier_no text,
-  name text,
-  email text,
-  phone text,
-  status text default 'Active',
-  created_at timestamptz default now()
-);
+do $$
+begin
+  alter table public.warehouses add constraint warehouses_name_key unique (name);
+exception when duplicate_object then null;
+when others then null;
+end $$;
+
+insert into public.warehouses (name, code, location, capacity, status)
+values
+  ('Main Store Njiru', 'NJIRU', 'Njiru', 1000000, 'Active'),
+  ('Finished Goods Store', 'FG', 'Njiru', 500000, 'Active'),
+  ('Raw Materials Store', 'RM', 'Njiru', 500000, 'Active')
+on conflict (name) do update set
+  code = excluded.code,
+  location = excluded.location,
+  capacity = excluded.capacity,
+  status = excluded.status;
 
 create table if not exists public.inventory_items (
   id uuid primary key default gen_random_uuid(),
@@ -81,13 +83,6 @@ create table if not exists public.inventory_transactions (
   notes text,
   created_at timestamptz default now()
 );
-
-insert into public.warehouses (name, code, location, capacity, status)
-values
-  ('Main Store Njiru', 'NJIRU', 'Njiru', 1000000, 'Active'),
-  ('Finished Goods Store', 'FG', 'Njiru', 500000, 'Active'),
-  ('Raw Materials Store', 'RM', 'Njiru', 500000, 'Active')
-on conflict (name) do nothing;
 
 alter table public.warehouses enable row level security;
 alter table public.inventory_items enable row level security;
