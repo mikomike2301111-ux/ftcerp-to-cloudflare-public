@@ -1459,11 +1459,12 @@ function supabaseEnabled() {
 }
 
 async function supabaseRequest(path, options = {}) {
-  const { affectsReady = true, ...fetchOptions } = options;
+  const { affectsReady = true, timeoutMs, ...fetchOptions } = options;
   if (!supabaseEnabled()) return { ok: false, status: 0, data: null, error: 'Supabase environment variables are missing' };
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 6000);
+    const ms = Number(timeoutMs) > 0 ? Number(timeoutMs) : (String(fetchOptions.method || 'GET').toUpperCase() === 'GET' ? 12000 : 45000);
+    const timeout = setTimeout(() => controller.abort(), ms);
     const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
       ...fetchOptions,
       signal: controller.signal,
@@ -1615,27 +1616,55 @@ async function reloadSharedState() {
 async function saveState() {
   if (!db || !supabaseEnabled()) return;
   if (db._skipPersistUntilRemoteLoad) {
-    // Attempt one more remote load before first persist
-    const probe = await supabaseFetch(`erp_state?id=eq.${encodeURIComponent(STATE_ID)}&select=data&limit=1`).catch(() => null);
-    if (Array.isArray(probe) && probe[0] && probe[0].data && typeof probe[0].data === 'object') {
-      const remote = probe[0].data;
-      const remoteCount = (remote.customers||[]).length + (remote.employees||[]).length + (remote.products||[]).length;
-      const localCount = (db.customers||[]).length + (db.employees||[]).length + (db.products||[]).length;
-      if (remoteCount > localCount) {
-        db = remote;
-        ensureFarmtrackCatalogue(db);
+    // Merge remote into local — never discard in-memory writes (customers, stock, etc.)
+    const probe = await supabaseRequest(`erp_state?id=eq.${encodeURIComponent(STATE_ID)}&select=data&limit=1`, { method: 'GET', affectsReady: false, timeoutMs: 20000 }).catch(() => ({ ok: false }));
+    if (probe && probe.ok && Array.isArray(probe.data) && probe.data[0] && probe.data[0].data && typeof probe.data[0].data === 'object') {
+      const remote = probe.data[0].data;
+      const local = db;
+      const merged = { ...remote };
+      for (const [key, value] of Object.entries(local || {})) {
+        if (Array.isArray(value) && Array.isArray(remote[key])) {
+          const byId = new Map();
+          for (const row of remote[key]) {
+            if (row && row.id) byId.set(row.id, row);
+            else byId.set(JSON.stringify(row), row);
+          }
+          for (const row of value) {
+            if (row && row.id) byId.set(row.id, row);
+            else byId.set(JSON.stringify(row), row);
+          }
+          merged[key] = Array.from(byId.values());
+        } else if (value !== undefined) {
+          merged[key] = value;
+        }
       }
+      db = merged;
+      ensureFarmtrackCatalogue(db);
     }
     delete db._skipPersistUntilRemoteLoad;
   }
   const persistedState = compactStateForPersistence(db);
   persistedState._writeVersion = Number(persistedState._writeVersion || 0) + 1;
   persistedState._lastWriterAt = new Date().toISOString();
-  await supabaseFetch('erp_state', {
+  const write = await supabaseRequest(`erp_state?on_conflict=id`, {
     method: 'POST',
-    headers: { Prefer: 'resolution=merge-duplicates' },
+    affectsReady: false,
+    timeoutMs: 45000,
+    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
     body: JSON.stringify({ id: STATE_ID, data: persistedState, updated_at: persistedState._lastWriterAt })
   });
+  if (!write.ok) {
+    console.error('saveState failed', write.status, write.error);
+    // Retry once
+    const retry = await supabaseRequest(`erp_state?on_conflict=id`, {
+      method: 'POST',
+      affectsReady: false,
+      timeoutMs: 45000,
+      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body: JSON.stringify({ id: STATE_ID, data: persistedState, updated_at: new Date().toISOString() })
+    });
+    if (!retry.ok) throw new Error('Failed to persist ERP state to Supabase: ' + (retry.error || retry.status));
+  }
   lastPersistedAt = Date.now();
   if (!db || db.deferNormalizedSync) return;
   await Promise.race([
@@ -8558,12 +8587,15 @@ territory: geo,
     const items = row.items || [];
     assertRequired(row.customerName || row.customerId, 'Customer');
     if (!items.length) throw new Error('At least one sales item is required');
+    const skipStock = row.skipStockCheck === true || row.allowNegativeStock === true;
     items.forEach(item => {
       assertRequired(item.productName, 'Sales item product');
       assertPositive(item.quantity, `${item.productName} quantity`);
       assertPositive(item.unitPrice, `${item.productName} unit price`);
-      const stock = availableStock(item.productName);
-      if (stock < num(item.quantity)) throw new Error(`Insufficient stock for ${item.productName}. Available: ${stock.toLocaleString()}, requested: ${num(item.quantity).toLocaleString()}`);
+      if (!skipStock) {
+        const stock = availableStock(item.productName);
+        if (stock < num(item.quantity)) throw new Error(`Insufficient stock for ${item.productName}. Available: ${stock.toLocaleString()}, requested: ${num(item.quantity).toLocaleString()}`);
+      }
     });
     const subtotal = items.reduce((s, i) => s + num(i.quantity) * num(i.unitPrice), 0);
     const tax = Math.round(subtotal * 0.16), total = subtotal + tax, paid = num(row.paid || total), id = gid(), saleNo = 'SALE-' + Date.now();
@@ -8674,6 +8706,7 @@ territory: geo,
       destination: row?.destination,
       deliveryMethod: row?.deliveryMethod,
       notes: row?.notes,
+      skipStockCheck: row?.skipStockCheck === true || row?.allowNegativeStock === true,
       items: [{
         productId: product.id,
         productName: product.name,
