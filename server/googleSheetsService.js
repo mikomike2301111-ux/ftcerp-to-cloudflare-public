@@ -41,7 +41,7 @@ function serviceAccountFromFile() {
 function getServiceAccount() {
   const account = serviceAccountFromEnv() || serviceAccountFromFile();
   if (!account?.client_email || !account?.private_key) {
-    throw new Error('Google Sheets service account is not configured. Add GOOGLE_SERVICE_ACCOUNT_JSON or the local service account JSON file.');
+    throw new Error('Google Sheets service account is not configured. Add GOOGLE_SERVICE_ACCOUNT_JSON (client_email should be erp-sheets-integration@erp-sheets-integration-503110.iam.gserviceaccount.com) or the local key file.');
   }
   return account;
 }

@@ -1433,7 +1433,7 @@ const GOOGLE_SHEETS_SERVICE_EMAIL = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || 
     const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
     if (raw) return JSON.parse(raw).client_email || '';
   } catch {}
-  return 'erp-sheets-integration-ftc@erp-sheets-integration-499106.iam.gserviceaccount.com';
+  return 'erp-sheets-integration@erp-sheets-integration-503110.iam.gserviceaccount.com';
 })();
 const ERP_SHEET_ID = process.env.ERP_SHEET_ID || GOOGLE_SHEETS_DEFAULT_ID;
 const NORMALIZED_TABLES = [
