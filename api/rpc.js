@@ -1394,15 +1394,24 @@ let db;
 let supabaseReady = null;
 
 const SUPABASE_URL = String(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://rajnrkgcisgpxtzzfmcl.supabase.co').trim().replace(/\/$/, '');
-const SUPABASE_KEY = String(
-  process.env.SUPABASE_SECRET_KEY ||
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.SUPABASE_SERVICE_KEY ||
-  process.env.SUPABASE_PUBLISHABLE_KEY ||
-  process.env.SUPABASE_ANON_KEY ||
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-  ''
-).trim();
+function pickSupabaseKey() {
+  const candidates = [
+    process.env.SUPABASE_SECRET_KEY,
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+    process.env.SUPABASE_SERVICE_KEY,
+    process.env.SUPABASE_PUBLISHABLE_KEY,
+    process.env.SUPABASE_ANON_KEY,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  ].map(v => String(v || '').trim()).filter(Boolean);
+  // Prefer new-format keys (sb_secret_ / sb_publishable_) for this project
+  const preferred = candidates.find(k => k.startsWith('sb_secret_'))
+    || candidates.find(k => k.startsWith('sb_publishable_'))
+    || candidates.find(k => k.startsWith('eyJ')) // legacy JWT
+    || candidates[0]
+    || '';
+  return preferred;
+}
+const SUPABASE_KEY = pickSupabaseKey();
 const SUPABASE_JWKS_URL = String(process.env.SUPABASE_JWKS_URL || `${SUPABASE_URL}/auth/v1/.well-known/jwks.json`).trim();
 const STATE_ID = 'farmtrack-demo';
 const TENANT_SLUG = 'farmtrack-demo';
@@ -1663,7 +1672,7 @@ async function saveState() {
       headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
       body: JSON.stringify({ id: STATE_ID, data: persistedState, updated_at: new Date().toISOString() })
     });
-    if (!retry.ok) throw new Error('Failed to persist ERP state to Supabase: ' + (retry.error || retry.status));
+    if (!retry.ok) throw new Error('Failed to persist ERP state to Supabase: ' + (retry.error || retry.status) + ' (url=' + SUPABASE_URL + ', keyPrefix=' + String(SUPABASE_KEY || '').slice(0, 12) + ')');
   }
   lastPersistedAt = Date.now();
   if (!db || db.deferNormalizedSync) return;

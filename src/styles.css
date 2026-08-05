@@ -9681,3 +9681,246 @@ select {
 .modal-backdrop.overlay-scrollable { align-items: flex-start; padding: 24px 12px; overflow-y: auto; }
 .overlay-card-scroll { max-height: 92vh; overflow: auto !important; }
 .receive-stock-form .modal-grid label { min-width: 0; }
+
+/* ═══════════════════════════════════════════════════════════
+   Apple Design layer — fluid UI only (no functional changes)
+   Response · Materials · Typography · Reduced motion
+   ═══════════════════════════════════════════════════════════ */
+
+:root {
+  --apple-ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --apple-spring: cubic-bezier(0.32, 0.72, 0, 1);
+  --apple-blur: blur(20px) saturate(180%);
+  --apple-glass: rgba(255, 255, 255, 0.72);
+  --apple-glass-dark: rgba(15, 23, 42, 0.55);
+  --apple-shadow: 0 8px 30px rgba(15, 23, 42, 0.08), 0 2px 8px rgba(15, 23, 42, 0.04);
+  --apple-shadow-lg: 0 20px 50px rgba(15, 23, 42, 0.12), 0 4px 16px rgba(15, 23, 42, 0.06);
+  --apple-radius: 14px;
+  --apple-radius-sm: 10px;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, Inter, "Helvetica Neue", Arial, sans-serif;
+  letter-spacing: -0.011em;
+  line-height: 1.47;
+}
+
+h1, .page-stack h1, .sales-hero h1, .finance-hero h1 {
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  font-weight: 700;
+}
+
+h2, .panel h2, .modal-card header h2 {
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  font-weight: 650;
+}
+
+/* Instant press feedback (response on pointer-down) */
+button,
+.primary-action,
+.secondary-action,
+.panel-action-button,
+.mini-action,
+.inline-actions button,
+.sales-tabs button,
+.nav-item,
+.sidebar a {
+  transition:
+    transform 100ms ease-out,
+    background-color 160ms var(--apple-ease),
+    box-shadow 200ms var(--apple-ease),
+    opacity 160ms var(--apple-ease),
+    border-color 160ms var(--apple-ease);
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:active,
+.primary-action:active,
+.secondary-action:active,
+.panel-action-button:active,
+.mini-action:active,
+.inline-actions button:active,
+.sales-tabs button:active,
+.nav-item:active {
+  transform: scale(0.97);
+}
+
+button:focus-visible,
+.primary-action:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid rgba(10, 132, 255, 0.55);
+  outline-offset: 2px;
+}
+
+/* Cards / panels — depth without noise */
+.panel,
+.kpi-card,
+.control-grid > *,
+.dashboard-grid > .panel {
+  border-radius: var(--apple-radius);
+  box-shadow: var(--apple-shadow);
+  transition: box-shadow 220ms var(--apple-ease), transform 220ms var(--apple-spring);
+}
+
+.panel:hover,
+.kpi-card:hover {
+  box-shadow: var(--apple-shadow-lg);
+}
+
+/* Modal materials */
+.modal-backdrop {
+  background: rgba(15, 23, 42, 0.42) !important;
+  backdrop-filter: blur(8px) saturate(140%);
+  -webkit-backdrop-filter: blur(8px) saturate(140%);
+  animation: apple-scrim-in 200ms var(--apple-ease);
+}
+
+.modal-card {
+  border-radius: 18px !important;
+  box-shadow: var(--apple-shadow-lg) !important;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  animation: apple-sheet-in 320ms var(--apple-spring);
+  transform-origin: center top;
+}
+
+@keyframes apple-scrim-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes apple-sheet-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Topbar glass */
+.topbar,
+.app-topbar,
+.erp-topbar {
+  background: var(--apple-glass) !important;
+  backdrop-filter: var(--apple-blur);
+  -webkit-backdrop-filter: var(--apple-blur);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.45);
+}
+
+/* Sidebar weight */
+.sidebar,
+.app-sidebar {
+  background: rgba(249, 250, 251, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+/* Inputs — clear, roomy, continuous feedback */
+input, select, textarea {
+  border-radius: var(--apple-radius-sm);
+  transition: border-color 160ms var(--apple-ease), box-shadow 160ms var(--apple-ease), background 160ms var(--apple-ease);
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: rgba(10, 132, 255, 0.65) !important;
+  box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.18);
+}
+
+/* Tables — quieter dividers */
+.table-wrap table th {
+  letter-spacing: -0.01em;
+  font-weight: 600;
+}
+
+.table-wrap table tr {
+  transition: background 120ms var(--apple-ease);
+}
+
+.table-wrap table tbody tr:hover {
+  background: rgba(10, 132, 255, 0.04);
+}
+
+/* Status badges */
+.badge, .status-pill, [class*="badge"] {
+  border-radius: 999px;
+  letter-spacing: 0.01em;
+}
+
+/* Hero / KPI polish */
+.sales-hero, .finance-hero, .inventory-hero, .procurement-hero {
+  border-radius: 18px;
+}
+
+.kpi-card strong, .hero-stats strong {
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tabs */
+.sales-tabs button {
+  border-radius: 999px;
+  letter-spacing: -0.01em;
+}
+
+.sales-tabs button.active {
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+}
+
+/* Scrollable overlays — spatial consistency */
+.overlay-card-scroll {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Reduced motion / transparency / contrast */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 80ms !important;
+    scroll-behavior: auto !important;
+  }
+  button:active, .primary-action:active, .nav-item:active {
+    transform: none;
+  }
+  .modal-card, .modal-backdrop {
+    animation: none !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .topbar, .app-topbar, .erp-topbar, .sidebar, .app-sidebar, .modal-backdrop {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: #ffffff !important;
+  }
+  .modal-backdrop {
+    background: rgba(15, 23, 42, 0.55) !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .panel, .kpi-card, .modal-card {
+    border: 1px solid #111827 !important;
+  }
+  input, select, textarea {
+    border-width: 2px !important;
+  }
+}
+
+/* Mobile hit targets */
+@media (max-width: 768px) {
+  button, .primary-action, .secondary-action, .nav-item {
+    min-height: 44px;
+  }
+  .modal-card {
+    border-radius: 16px 16px 0 0 !important;
+    margin-top: auto;
+  }
+}
