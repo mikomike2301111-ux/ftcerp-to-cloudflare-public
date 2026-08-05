@@ -6925,7 +6925,7 @@ const api = {
     try {
     reqRole(user);
     const d = data() || {};
-    ['inventory','products','inventoryTransactions','inventoryHealthScores','inventoryBatches','inventoryAlerts','inventoryDamage','inventoryCosts','inventoryWarehouses','inventoryAudits','goodsReceipts','purchaseOrders','productionMaterialRequests','inventoryReservations','inventoryCounts'].forEach(k => {
+    ['inventory','products','inventoryTransactions','inventoryHealthScores','inventoryBatches','inventoryAlerts','inventoryDamage','inventoryCosts','inventoryWarehouses','inventoryAudits','goodsReceipts','purchaseOrders','productionMaterialRequests','inventoryReservations','inventoryCounts','inventoryReorderRules','inventoryAdjustments','inventoryTransfers','inventorySlowMoving','inventoryDeadStock','inventoryDocuments','inventoryForecasts','inventoryReports','deliveries','reorderRules'].forEach(k => {
       if (!Array.isArray(d[k])) d[k] = [];
     });
     const scope = filters && filters.period ? { ...periodRange(filters.period), ...filters } : (filters || {});
@@ -7013,7 +7013,7 @@ const api = {
         incomingStock: Math.round(incoming),
         outgoingStock: Math.round(outgoing),
         inventoryTurnover: 1.9,
-        inventoryAccuracy: Math.round(100 - (d.inventoryAudits.filter(row => row.difference !== 0).length / Math.max(1, d.inventoryAudits.length)) * 100)
+        inventoryAccuracy: Math.round(100 - ((d.inventoryAudits || []).filter(row => row.difference !== 0).length / Math.max(1, (d.inventoryAudits || []).length || 1)) * 100)
       },
       trend,
       stockItems,
@@ -7029,12 +7029,12 @@ const api = {
       pendingProductionIssues: (d.productionMaterialRequests || []).filter(r => r.status === 'Pending Issue'),
       damaged: d.inventoryDamage,
       alerts: d.inventoryAlerts,
-      reorderRules: d.inventoryReorderRules,
-      slowMoving: d.inventorySlowMoving,
-      deadStock: d.inventoryDeadStock,
-      costs: d.inventoryCosts,
-      documents: d.inventoryDocuments,
-      forecasts: d.inventoryForecasts,
+      reorderRules: d.inventoryReorderRules || [],
+      slowMoving: d.inventorySlowMoving || [],
+      deadStock: d.inventoryDeadStock || [],
+      costs: d.inventoryCosts || [],
+      documents: d.inventoryDocuments || [],
+      forecasts: d.inventoryForecasts || [],
       healthScores: d.inventoryHealthScores,
       fastMoving,
       reports: d.inventoryReports,
@@ -7072,7 +7072,7 @@ const api = {
       return {
         filters: { dateRange: 'This Month', warehouse: 'All Warehouses', category: 'All Categories', status: 'All Statuses', valuation: 'FIFO' },
         overview: { totalSkus: 0, totalStockValue: 0, availableStock: 0, reservedStock: 0, lowStock: 0, inventoryAccuracy: 0, quarantined: 0, abcA: 0 },
-        stock: [], movements: [], adjustments: [], warehouses: [], alerts: [], reports: [], analytics: {}, ai: [], searchIndex: [], pendingProductionIssues: [],
+        stock: [], stockItems: [], reorderRules: [], movements: [], adjustments: [], warehouses: [], alerts: [], reports: [], analytics: {}, ai: [], searchIndex: [], pendingProductionIssues: [],
         errorSafe: true, errorMessage: err && err.message
       };
     }

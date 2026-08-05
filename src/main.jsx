@@ -3261,6 +3261,10 @@ function InventoryWorkspace({ user, setPage, globalPeriod }) {
 
   const data = workspace.data || {};
   const overview = data.overview || {};
+  // Normalize arrays so Inventory UI never crashes on empty Supabase state
+  ['stockItems','reorderRules','movements','warehouses','alerts','audits','expiry','damaged','receiving','dispatch','documents','forecasts','healthScores','fastMoving','reports','costs','searchIndex','pendingProductionIssues','productionMaterialRequests','transfers','adjustments','slowMoving','deadStock'].forEach(k => {
+    if (!Array.isArray(data[k])) data[k] = [];
+  });
   const pendingMfg = Array.isArray(data.pendingProductionIssues) ? data.pendingProductionIssues : [];
   const metrics = ['inventoryValue', 'incomingStock', 'outgoingStock', 'damagedStock', 'expiredStock', 'warehouseStock', 'stockTurnover', 'stockCosts'];
   const filteredSearch = query.length < 2 ? [] : (data.searchIndex || []).filter(row => `${row.type} ${row.label} ${row.sub}`.toLowerCase().includes(query.toLowerCase())).slice(0, 8);
@@ -3388,7 +3392,7 @@ function InventoryWorkspace({ user, setPage, globalPeriod }) {
         </>
       )}
 
-      {view === 'stock' && <Panel title="Inventory Master List" action={`${data.stockItems.length} items`}>
+      {view === 'stock' && <Panel title="Inventory Master List" action={`${(data.stockItems || []).length} items`}>
         <div className="table-wrap">
           <table>
             <thead>
@@ -3567,7 +3571,7 @@ function InventoryWorkspace({ user, setPage, globalPeriod }) {
               {(data.movements || []).slice(0, 10).map(m => (
                 <div key={m.id}><span>{m.productName} · {m.transactionType}</span><strong>{m.quantity} units</strong><em>{m.referenceType} · {m.createdBy}</em></div>
               ))}
-              {(!data.movements || data.movements.length === 0) && <div className="empty-state">No batch movements recorded yet.</div>}
+              {(!data.movements || (data.movements || []).length === 0) && <div className="empty-state">No batch movements recorded yet.</div>}
             </div>
           </Panel>
           <Panel className="span-6" title="Expiry Alerts by Batch" action="FEFO">
@@ -3590,7 +3594,7 @@ function InventoryWorkspace({ user, setPage, globalPeriod }) {
             </div>
           </Panel>
           <Panel className="span-8" title="Reorder Recommendations" action="AI-powered">
-            <SimpleTable rows={data.reorderRules} columns={['productName', 'currentStock', 'minimumStock', 'reorderPoint', 'recommendedOrderQty', 'preferredSupplier', 'status']} />
+            <SimpleTable rows={(data.reorderRules || [])} columns={['productName', 'currentStock', 'minimumStock', 'reorderPoint', 'recommendedOrderQty', 'preferredSupplier', 'status']} />
           </Panel>
         </div>
       )}
