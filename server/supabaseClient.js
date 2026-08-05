@@ -13,7 +13,7 @@
 const { createClient } = require('@supabase/supabase-js');
 
 const SUPABASE_URL = String(
-  process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://rajnrkgcisgpxtzzfmcl.supabase.co'
+  ((process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://rajnrkgcisgpxtzzfmcl.supabase.co').includes('qiwggxoaqeptdqzpwgft') ? 'https://rajnrkgcisgpxtzzfmcl.supabase.co' : (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://rajnrkgcisgpxtzzfmcl.supabase.co'))
 ).trim().replace(/\/$/, '');
 
 const SUPABASE_SECRET = String(

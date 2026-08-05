@@ -1393,7 +1393,11 @@ const KENYA_COUNTIES = [
 let db;
 let supabaseReady = null;
 
-const SUPABASE_URL = String(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://rajnrkgcisgpxtzzfmcl.supabase.co').trim().replace(/\/$/, '');
+const RAW_SUPABASE_URL = String(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://rajnrkgcisgpxtzzfmcl.supabase.co').trim().replace(/\/$/, '');
+// Never use the retired project URL — always Farmtrack rajnrkgcisgpxtzzfmcl
+const SUPABASE_URL = (/qiwggxoaqeptdqzpwgft/i.test(RAW_SUPABASE_URL) || !RAW_SUPABASE_URL)
+  ? 'https://rajnrkgcisgpxtzzfmcl.supabase.co'
+  : RAW_SUPABASE_URL;
 function pickSupabaseKey() {
   const candidates = [
     process.env.SUPABASE_SECRET_KEY,
