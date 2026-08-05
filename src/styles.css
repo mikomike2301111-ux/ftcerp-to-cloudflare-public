@@ -9676,3 +9676,8 @@ select {
 }
 .analytics-center p, .email-workspace p, .email-page p { line-height: 1.55; color: #475467; }
 .email-workspace .panel, .email-page .panel { font-size: 14px; }
+
+/* Scrollable overlays for dense forms */
+.modal-backdrop.overlay-scrollable { align-items: flex-start; padding: 24px 12px; overflow-y: auto; }
+.overlay-card-scroll { max-height: 92vh; overflow: auto !important; }
+.receive-stock-form .modal-grid label { min-width: 0; }

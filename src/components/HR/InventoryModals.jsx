@@ -15,64 +15,128 @@ function ModalCard({ title, onClose, children, wide }) {
   );
 }
 
-export function ReceiveStockModal({ user, warehouses, suppliers, onClose, onSave }) {
+export function ReceiveStockModal({ user, warehouses = [], suppliers = [], products = [], onClose, onSave }) {
+  const warehouseOptions = Array.from(new Set([
+    'Main Store Njiru', 'Finished Goods Store', 'Raw Materials Store',
+    ...((warehouses || []).map(w => w?.name).filter(Boolean))
+  ]));
+  const supplierOptions = Array.from(new Set((suppliers || []).map(s => s?.name).filter(Boolean))).sort();
+  const productOptions = (products || []).filter(p => p && p.name).map(p => ({
+    name: p.name, sku: p.sku || '', cost: Number(p.costPrice || p.unitCost || 0)
+  }));
+  const emptyLine = () => ({ productName: '', sku: '', quantity: 1, unitCost: 0, batchNo: '', expiryDate: '', condition: 'Good', notes: '' });
   const [form, setForm] = useState({
-    poNo: '', supplier: '', warehouse: '', deliveryNote: '', receivedDate: new Date().toISOString().slice(0, 10),
-    items: [{ productName: '', sku: '', quantity: 0, unitCost: 0, batchNo: '', expiryDate: '', condition: 'Good', notes: '' }]
+    poNo: '', supplier: '', warehouse: 'Main Store Njiru', deliveryNote: '',
+    receivedDate: new Date().toISOString().slice(0, 10), notes: '', items: [emptyLine()]
   });
-  const [scanning, setScanning] = useState(false);
-
-  const addItem = () => setForm({
-    ...form,
-    items: [...form.items, { productName: '', sku: '', quantity: 0, unitCost: 0, batchNo: '', expiryDate: '', condition: 'Good', notes: '' }]
-  });
+  const [saving, setSaving] = useState(false);
+  const [scanCode, setScanCode] = useState('');
+  const num = (v) => Number(v) || 0;
+  const addItem = () => setForm({ ...form, items: [...form.items, emptyLine()] });
   const updateItem = (i, field, val) => {
     const next = [...form.items];
     next[i] = { ...next[i], [field]: val };
     setForm({ ...form, items: next });
   };
-  const removeItem = i => setForm({ ...form, items: form.items.filter((_, idx) => idx !== i) });
-
+  const removeItem = (i) => {
+    const next = form.items.filter((_, idx) => idx !== i);
+    setForm({ ...form, items: next.length ? next : [emptyLine()] });
+  };
+  const pickProduct = (i, productName) => {
+    const p = productOptions.find(x => x.name === productName);
+    const next = [...form.items];
+    next[i] = {
+      ...next[i],
+      productName,
+      sku: p?.sku || next[i].sku,
+      unitCost: p?.cost || next[i].unitCost
+    };
+    setForm({ ...form, items: next });
+  };
+  const applyScan = () => {
+    const code = String(scanCode || '').trim();
+    if (!code) return;
+    const match = productOptions.find(p => p.sku === code || p.name.toLowerCase() === code.toLowerCase());
+    const line = match
+      ? { ...emptyLine(), productName: match.name, sku: match.sku, unitCost: match.cost, quantity: 1 }
+      : { ...emptyLine(), productName: code, sku: code, quantity: 1 };
+    setForm({ ...form, items: [...form.items.filter(i => i.productName && num(i.quantity)), line] });
+    setScanCode('');
+  };
+  async function submit(e) {
+    e.preventDefault();
+    const lines = form.items.filter(i => String(i.productName || '').trim() && num(i.quantity) > 0);
+    if (!lines.length) { alert('Add at least one product with quantity > 0'); return; }
+    if (!form.warehouse) { alert('Select or type a warehouse / store'); return; }
+    setSaving(true);
+    try {
+      await onSave({ ...form, items: lines, supplierName: form.supplier });
+    } catch (err) {
+      alert(err?.message || 'Receive failed');
+    } finally {
+      setSaving(false);
+    }
+  }
   return (
-    <ModalCard title="Receive Stock (GRN)" onClose={onClose} wide>
-      <form className="settings-form-grid" onSubmit={e => { e.preventDefault(); onSave(form); }}>
-        <fieldset className="settings-fieldset"><legend>Receiving Info</legend><div>
-          <label>PO Reference<input value={form.poNo} onChange={e => setForm({ ...form, poNo: e.target.value })} placeholder="PO-001" /></label>
-          <label>Supplier<select value={form.supplier} onChange={e => setForm({ ...form, supplier: e.target.value })}>
-            <option value="">Select supplier...</option>
-            {suppliers?.map(s => <option key={s.id || s.name} value={s.name}>{s.name}</option>)}
-          </select></label>
-          <label>Warehouse<select value={form.warehouse} onChange={e => setForm({ ...form, warehouse: e.target.value })} required>
-            <option value="">Select warehouse...</option>
-            {warehouses?.map(w => <option key={w.id || w.name} value={w.name}>{w.name}</option>)}
-          </select></label>
-          <label>Delivery Note #<input value={form.deliveryNote} onChange={e => setForm({ ...form, deliveryNote: e.target.value })} /></label>
-          <label>Received Date<input type="date" value={form.receivedDate} onChange={e => setForm({ ...form, receivedDate: e.target.value })} /></label>
-        </div></fieldset>
-        <fieldset className="settings-fieldset"><legend>Items Received {scanning && <span className="status active">📷 Scanning...</span>}</legend>
-          <div style={{ marginBottom: 8, display: 'flex', gap: 8 }}>
-            <button type="button" className="panel-action-button" onClick={() => setScanning(!scanning)}><QrCode size={14} /> {scanning ? 'Stop Scan' : 'Scan Barcode'}</button>
-            <button type="button" className="panel-action-button" onClick={addItem}><Plus size={14} /> Add Line Item</button>
-          </div>
-          {form.items.map((item, i) => (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1.2fr 1.2fr auto', gap: 6, alignItems: 'end', marginBottom: 6, padding: 10, background: '#f9fafb', borderRadius: 8 }}>
-              <label>Product<input value={item.productName} onChange={e => updateItem(i, 'productName', e.target.value)} placeholder="SKU or name" /></label>
-              <label>Qty<input type="number" value={item.quantity} onChange={e => updateItem(i, 'quantity', Number(e.target.value))} /></label>
-              <label>Unit Cost<input type="number" value={item.unitCost} onChange={e => updateItem(i, 'unitCost', Number(e.target.value))} /></label>
-              <label>Batch/Lot<input value={item.batchNo} onChange={e => updateItem(i, 'batchNo', e.target.value)} placeholder="BATCH-001" /></label>
-              <label>Expiry<input type="date" value={item.expiryDate} onChange={e => updateItem(i, 'expiryDate', e.target.value)} /></label>
-              <label>Condition<select value={item.condition} onChange={e => updateItem(i, 'condition', e.target.value)}>
-                {['Good', 'Damaged', 'Expired', 'Quarantine'].map(c => <option key={c}>{c}</option>)}
-              </select></label>
-              <button type="button" className="mini-action" onClick={() => removeItem(i)} style={{ color: '#ef4444', alignSelf: 'end' }}><Trash2 size={14} /></button>
+    <div className="modal-backdrop overlay-scrollable" onClick={onClose}>
+      <div className="modal-card wide overlay-card-scroll" onClick={e => e.stopPropagation()} style={{ maxHeight: '92vh', overflow: 'auto', width: 'min(960px, 96vw)' }}>
+        <header><h2>Receive Stock (GRN)</h2><button type="button" onClick={onClose}><X size={18} /></button></header>
+        <form className="settings-form-grid receive-stock-form" onSubmit={submit}>
+          <fieldset className="settings-fieldset"><legend>Receiving Info</legend>
+            <div className="modal-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+              <label>PO Reference<input value={form.poNo} onChange={e => setForm({ ...form, poNo: e.target.value })} placeholder="PO-001 (optional)" /></label>
+              <label>Supplier
+                <input list="receive-supplier-list" value={form.supplier} onChange={e => setForm({ ...form, supplier: e.target.value })} placeholder="Type or select supplier" />
+                <datalist id="receive-supplier-list">{supplierOptions.map(s => <option key={s} value={s} />)}</datalist>
+              </label>
+              <label>Warehouse / Store
+                <input list="receive-warehouse-list" value={form.warehouse} onChange={e => setForm({ ...form, warehouse: e.target.value })} placeholder="Main Store Njiru" required />
+                <datalist id="receive-warehouse-list">{warehouseOptions.map(w => <option key={w} value={w} />)}</datalist>
+              </label>
+              <label>Delivery Note #<input value={form.deliveryNote} onChange={e => setForm({ ...form, deliveryNote: e.target.value })} placeholder="DN-..." /></label>
+              <label>Received Date<input type="date" value={form.receivedDate} onChange={e => setForm({ ...form, receivedDate: e.target.value })} required /></label>
+              <label>Notes<input value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Optional" /></label>
             </div>
-          ))}
-        </fieldset>
-        <button className="primary-action" type="submit">Complete Receiving</button>
-      </form>
-    </ModalCard>
+          </fieldset>
+          <fieldset className="settings-fieldset"><legend>Items Received</legend>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12, alignItems: 'end' }}>
+              <label style={{ flex: '1 1 220px' }}>Scan Barcode / SKU
+                <input value={scanCode} onChange={e => setScanCode(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); applyScan(); } }} placeholder="Scan or type SKU / product" />
+              </label>
+              <button type="button" className="secondary-action" onClick={applyScan}><QrCode size={14} /> Apply scan</button>
+              <button type="button" className="panel-action-button" onClick={addItem}><Plus size={14} /> Add Line Item</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: '42vh', overflow: 'auto' }}>
+              {form.items.map((item, i) => (
+                <div key={i} style={{ border: '1px solid #e8ecf1', borderRadius: 12, padding: 12, background: '#fafbfc' }}>
+                  <div className="modal-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, alignItems: 'end' }}>
+                    <label style={{ gridColumn: 'span 2' }}>Product
+                      <input list={`receive-product-list-${i}`} value={item.productName} onChange={e => pickProduct(i, e.target.value)} placeholder="Catalogue product or new name" required />
+                      <datalist id={`receive-product-list-${i}`}>{productOptions.map(p => <option key={p.name} value={p.name}>{p.sku ? `${p.sku} — ${p.name}` : p.name}</option>)}</datalist>
+                    </label>
+                    <label>SKU<input value={item.sku} onChange={e => updateItem(i, 'sku', e.target.value)} /></label>
+                    <label>Qty<input type="number" min="0.01" step="any" value={item.quantity} onChange={e => updateItem(i, 'quantity', e.target.value)} required /></label>
+                    <label>Unit Cost<input type="number" min="0" step="any" value={item.unitCost} onChange={e => updateItem(i, 'unitCost', e.target.value)} /></label>
+                    <label>Batch / Lot<input value={item.batchNo} onChange={e => updateItem(i, 'batchNo', e.target.value)} /></label>
+                    <label>Expiry<input type="date" value={item.expiryDate} onChange={e => updateItem(i, 'expiryDate', e.target.value)} /></label>
+                    <label>Condition<select value={item.condition} onChange={e => updateItem(i, 'condition', e.target.value)}>{['Good', 'Damaged', 'Quarantine', 'Expired'].map(c => <option key={c}>{c}</option>)}</select></label>
+                    <button type="button" className="mini-action" onClick={() => removeItem(i)} style={{ color: '#ef4444', alignSelf: 'end' }}><Trash2 size={14} /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p style={{ fontSize: 12, color: '#667085', marginTop: 8 }}>Stock posts into the selected store (default Main Store Njiru). New product names are added to the catalogue and appear under Inventory.</p>
+          </fieldset>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button type="button" className="secondary-action" onClick={onClose}>Cancel</button>
+            <button className="primary-action" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Post Goods Receipt'}</button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
+
 
 export function DispatchModal({ user, customers, warehouses, onClose, onSave }) {
   const [form, setForm] = useState({

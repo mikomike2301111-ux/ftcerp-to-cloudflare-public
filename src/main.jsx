@@ -3814,20 +3814,17 @@ function InventoryWorkspace({ user, setPage, globalPeriod }) {
       {receiveOpen && (
         <ReceiveStockModal
           user={user}
-          warehouses={data.warehouses}
-          suppliers={(data.reorderRules || []).map(r => ({ name: r.preferredSupplier })).filter(s => s.name)}
+          warehouses={data.warehouses || []}
+          suppliers={(data.suppliers || []).concat((data.reorderRules || []).map(r => ({ name: r.preferredSupplier })).filter(s => s.name))}
+          products={data.products || (data.stockItems || []).map(s => ({ name: s.productName, sku: s.sku, costPrice: s.unitCost }))}
           onClose={() => setReceiveOpen(false)}
           onSave={async (form) => {
             try {
-              for (const line of form.items || []) {
-                const match = (data.stockItems || []).find(i => i.productName === line.productName || i.sku === line.sku);
-                if (match && num(line.quantity)) {
-                  await rpc('adjustInventory', [user, { inventoryId: match.id, quantity: Math.abs(num(line.quantity)), reason: 'Goods Receipt' }]);
-                }
-              }
+              await rpc('receiveInventoryStock', [user, form]);
               setReceiveOpen(false);
               setRefreshKey(x => x + 1);
-              setView('receiving');
+              setView('stock');
+              alert('Stock received into inventory store.');
             } catch (err) { alert(err.message); }
           }}
         />

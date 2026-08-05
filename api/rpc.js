@@ -7039,6 +7039,8 @@ const api = {
       damaged: d.inventoryDamage,
       alerts: d.inventoryAlerts,
       reorderRules: d.inventoryReorderRules || [],
+      suppliers: d.suppliers || [],
+      products: d.products || [],
       slowMoving: d.inventorySlowMoving || [],
       deadStock: d.inventoryDeadStock || [],
       costs: d.inventoryCosts || [],
@@ -9772,6 +9774,106 @@ territory: geo,
     request.approvalStatus = 'PO Created';
     log(u, 'Generate Purchase Order', 'Procurement', po.poNo);
     return { success: true, po };
+  },
+
+  receiveInventoryStock(user, form = {}) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.PROCUREMENT, ROLES.WAREHOUSE, ROLES.PRODUCTION);
+    const d = data();
+    d.inventory = Array.isArray(d.inventory) ? d.inventory : [];
+    d.products = Array.isArray(d.products) ? d.products : [];
+    d.suppliers = Array.isArray(d.suppliers) ? d.suppliers : [];
+    d.goodsReceipts = Array.isArray(d.goodsReceipts) ? d.goodsReceipts : [];
+    d.goodsReceiptItems = Array.isArray(d.goodsReceiptItems) ? d.goodsReceiptItems : [];
+    d.inventoryTransactions = Array.isArray(d.inventoryTransactions) ? d.inventoryTransactions : [];
+    d.inventoryWarehouses = Array.isArray(d.inventoryWarehouses) ? d.inventoryWarehouses : [];
+    d.notifications = Array.isArray(d.notifications) ? d.notifications : [];
+
+    const warehouse = clean(form.warehouse) || 'Main Store Njiru';
+    const supplierName = clean(form.supplier || form.supplierName);
+    const receivedDate = clean(form.receivedDate) || today();
+    const items = Array.isArray(form.items) ? form.items.filter(i => clean(i.productName || i.name) && num(i.quantity) > 0) : [];
+    if (!items.length) throw new Error('Add at least one line with product name and quantity');
+
+    // Ensure warehouse exists
+    if (!d.inventoryWarehouses.find(w => w.name === warehouse)) {
+      d.inventoryWarehouses.unshift({ id: gid(), name: warehouse, code: warehouse.slice(0, 6).toUpperCase(), capacity: 100000, used: 0, location: warehouse, status: 'Active' });
+    }
+    // Ensure supplier exists if typed
+    if (supplierName && !d.suppliers.find(s => String(s.name || '').toLowerCase() === supplierName.toLowerCase())) {
+      d.suppliers.unshift({ id: gid(), name: supplierName, status: 'Active', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), isDeleted: 'No' });
+    }
+
+    const grnId = gid();
+    const grnNo = `GRN-${Date.now()}`;
+    const grn = {
+      id: grnId, grnNo, poNo: clean(form.poNo || form.poReference),
+      supplierName, warehouseName: warehouse, deliveryNote: clean(form.deliveryNote),
+      receivedBy: u.name, date: receivedDate, status: 'Received',
+      notes: clean(form.notes), createdAt: new Date().toISOString(), isDeleted: 'No'
+    };
+    d.goodsReceipts.unshift(grn);
+
+    const receivedLines = [];
+    for (const line of items) {
+      const productName = clean(line.productName || line.name);
+      const qty = num(line.quantity);
+      const unitCost = num(line.unitCost || line.cost);
+      const batchNo = clean(line.batchNo || line.batchLot) || `LOT-${Date.now()}`;
+      const expiryDate = clean(line.expiryDate);
+      const condition = clean(line.condition) || 'Good';
+      const sku = clean(line.sku);
+
+      // Link or create product catalogue entry
+      let product = d.products.find(p => p.name === productName || (sku && p.sku === sku));
+      if (!product) {
+        product = {
+          id: gid(), name: productName, sku: sku || `SKU-${Date.now()}`,
+          category: clean(line.category) || 'Finished Goods', unit: 'pcs',
+          costPrice: unitCost, sellingPrice: unitCost, minStock: 0, status: 'Active',
+          createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), isDeleted: 'No'
+        };
+        d.products.unshift(product);
+      }
+
+      // Inventory line: match product + warehouse + batch
+      let inv = d.inventory.find(row =>
+        row.productName === productName &&
+        row.warehouseName === warehouse &&
+        (batchNo ? row.batchNo === batchNo : true) &&
+        row.isDeleted !== 'Yes'
+      );
+      if (!inv) {
+        inv = {
+          id: gid(), productId: product.id, productName, sku: product.sku,
+          warehouseName: warehouse, batchNo, quantity: 0, unitCost,
+          expiryDate, receivedDate, status: condition === 'Good' ? 'In Stock' : condition,
+          supplierName, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), isDeleted: 'No'
+        };
+        d.inventory.unshift(inv);
+      }
+      inv.quantity = num(inv.quantity) + qty;
+      inv.unitCost = unitCost || inv.unitCost;
+      inv.updatedAt = new Date().toISOString();
+
+      d.goodsReceiptItems.unshift({
+        id: gid(), grnId, productId: product.id, productName, sku: product.sku,
+        quantity: qty, unitCost, batchNo, expiryDate, condition, inventoryId: inv.id
+      });
+      d.inventoryTransactions.unshift({
+        id: gid(), productId: product.id, productName, sku: product.sku,
+        warehouseName: warehouse, batchNo, transactionType: 'Receive', quantity: qty, unitCost,
+        referenceType: 'Goods Receipt', referenceId: grnNo, createdBy: u.name,
+        createdAt: new Date().toISOString(), notes: clean(line.notes) || `GRN ${grnNo}`
+      });
+      receivedLines.push({ productName, qty, batchNo, inventoryId: inv.id });
+    }
+
+    d.notifications.unshift({
+      id: gid(), title: 'Stock received', body: `GRN ${grnNo}: ${receivedLines.length} line(s) into ${warehouse}`,
+      module: 'Inventory', type: 'success', read: false, createdAt: new Date().toISOString()
+    });
+    log(u, 'Receive stock', 'Inventory', grnNo);
+    return { success: true, grn, lines: receivedLines };
   },
   receiveGoods(user, poId) {
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.PROCUREMENT, ROLES.WAREHOUSE);
