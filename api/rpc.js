@@ -4182,7 +4182,8 @@ function postFinanceJournal(user, { date, sourceModule, sourceId, reference, des
 }
 
 function list(name) {
-  return data()[name].filter(x => x.isDeleted !== 'Yes');
+  const rows = (data() || {})[name];
+  return (Array.isArray(rows) ? rows : []).filter(x => x && x.isDeleted !== 'Yes');
 }
 
 /** Map in-memory collection names → normalized Supabase table + conflict target */
