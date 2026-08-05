@@ -1,9 +1,9 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { GoogleSheetsService } = require('./googleSheetsService');
-const EmailService = require('./resend-service-core');
-const RichEmail = require('./resendService');
+const { GoogleSheetsService } = require('../server/googleSheetsService');
+const EmailService = require('../server/resend-service-core');
+const RichEmail = require('../server/resendService');
 const PDFDocument = require('pdfkit');
 const ExcelJS = require('exceljs');
 const PptxGenJS = require('pptxgenjs');

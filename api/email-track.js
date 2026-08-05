@@ -309,7 +309,7 @@ async function handleResendEmail(req, res) {
     }
     
     // Import the email service
-    const emailService = require('./resend-service-core');
+    const emailService = require('../server/resend-service-core');
     const result = await emailService.resendFailedEmail(logId);
     
     res.json(result);
@@ -330,7 +330,7 @@ async function handleGetPreferences(req, res, query) {
     }
     
     // Import the email service
-    const emailService = require('./resend-service-core');
+    const emailService = require('../server/resend-service-core');
     const prefs = await emailService.getUserEmailPreferences(email);
     
     res.json(prefs);
@@ -351,7 +351,7 @@ async function handleUpdatePreferences(req, res) {
     }
     
     // Import the email service
-    const emailService = require('./resend-service-core');
+    const emailService = require('../server/resend-service-core');
     const result = await emailService.updateUserEmailPreferences(email, preferences);
     
     res.json(result);
