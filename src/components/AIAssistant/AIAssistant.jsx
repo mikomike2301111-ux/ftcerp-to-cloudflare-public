@@ -166,12 +166,6 @@ const MODULE_PROMPTS = {
     'Leave policy explanation',
     'Attendance vs leave trends',
   ],
-  notifications: [
-    'What notifications require attention?',
-    'Recent system alerts',
-    'Critical issues today',
-    'Notification settings guide',
-  ],
   'email-admin': [
     'Email delivery rate overview',
     'Failed email analysis',

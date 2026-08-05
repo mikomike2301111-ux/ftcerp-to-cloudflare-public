@@ -4845,133 +4845,62 @@ const daysUntil = date => { if (!date) return null; const d = Math.round((new Da
 function todayStr() { return new Date().toISOString().slice(0, 10); }
 
 function SalesVisitsWorkspace({ user, visits = [], salesPeople = [], onDone }) {
-  const [modal, setModal] = useState(null);
-  const [editVisit, setEditVisit] = useState(null);
-  const [filterRep, setFilterRep] = useState('');
-  const [query, setQuery] = useState('');
-  const [importOpen, setImportOpen] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const [syncMsg, setSyncMsg] = useState('');
-
-  async function syncFromSheet() {
-    setSyncing(true); setSyncMsg('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const list = Array.isArray(visits) ? visits : [];
+  const FIELD = [
+    { rep: 'Edna', sheet: 'https://docs.google.com/spreadsheets/d/1CvpTd26OLLOfSbVT3rLEQt62DI_SlEFE3OujFIK3m2k/edit#gid=1418179458', form: 'https://docs.google.com/forms/d/e/1FAIpQLSfpabQbCcjmPflzWccaqXR62ZNsP9-2ImEi6dBrc7zEbue4mg/viewform' },
+    { rep: 'Joseph', sheet: 'https://docs.google.com/spreadsheets/d/18PmXlxErj5t7dGc1I1fKHvk29c4tSLupZW8jU7b-4OE/edit#gid=6226406', form: 'https://docs.google.com/forms/d/e/1FAIpQLSdfgMyHbdqlRnemBQjVeLhEUXWkB6Aw1YKIGTLY2rXiUNcn1Q/viewform' },
+    { rep: 'Njoroge', sheet: 'https://docs.google.com/spreadsheets/d/1EkoTqKTp4DrBm-wE_V4lApnkIeabYC9Tot7LWykumPo/edit#gid=2009153025', form: 'https://docs.google.com/forms/d/e/1FAIpQLSfknUdFLoHPmOCpPDqWK6HslNu5KWymxG0E1QVrYLg_8zEeEw/viewform' },
+    { rep: 'Purity', sheet: 'https://docs.google.com/spreadsheets/d/1Dt_VDE4nepDmDEWRPwF48Qv3WQB6GQZMIbCPP1bdzKs/edit#gid=1073923333', form: 'https://docs.google.com/forms/d/e/1FAIpQLSdoowdRLmCaSo5lbSDsHYqVhM67l07d4_jUQGl0er2MZ6nN2g/viewform' }
+  ];
+  async function syncSheets() {
+    setBusy(true); setMsg('');
     try {
       const res = await rpc('pullAllSalesFieldData', [user, {}]);
-      setSyncMsg(res.message || `Synced ${res.visitsImported || 0} visits from all rep sheets.`);
-      if ((res.visitsImported || 0) > 0) onDone?.();
-    } catch (err) { setSyncMsg('Sync failed: ' + (err.message || 'unknown error')); }
-    finally { setSyncing(false); }
-  }
-  async function syncToSheet() {
-    setExporting(true); setSyncMsg('');
-    try {
-      const res = await rpc('syncVisitsToSheet', [user, {}]);
-      setSyncMsg(res.message || `Exported ${res.rows} visits to Google Sheet.`);
-    } catch (err) { setSyncMsg('Export failed: ' + (err.message || 'unknown error')); }
-    finally { setExporting(false); }
-  }
-
-  const today = todayStr();
-  const filtered = visits.filter(v => {
-    if (filterRep && v.salesperson !== filterRep) return false;
-    if (query) {
-      const q = query.toLowerCase();
-      if (![v.shopOrCustomer, v.contactPerson, v.phone, v.productDiscussed, v.outcome, v.salesperson, v.comments, v.location].join(' ').toLowerCase().includes(q)) return false;
+      setMsg(res?.message || `Synced ${res?.visitsImported || 0} visits / ${res?.ordersImported || 0} orders`);
+      onDone?.();
+    } catch (e) {
+      setMsg(e.message || 'Sync failed — share each sheet with the service account');
+    } finally {
+      setBusy(false);
     }
-    return true;
-  });
-  const todays = filtered.filter(v => v.visitDate === today).length;
-  const followUps = filtered.filter(v => v.nextAppointment && v.nextAppointment >= today && v.status === 'Open').length;
-  const openCount = filtered.filter(v => v.status === 'Open').length;
-
-  const handleSave = async (form) => {
-    try { await rpc('logVisit', [user, form]); setModal(null); setEditVisit(null); onDone?.(); } catch (err) { alert(err.message); }
-  };
-  const handleDelete = async (v) => {
-    if (!confirm(`Delete visit for "${v.shopOrCustomer}"?`)) return;
-    try { await rpc('deleteVisit', [user, v.id]); onDone?.(); } catch (err) { alert(err.message); }
-  };
-
+  }
   return (
-    <div className="dashboard-grid visits-workspace visits-workspace-clean">
-      <Panel className="span-12" title="Field visits" action={
-        <div className="panel-action-row">
-          <a className="mini-action" href={VISITS_FORM_URL} target="_blank" rel="noopener noreferrer"><FileText size={14} /> Form</a>
-          <a className="mini-action" href={VISITS_SHEET_URL} target="_blank" rel="noopener noreferrer"><Upload size={14} /> Sheet</a>
-          <button type="button" className="mini-action" onClick={syncFromSheet} disabled={syncing}><RefreshCw size={14} className={syncing ? 'spin' : ''} /> {syncing ? 'Syncing...' : 'Sync from Sheet'}</button>
-          <button type="button" className="mini-action" onClick={syncToSheet} disabled={exporting}><Upload size={14} /> {exporting ? 'Exporting...' : 'Sync to Sheet'}</button>
-          <button type="button" className="mini-action" onClick={() => setImportOpen(true)}><Upload size={14} /> Import CSV</button>
-          <button type="button" className="primary-action" onClick={() => setModal('visit')}><Plus size={14} /> Log visit</button>
+    <div className="dashboard-grid">
+      <Panel className="span-12" title="Field Visits — Google Forms & Sheets" action="Tracking">
+        <p style={{ margin: '0 0 12px', color: '#667085', fontSize: 13 }}>
+          Visits are captured on each rep form and land in their sheet. Use Sync to pull into the ERP. Order forms use a separate shared workbook (configured under Settings → Spreadsheets).
+        </p>
+        <div className="sales-report-grid">
+          {FIELD.map(f => (
+            <article key={f.rep}>
+              <strong>{f.rep}</strong>
+              <span>Visit form + response sheet</span>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+                <a className="crm-sheet-link" href={f.form} target="_blank" rel="noopener noreferrer">Open form</a>
+                <a className="crm-sheet-link" href={f.sheet} target="_blank" rel="noopener noreferrer">Open sheet</a>
+              </div>
+            </article>
+          ))}
         </div>
-      }>
-        <p className="visits-intro">Sheet-fed field log. Structure is unchanged so Google Forms and Sheets stay the source of truth.</p>
-        {syncMsg && <div className={`crm-sheet-message ${/fail|error/i.test(syncMsg) ? 'warn' : ''}`}>{syncMsg}</div>}
-        <div className="control-grid" style={{ marginTop: 8 }}>
-          <KpiCard icon={Calendar} label="Today" value={todays} change={0} tone="blue" />
-          <KpiCard icon={CheckCircle2} label="Open" value={openCount} change={0} tone="green" />
-          <KpiCard icon={Phone} label="Follow-ups due" value={followUps} change={0} tone="red" />
-          <KpiCard icon={Users} label="In view" value={filtered.length} change={0} tone="blue" />
-        </div>
-        <div className="visits-filter-bar">
-          <div className="visits-search-wrap"><Search size={15} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search shop, product, outcome, location..." /></div>
-          <label className="visits-rep-filter">Salesperson
-            <select value={filterRep} onChange={e => setFilterRep(e.target.value)}>
-              <option value="">All</option>
-              {(salesPeople || []).map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
-          </label>
-          <button type="button" className="mini-action" onClick={() => downloadRowsFile('sales-visits', filtered, 'CSV')}><Download size={14} /> CSV</button>
+        <div style={{ marginTop: 14, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button type="button" className="primary-action" disabled={busy} onClick={syncSheets}>
+            {busy ? 'Syncing…' : 'Sync all visit & order sheets'}
+          </button>
+          {msg && <em className="sheets-msg">{msg}</em>}
         </div>
       </Panel>
-
-      <Panel className="span-12" title="Visit log" action={`${filtered.length} records`}>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th><th>Salesperson</th><th>Shop / Customer</th><th>Location</th>
-                <th>Product</th><th>Purpose</th><th>Outcome</th><th>Next</th><th>Potential</th><th>Comments</th><th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 && (
-                <tr><td colSpan={11}><div className="empty-state">No visits yet. Sync from the Google Sheet or log a visit.</div></td></tr>
-              )}
-              {filtered.slice(0, 200).map(v => (
-                <tr key={v.id}>
-                  <td>{v.visitDate}</td>
-                  <td>{v.salesperson}</td>
-                  <td>{v.shopOrCustomer}{v.contactPerson ? ` · ${v.contactPerson}` : ''}</td>
-                  <td>{v.location || '—'}</td>
-                  <td>{v.productDiscussed || '—'}</td>
-                  <td>{v.purpose || '—'}</td>
-                  <td>{v.outcome || '—'}</td>
-                  <td>{v.nextAppointment || '—'}</td>
-                  <td>{v.potentialValue ? currency(v.potentialValue) : '—'}</td>
-                  <td style={{ maxWidth: 220, color: '#475467', fontSize: 12 }}>{v.comments || ''}</td>
-                  <td className="row-actions" onClick={e => e.stopPropagation()}>
-                    <ActionMenu
-                      summary={v.shopOrCustomer || 'Visit'}
-                      actions={standardRowActions(v, [
-                        { label: 'Edit visit', icon: <UserCog size={15} />, onClick: () => setEditVisit(v) },
-                        { label: 'Delete visit', icon: <Trash2 size={15} />, onClick: () => handleDelete(v) }
-                      ])}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <Panel className="span-12" title="Recent Visits in ERP" action={`${list.length} rows`}>
+        <SimpleTable
+          rows={list.slice(0, 80)}
+          columns={['visitDate', 'salesperson', 'shopOrCustomer', 'contactPerson', 'phone', 'productDiscussed', 'outcome', 'status']}
+        />
       </Panel>
-
-      {modal === 'visit' && <VisitFormModal user={user} salesPeople={salesPeople} onClose={() => setModal(null)} onSave={handleSave} />}
-      {editVisit && <VisitFormModal user={user} salesPeople={salesPeople} initial={editVisit} onClose={() => setEditVisit(null)} onSave={handleSave} />}
-      {importOpen && <VisitsImportOverlay user={user} salesPeople={salesPeople} onClose={() => setImportOpen(false)} onDone={() => { setImportOpen(false); onDone?.(); }} />}
     </div>
   );
 }
+
 
 function VisitFormModal({ user, salesPeople, onClose, onSave, initial }) {
   const [form, setForm] = useState(initial && initial.id ? { ...initial } : {
@@ -5162,10 +5091,11 @@ function TeamPerformanceChart({ data, period = 'monthly', onPeriodChange }) {
   const [localPeriod, setLocalPeriod] = useState(period);
   const handlePeriod = p => { setLocalPeriod(p); onPeriodChange?.(p); };
   const colors = ['#050505', '#2563eb', '#101828', '#ffac33', '#f64e4e'];
+  const chartData = Array.isArray(data) ? data : [];
   return (
     <div className="sales-chart">
       <ResponsiveContainer width="100%" height="100%">
-        <ReLineChart data={data}>
+        <ReLineChart data={chartData}>
           <CartesianGrid stroke="#eef0f3" />
           <XAxis dataKey="month" tick={{ fill: '#667085', fontSize: 12 }} />
           <YAxis tick={{ fill: '#667085', fontSize: 12 }} />
@@ -5844,9 +5774,11 @@ function VisitTimeline({ visits }) {
 }
 
 function OpportunityList({ opportunities }) {
+  const list = Array.isArray(opportunities) ? opportunities : [];
   return (
     <div className="opportunity-list">
-      {opportunities.map(item => (
+      {list.length === 0 && <div className="empty-state">No expansion opportunities yet.</div>}
+      {list.map(item => (
         <article key={item.county}>
           <div>
             <strong>{item.county}</strong>
@@ -5861,9 +5793,11 @@ function OpportunityList({ opportunities }) {
 }
 
 function RouteList({ routes }) {
+  const list = Array.isArray(routes) ? routes : [];
   return (
     <div className="route-list">
-      {routes.map(route => (
+      {list.length === 0 && <div className="empty-state">No routes configured yet.</div>}
+      {list.map(route => (
         <article key={route.id}>
           <Navigation size={18} />
           <div>
