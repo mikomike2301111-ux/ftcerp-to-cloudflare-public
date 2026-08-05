@@ -9655,3 +9655,24 @@ select {
 .crm-customer-detail .table-wrap {
   overflow-x: auto !important;
 }
+
+
+/* HR DEDUCTIONS ROOMY */
+.hr-deductions-fieldset { margin-top: 12px; }
+.hr-deductions-wrap { display: flex; flex-direction: column; gap: 12px; max-height: min(52vh, 480px); overflow: auto; padding-right: 4px; }
+.hr-deduction-card { border: 1px solid #e8ecf1; border-radius: 12px; padding: 14px 16px; background: #fafbfc; }
+.hr-deduction-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)) !important; gap: 12px !important; align-items: end; }
+.hr-deduction-grid label { font-size: 12px; gap: 6px; }
+
+/* Analytics + Email typography */
+.analytics-center, .analytics-workspace, .executive-analytics, .email-workspace, .email-page, .mail-workspace {
+  font-family: Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: 0.01em;
+}
+.analytics-center h1, .analytics-workspace h1, .executive-analytics h1,
+.email-workspace h1, .email-page h1, .mail-workspace h1 {
+  font-weight: 700; letter-spacing: -0.02em; line-height: 1.25;
+}
+.analytics-center p, .email-workspace p, .email-page p { line-height: 1.55; color: #475467; }
+.email-workspace .panel, .email-page .panel { font-size: 14px; }

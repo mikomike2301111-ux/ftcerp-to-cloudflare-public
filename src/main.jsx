@@ -3382,7 +3382,7 @@ function InventoryWorkspace({ user, setPage, globalPeriod }) {
             <Panel className="span-12" title="Switch Inventory Metric">
               <div className="metric-toggle">{metrics.map(x => <button key={x} className={metric === x ? 'active' : ''} onClick={() => setMetric(x)}>{label(x)}</button>)}</div>
             </Panel>
-            <Panel className="span-6" title="Low Stock Alert Center"><SimpleTable rows={data.reorderRules.filter(row => row.status === 'Reorder')} columns={['productName', 'currentStock', 'minimumStock', 'reorderPoint', 'recommendedOrderQty', 'preferredSupplier']} /></Panel>
+            <Panel className="span-6" title="Low Stock Alert Center"><SimpleTable rows={(data.reorderRules || []).filter(row => row.status === 'Reorder')} columns={['productName', 'currentStock', 'minimumStock', 'reorderPoint', 'recommendedOrderQty', 'preferredSupplier']} /></Panel>
             <Panel className="span-6" title="Slow Moving Intelligence"><SimpleTable rows={data.slowMoving} columns={['productName', 'warehouseName', 'currentQuantity', 'inventoryValue', 'daysSinceLastMovement', 'recommendation']} /></Panel>
           </div>
         </>
@@ -3649,7 +3649,7 @@ function InventoryWorkspace({ user, setPage, globalPeriod }) {
                   <em>{r.preferredSupplier || 'No supplier'}</em>
                 </div>
               ))}
-              {(!data.reorderRules || data.reorderRules.filter(r => r.status === 'Reorder').length === 0) && <div className="empty-state">No items need reordering.</div>}
+              {(!data.reorderRules || (data.reorderRules || []).filter(r => r.status === 'Reorder').length === 0) && <div className="empty-state">No items need reordering.</div>}
             </div>
           </Panel>
         </div>
@@ -3737,7 +3737,7 @@ function InventoryWorkspace({ user, setPage, globalPeriod }) {
                   <em>{item.warehouseName}</em>
                 </div>
               ))}
-              {(!data.stockItems || data.stockItems.filter(item => item.quantityReserved > 0).length === 0) && <div className="empty-state">No production reservations.</div>}
+              {(!data.stockItems || (data.stockItems || []).filter(item => item.quantityReserved > 0).length === 0) && <div className="empty-state">No production reservations.</div>}
             </div>
           </Panel>
           <Panel className="span-6" title="Reorder for Production" action="BOM-driven">
@@ -6198,7 +6198,7 @@ function ProductionOrderList({ orders, onStart, onComplete, onEdit }) {
 function RawMaterialModal({ user, materials, uoms, onClose, onSaved }) {
   const safeMaterials = (materials || []).filter(Boolean);
   const first = safeMaterials[0] || {};
-  const [form, setForm] = useState({ materialName: first?.materialName || 'Maize Bran', materialCode: first?.materialCode || 'RM-NEW', category: 'Raw Material', quantity: 500, unit: 'KG', costPerUnit: 1.8, supplier: 'Unga Millers Ltd', warehouse: 'Raw Materials Store', storageLocation: 'A1', expiryDate: '2027-01-01' });
+  const [form, setForm] = useState({ materialName: '', materialCode: '', category: 'Raw Material', quantity: 1, unit: 'KG', costPerUnit: 0, supplier: '', warehouse: 'Main Store Njiru', storageLocation: '', expiryDate: '' });
   const [saving, setSaving] = useState(false);
   async function save(e) {
     e.preventDefault();
@@ -6215,7 +6215,7 @@ function RawMaterialModal({ user, materials, uoms, onClose, onSaved }) {
       <form className="modal-card" onSubmit={save}>
         <header><h2>Receive Raw Material</h2><button type="button" onClick={onClose}><X size={18} /></button></header>
         <div className="modal-grid">
-          <label>Material Name<input value={form.materialName} onChange={e => setForm({ ...form, materialName: e.target.value })} /></label>
+          <label>Material Name (type any name)<input value={form.materialName} onChange={e => setForm({ ...form, materialName: e.target.value })} placeholder="e.g. Maize Bran, Neem Extract, custom name..." required /></label>
           <label>Material Code<input value={form.materialCode} onChange={e => setForm({ ...form, materialCode: e.target.value })} /></label>
           <label>Quantity<input type="number" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} /></label>
           <label>Unit<select value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })}>{(uoms || []).map((u, i) => <option key={u?.code ?? i} value={u?.code}>{u?.name || u?.code}</option>)}</select></label>
@@ -10871,7 +10871,7 @@ function EmployeeFormModal({ user, onClose, onSave, initial, departments = [] })
           <label>Meal Allowance<input type="number" value={form.mealAllowance} onChange={e => setForm({ ...form, mealAllowance: Number(e.target.value) })} /></label>
           <label>Responsibility Allowance<input type="number" value={form.responsibilityAllowance} onChange={e => setForm({ ...form, responsibilityAllowance: Number(e.target.value) })} /></label>
         </div></fieldset>
-        <fieldset className="settings-fieldset"><legend>Deductions (fully editable)</legend><div>
+        <fieldset className="settings-fieldset hr-deductions-fieldset"><legend>Deductions (fully editable)</legend><div className="hr-deductions-wrap">
           <div className="quote-items-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <div>
               <strong>Named deductions</strong>
@@ -10882,23 +10882,24 @@ function EmployeeFormModal({ user, onClose, onSave, initial, departments = [] })
           {(form.customDeductions || []).length === 0 && <div className="empty-state" style={{ padding: 12 }}>No custom deductions yet. Click Add deduction.</div>}
           {(form.customDeductions || []).map((ded, i) => (
             <div key={ded.id || i} style={{ border: '1px solid #eef0f3', borderRadius: 10, padding: 10, marginBottom: 8 }}>
-              <div className="modal-grid" style={{ gridTemplateColumns: '1.4fr 1fr 1fr 1fr 1fr auto', gap: 6, alignItems: 'end' }}>
-                <label>Name<input value={ded.label || ''} onChange={e => updateDeduction(i, 'label', e.target.value)} placeholder="e.g. Advance, HELB, Welfare" required /></label>
-                <label>Method
-                  <select value={ded.method || 'Fixed'} onChange={e => updateDeduction(i, 'method', e.target.value)}>
-                    <option value="Fixed">Fixed (KES)</option>
-                    <option value="Percent">Percent of gross</option>
-                  </select>
-                </label>
-                <label>Amount (KES)<input type="number" min="0" step="0.01" value={ded.amount ?? 0} onChange={e => updateDeduction(i, 'amount', e.target.value)} disabled={(ded.method || 'Fixed') === 'Percent'} /></label>
-                <label>Percent (%)<input type="number" min="0" max="100" step="0.01" value={ded.percent ?? 0} onChange={e => updateDeduction(i, 'percent', e.target.value)} disabled={(ded.method || 'Fixed') !== 'Percent'} /></label>
-                <label>Frequency
-                  <select value={ded.type || 'Recurring'} onChange={e => updateDeduction(i, 'type', e.target.value)}>
-                    {['Recurring', 'One-time', 'Tax', 'SHIF', 'Loan', 'SACCO', 'Other'].map(t => <option key={t}>{t}</option>)}
-                  </select>
-                </label>
-                <button type="button" className="mini-action" title="Remove" onClick={() => removeDeduction(i)} style={{ marginBottom: 8, color: '#ef4444' }}><X size={14} /></button>
-              </div>
+              <div className="hr-deduction-card">
+                <div className="modal-grid hr-deduction-grid">
+                  <label>Name<input value={ded.label || ''} onChange={e => updateDeduction(i, 'label', e.target.value)} placeholder="e.g. Advance, HELB, Welfare" required /></label>
+                  <label>Method
+                    <select value={ded.method || 'Fixed'} onChange={e => updateDeduction(i, 'method', e.target.value)}>
+                      <option value="Fixed">Fixed (KES)</option>
+                      <option value="Percent">Percent of gross</option>
+                    </select>
+                  </label>
+                  <label>Amount (KES)<input type="number" min="0" step="0.01" value={ded.amount ?? 0} onChange={e => updateDeduction(i, 'amount', e.target.value)} disabled={(ded.method || 'Fixed') === 'Percent'} /></label>
+                  <label>Percent (%)<input type="number" min="0" max="100" step="0.01" value={ded.percent ?? 0} onChange={e => updateDeduction(i, 'percent', e.target.value)} disabled={(ded.method || 'Fixed') !== 'Percent'} /></label>
+                  <label>Frequency
+                    <select value={ded.type || 'Recurring'} onChange={e => updateDeduction(i, 'type', e.target.value)}>
+                      {['Recurring', 'One-time', 'Tax', 'SHIF', 'Loan', 'SACCO', 'Other'].map(t => <option key={t}>{t}</option>)}
+                    </select>
+                  </label>
+                  <button type="button" className="mini-action" title="Remove" onClick={() => removeDeduction(i)} style={{ color: '#ef4444', alignSelf: 'end', marginBottom: 4 }}><X size={14} /></button>
+                </div>
               <div className="modal-grid" style={{ gridTemplateColumns: '1fr 1fr 1.5fr', gap: 6, marginTop: 6 }}>
                 <label>Tax exempt
                   <select value={ded.taxExempt ? 'Yes' : 'No'} onChange={e => updateDeduction(i, 'taxExempt', e.target.value === 'Yes')}>

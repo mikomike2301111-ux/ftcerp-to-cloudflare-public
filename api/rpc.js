@@ -7781,15 +7781,50 @@ const api = {
     const allPass = checks.every(c => c.pass);
     return { success: true, valid: allPass, checks, shortages, canStart: allPass };
   },
+
+  async recordMaterialWaste(user, row = {}) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.PRODUCTION, ROLES.WAREHOUSE);
+    const d = data();
+    d.rawMaterials = Array.isArray(d.rawMaterials) ? d.rawMaterials : [];
+    d.wasteRecords = Array.isArray(d.wasteRecords) ? d.wasteRecords : [];
+    d.notifications = Array.isArray(d.notifications) ? d.notifications : [];
+    const materialName = clean(row.materialName || row.name);
+    const qty = num(row.quantity);
+    if (!materialName || qty <= 0) throw new Error('Material name and waste quantity are required');
+    const material = d.rawMaterials.find(x => x.id === row.materialId || String(x.materialName || '').toLowerCase() === materialName.toLowerCase());
+    if (material) {
+      material.availableQuantity = Math.max(0, num(material.availableQuantity) - qty);
+      material.currentQuantity = Math.max(0, num(material.currentQuantity) - qty);
+      material.consumedQuantity = num(material.consumedQuantity) + qty;
+    }
+    const waste = {
+      id: gid(), materialId: material?.id || '', materialName, quantity: qty, unit: row.unit || material?.unitOfMeasure || 'PCS',
+      reason: clean(row.reason) || 'Unused / process waste', productionOrderNo: clean(row.productionOrderNo || ''),
+      recordedBy: u.name, date: today(), createdAt: new Date().toISOString()
+    };
+    d.wasteRecords.unshift(waste);
+    d.notifications.unshift({
+      id: gid(), title: 'Material waste recorded', body: `${qty} ${waste.unit} of ${materialName} marked as waste (${waste.reason})`,
+      module: 'Manufacturing', type: 'warning', read: false, createdAt: new Date().toISOString()
+    });
+    log(u, 'Record material waste', 'Manufacturing', `${materialName} ${qty}`);
+    await saveState();
+    return { success: true, waste };
+  },
   async receiveRawMaterial(user, row = {}) {
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.PROCUREMENT, ROLES.WAREHOUSE, ROLES.PRODUCTION);
-    const baseUnit = UOM_FACTORS[normUom(row.unit)]?.family === 'mass' ? 'G' : UOM_FACTORS[normUom(row.unit)]?.family === 'volume' ? 'ML' : 'PCS';
-    const baseQty = Math.round(convertUom(row.quantity || 0, row.unit || baseUnit, baseUnit));
-    const materialId = row.materialId || gid();
     const d = data();
-    let material = d.rawMaterials.find(x => x.id === row.materialId || x.materialName === row.materialName);
+    d.rawMaterials = Array.isArray(d.rawMaterials) ? d.rawMaterials : [];
+    d.rawMaterialBatches = Array.isArray(d.rawMaterialBatches) ? d.rawMaterialBatches : [];
+    const materialName = clean(row.materialName || row.name);
+    if (!materialName && !row.materialId) throw new Error('Enter a material name (free text is allowed)');
+    const unitIn = row.unit || row.unitOfMeasure || 'KG';
+    const baseUnit = UOM_FACTORS[normUom(unitIn)]?.family === 'mass' ? 'G' : UOM_FACTORS[normUom(unitIn)]?.family === 'volume' ? 'ML' : 'PCS';
+    const baseQty = Math.round(convertUom(row.quantity || 0, unitIn, baseUnit));
+    const materialId = row.materialId || gid();
+    let material = d.rawMaterials.find(x => (row.materialId && x.id === row.materialId) || (materialName && String(x.materialName || '').toLowerCase() === materialName.toLowerCase()));
     if (!material) {
-      material = { id: materialId, materialCode: row.materialCode || `RM-${Date.now()}`, materialName: row.materialName || 'New Raw Material', category: row.category || 'Raw Material', unitOfMeasure: baseUnit, currentQuantity: 0, availableQuantity: 0, reservedQuantity: 0, consumedQuantity: 0, supplier: row.supplier || '', costPerUnit: num(row.costPerUnit), warehouse: row.warehouse || 'Raw Materials Store', storageLocation: row.storageLocation || 'A1', batchNumber: row.batchNumber || `MAT-${Date.now()}`, manufactureDate: row.manufactureDate || today(), expiryDate: row.expiryDate || '', status: 'Available' };
+      material = { id: materialId, materialCode: row.materialCode || `RM-${Date.now()}`, materialName: materialName || 'New Raw Material', category: row.category || 'Raw Material', unitOfMeasure: baseUnit, currentQuantity: 0, availableQuantity: 0, reservedQuantity: 0, consumedQuantity: 0, supplier: row.supplier || '', costPerUnit: num(row.costPerUnit), warehouse: row.warehouse || 'Main Store Njiru', storageLocation: row.storageLocation || 'A1', batchNumber: row.batchNumber || `MAT-${Date.now()}`, manufactureDate: row.manufactureDate || today(), expiryDate: row.expiryDate || '', status: 'Available' };
       d.rawMaterials.unshift(material);
     }
     material.currentQuantity = num(material.currentQuantity) + baseQty;
@@ -11313,9 +11348,12 @@ territory: geo,
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER);
     const d = data();
     ensureHrData();
-    assertRequired(form.employeeId, 'Employee');
-    const emp = d.employees.find(e => e.id === form.employeeId);
-    if (!emp) throw new Error('Employee not found');
+    d.employees = Array.isArray(d.employees) ? d.employees : [];
+    d.attendance = Array.isArray(d.attendance) ? d.attendance : [];
+    const empKey = clean(form.employeeId || form.employeeName || form.name);
+    assertRequired(empKey, 'Employee');
+    const emp = d.employees.find(e => e.id === empKey || e.employeeNo === empKey || String(e.name || '').toLowerCase() === String(empKey).toLowerCase());
+    if (!emp) throw new Error('Employee not found — pick a name from the list or add the employee in Directory first');
     const date = dateOnly(form.date);
     const checkIn = clean(form.checkIn);
     const checkOut = clean(form.checkOut);
@@ -11326,8 +11364,8 @@ territory: geo,
       const mins = (oh * 60 + om) - (ih * 60 + im) - num(form.breakMinutes);
       hoursWorked = Math.max(0, Math.round((mins / 60) * 10) / 10);
     }
-    const existing = d.attendance.findIndex(a => a.employeeId === form.employeeId && a.date === date);
-    const record = { id: existing >= 0 ? d.attendance[existing].id : gid(), employeeId: form.employeeId, employeeName: emp.name, department: emp.department, date, checkIn, checkOut, breakMinutes: num(form.breakMinutes), shiftType: clean(form.shiftType) || 'Day Shift', workLocation: clean(form.workLocation) || emp.location || '', hoursWorked, status: clean(form.status) || (checkIn ? 'Present' : 'Absent'), note: clean(form.note) };
+    const existing = d.attendance.findIndex(a => (a.employeeId === emp.id || a.employeeName === emp.name) && a.date === date);
+    const record = { id: existing >= 0 ? d.attendance[existing].id : gid(), employeeId: emp.id, employeeName: emp.name, department: emp.department, date, checkIn, checkOut, breakMinutes: num(form.breakMinutes), shiftType: clean(form.shiftType) || 'Day Shift', workLocation: clean(form.workLocation) || emp.location || '', hoursWorked, status: clean(form.status) || (checkIn ? 'Present' : 'Absent'), note: clean(form.note) };
     if (existing >= 0) d.attendance[existing] = record; else d.attendance.unshift(record);
     log(u, `Record attendance ${emp.name}`, 'HR', `${record.status} · ${hoursWorked}h`);
     return { success: true, record };
@@ -11354,6 +11392,7 @@ territory: geo,
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER);
     const d = data();
     ensureHrData();
+    d.candidates = Array.isArray(d.candidates) ? d.candidates : [];
     const c = d.candidates.find(x => x.id === id);
     if (!c) throw new Error('Candidate not found');
     if (!CANDIDATE_STAGES.includes(stage)) throw new Error('Invalid stage');
