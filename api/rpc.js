@@ -1403,13 +1403,14 @@ function pickSupabaseKey() {
     process.env.SUPABASE_ANON_KEY,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   ].map(v => String(v || '').trim()).filter(Boolean);
-  // Prefer new-format keys (sb_secret_ / sb_publishable_) for this project
-  const preferred = candidates.find(k => k.startsWith('sb_secret_'))
-    || candidates.find(k => k.startsWith('sb_publishable_'))
-    || candidates.find(k => k.startsWith('eyJ')) // legacy JWT
-    || candidates[0]
-    || '';
-  return preferred;
+  // Always prefer modern sb_secret_ for writes; never fall back to a foreign-project JWT first
+  const sbSecret = candidates.find(k => k.startsWith('sb_secret_'));
+  if (sbSecret) return sbSecret;
+  const sbPub = candidates.find(k => k.startsWith('sb_publishable_'));
+  if (sbPub) return sbPub;
+  const jwt = candidates.find(k => k.startsWith('eyJ'));
+  if (jwt) return jwt;
+  return candidates[0] || '';
 }
 const SUPABASE_KEY = pickSupabaseKey();
 const SUPABASE_JWKS_URL = String(process.env.SUPABASE_JWKS_URL || `${SUPABASE_URL}/auth/v1/.well-known/jwks.json`).trim();

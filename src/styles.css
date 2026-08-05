@@ -9924,3 +9924,69 @@ input:focus, select:focus, textarea:focus {
     margin-top: auto;
   }
 }
+
+/* Apple Design — deeper craft layer */
+.nav-item, .sidebar a, .app-sidebar a {
+  border-radius: 10px;
+  margin: 2px 8px;
+  padding: 10px 12px;
+  transition: background 140ms cubic-bezier(0.25, 0.1, 0.25, 1), transform 100ms ease-out, color 140ms ease;
+}
+.nav-item:hover, .sidebar a:hover {
+  background: rgba(10, 132, 255, 0.08);
+}
+.nav-item.active, .sidebar a.active {
+  background: rgba(10, 132, 255, 0.14);
+  font-weight: 600;
+  color: #0a84ff;
+}
+
+/* Primary actions — solid hierarchy */
+.primary-action {
+  border-radius: 12px !important;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08), 0 4px 12px rgba(10, 132, 255, 0.18);
+}
+.primary-action:active {
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+/* Empty states — calm, purposeful */
+.empty-state {
+  letter-spacing: -0.01em;
+  color: #667085;
+  line-height: 1.5;
+}
+
+/* Action menus (3-dots) */
+.action-menu, .dropdown-menu {
+  border-radius: 12px !important;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.14), 0 2px 8px rgba(15, 23, 42, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  overflow: hidden;
+}
+.action-menu button, .dropdown-menu button {
+  transition: background 100ms ease-out;
+}
+.action-menu button:active, .dropdown-menu button:active {
+  transform: none;
+  background: rgba(10, 132, 255, 0.1);
+}
+
+/* Page content enter — subtle */
+.page-stack, .workspace-root, main .content {
+  animation: apple-page-in 280ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+@keyframes apple-page-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-stack, .workspace-root, main .content {
+    animation: none !important;
+  }
+}
