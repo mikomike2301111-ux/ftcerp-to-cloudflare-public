@@ -1,6 +1,14 @@
 /**
  * Farmtrack ERP — Supabase server client
  * Project: https://supabase.com/dashboard/project/rajnrkgcisgpxtzzfmcl
+ *
+ * Env (Vercel + local):
+ *   SUPABASE_URL
+ *   SUPABASE_PUBLISHABLE_KEY
+ *   SUPABASE_SECRET_KEY
+ *   SUPABASE_JWKS_URL
+ *
+ * Packages: @supabase/supabase-js + @supabase/server
  */
 const { createClient } = require('@supabase/supabase-js');
 
@@ -38,11 +46,34 @@ function getServiceClient() {
 
 function getAnonClient() {
   if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE) {
-    throw new Error('Supabase publishable credentials missing');
+    throw new Error('Supabase publishable credentials missing (SUPABASE_PUBLISHABLE_KEY)');
   }
   return createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE, {
     auth: { persistSession: false, autoRefreshToken: false }
   });
+}
+
+/** Health probe used by Settings / ops */
+async function probeSupabase() {
+  const started = Date.now();
+  try {
+    if (!SUPABASE_URL || !SUPABASE_SECRET) {
+      return { ok: false, error: 'Missing SUPABASE_URL or SUPABASE_SECRET_KEY', ms: 0 };
+    }
+    const client = getServiceClient();
+    const { data, error } = await client.from('erp_state').select('id,updated_at').eq('id', 'farmtrack-demo').limit(1);
+    if (error) return { ok: false, error: error.message, ms: Date.now() - started };
+    return {
+      ok: true,
+      ms: Date.now() - started,
+      url: SUPABASE_URL,
+      jwks: SUPABASE_JWKS_URL,
+      row: data && data[0] ? data[0] : null,
+      publishableConfigured: Boolean(SUPABASE_PUBLISHABLE)
+    };
+  } catch (e) {
+    return { ok: false, error: e.message || String(e), ms: Date.now() - started };
+  }
 }
 
 module.exports = {
@@ -52,5 +83,6 @@ module.exports = {
   SUPABASE_JWKS_URL,
   getServiceClient,
   getAnonClient,
+  probeSupabase,
   supabaseEnabled: () => Boolean(SUPABASE_URL && (SUPABASE_SECRET || SUPABASE_PUBLISHABLE))
 };

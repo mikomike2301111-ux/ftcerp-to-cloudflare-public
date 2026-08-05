@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@supabase/server": "^1.4.1",
-    "@supabase/supabase-js": "^2.112.0",
+    "@supabase/supabase-js": "^2.112.1",
     "@vitejs/plugin-react": "^4.3.4",
     "exceljs": "^4.4.0",
     "googleapis": "^173.0.0",

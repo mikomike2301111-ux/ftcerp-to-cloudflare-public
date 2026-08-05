@@ -1644,6 +1644,15 @@ async function saveState() {
   ]);
 }
 
+async function probeSupabaseStatus() {
+  try {
+    const { probeSupabase } = require('../server/supabaseClient');
+    return await probeSupabase();
+  } catch (e) {
+    return { ok: false, error: e.message || String(e), url: SUPABASE_URL || '' };
+  }
+}
+
 async function getNormalizedSupabaseStatus() {
   if (!supabaseEnabled()) {
     return { enabled: false, ready: false, mode: 'not_configured', missingTables: NORMALIZED_TABLES, tables: [] };
