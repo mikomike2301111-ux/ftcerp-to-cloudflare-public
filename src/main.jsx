@@ -6474,7 +6474,7 @@ function AccountsWorkspace({ user, setPage, globalPeriod }) {
           [cashPosition, 'Cash']
         ]} />
       </div>
-      <FinanceHealthStrip data={data} />
+      <FinanceHealthStrip data={data || {}} />
       <div className="accounts-command-strip">
         <button onClick={() => setOrderOpen(true)}><Plus size={16} /> Create Order</button>
         <button onClick={() => setPaymentOpen(true)}><CheckCircle2 size={16} /> Confirm Paid</button>
@@ -7134,13 +7134,13 @@ function Finance({ user, setPage, globalPeriod }) {
         <CreateRequisitionButton user={user} module="finance" />
       </div>
 
-      <FinanceHealthStrip data={data} />
+      <FinanceHealthStrip data={data || {}} />
 
       <div className="sales-filter-bar">
         <button><Calendar size={16} />{((data.filters || filters || {}).dateRange || "All dates")}</button>
-        <button><CircleDollarSign size={16} />{data.filters.currency}</button>
-        <button><BriefcaseBusiness size={16} />{data.filters.entity}</button>
-        <button><CheckCircle2 size={16} />{data.integrity.journals} Journals / {data.integrity.lines} Lines</button>
+        <button><CircleDollarSign size={16} />{(data.filters || filters || {}).currency || "KES"}</button>
+        <button><BriefcaseBusiness size={16} />{(data.filters || filters || {}).entity || "Farmtrack Biosciences Ltd"}</button>
+        <button><CheckCircle2 size={16} />{(data.integrity || integrity || {}).journals || 0} Journals / {(data.integrity || integrity || {}).lines || 0} Lines</button>
       </div>
 
       <div className="sales-tabs">
@@ -7283,13 +7283,17 @@ function Finance({ user, setPage, globalPeriod }) {
 }
 
 function FinanceHealthStrip({ data }) {
-  const debit = (data.journalLines || []).reduce((sum, row) => sum + Number(row.debit || 0), 0);
-  const credit = (data.journalLines || []).reduce((sum, row) => sum + Number(row.credit || 0), 0);
+  const d = data || {};
+  const integrity = d.integrity || { unbalanced: 0, journals: 0, lines: 0, immutable: true };
+  const sourceFlows = Array.isArray(d.sourceFlows) ? d.sourceFlows : [];
+  const debit = (d.journalLines || []).reduce((sum, row) => sum + Number(row.debit || 0), 0);
+  const credit = (d.journalLines || []).reduce((sum, row) => sum + Number(row.credit || 0), 0);
+  const unbalanced = Number(integrity.unbalanced || 0);
   const checks = [
-    ['Journal Balance', (integrity.unbalanced ?? data?.integrity?.unbalanced ?? 0) === 0 ? 'Balanced' : `${(integrity.unbalanced ?? data?.integrity?.unbalanced ?? 0)} exceptions`, (integrity.unbalanced ?? data?.integrity?.unbalanced ?? 0) === 0],
-    ['Audit Lock', data.integrity.immutable ? 'Immutable' : 'Review needed', data.integrity.immutable],
+    ['Journal Balance', unbalanced === 0 ? 'Balanced' : `${unbalanced} exceptions`, unbalanced === 0],
+    ['Audit Lock', integrity.immutable ? 'Immutable' : 'Review needed', Boolean(integrity.immutable)],
     ['Trial Balance', Math.round(debit) === Math.round(credit) ? 'Debit = Credit' : 'Out of balance', Math.round(debit) === Math.round(credit)],
-    ['Posting Coverage', `${data.sourceFlows.filter(x => x.journals > 0).length}/${data.sourceFlows.length} modules`, data.sourceFlows.filter(x => x.journals > 0).length >= 5]
+    ['Posting Coverage', `${sourceFlows.filter(x => x.journals > 0).length}/${sourceFlows.length || 0} modules`, sourceFlows.filter(x => x.journals > 0).length >= 5]
   ];
   return (
     <div className="finance-health-strip">
