@@ -6899,12 +6899,16 @@ const api = {
   getInventory: user => (reqRole(user), list('inventory').map(i => ({ ...i, quantity: num(i.quantity), unitCost: num(i.unitCost) }))),
   saveInventoryItem(user, row) { const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.WAREHOUSE); return save('inventory', u, row); },
   getInventoryWorkspaceData(user, filters = {}) {
+    try {
     reqRole(user);
-    const d = data();
+    const d = data() || {};
+    ['inventory','products','inventoryTransactions','inventoryHealthScores','inventoryBatches','inventoryAlerts','inventoryDamage','inventoryCosts','inventoryWarehouses','inventoryAudits','goodsReceipts','purchaseOrders','productionMaterialRequests','inventoryReservations','inventoryCounts'].forEach(k => {
+      if (!Array.isArray(d[k])) d[k] = [];
+    });
     const scope = filters && filters.period ? { ...periodRange(filters.period), ...filters } : (filters || {});
     const movements = (d.inventoryTransactions || []).filter(tx => inDateRange(tx, scope));
-    const stockItems = d.inventory.map(item => {
-      const product = d.products.find(p => p.id === item.productId || p.name === item.productName) || {};
+    const stockItems = (d.inventory || []).map(item => {
+      const product = (d.products || []).find(p => p.id === item.productId || p.name === item.productName) || {};
       const available = Math.max(0, num(item.quantity) - num(item.quantityReserved) - num(item.damagedQuantity) - num(item.expiredQuantity) - num(item.quarantinedQuantity));
       const lastMovement = movements.filter(tx => tx.productId === item.productId).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
       const movementCount = movements.filter(tx => tx.productId === item.productId).length;
@@ -6933,7 +6937,7 @@ const api = {
         sellingPrice: num(product.sellingPrice),
         inventoryValue: Math.round(itemValue),
         lastMovementDate: lastMovement?.createdAt?.slice(0, 10) || item.lastMovementDate,
-        healthScore: d.inventoryHealthScores.find(row => row.productId === item.productId)?.healthScore || 60,
+        healthScore: (d.inventoryHealthScores || []).find(row => row.productId === item.productId)?.healthScore || 60,
         movementCount
       };
     });
@@ -7025,21 +7029,30 @@ const api = {
       ai: [
         {
           title: 'Stockout risk',
-          detail: lowStock[0] ? `${lowStock[0].productName} is below reorder level in ${lowStock[0].warehouseName}; recommended reorder is ${d.inventoryReorderRules.find(r => r.productId === lowStock[0].productId)?.recommendedOrderQty || 0}.` : 'No immediate stockout risk detected.',
+          detail: lowStock[0] ? `${lowStock[0].productName} is below reorder level in ${lowStock[0].warehouseName}; recommended reorder is ${(d.inventoryReorderRules || []).find(r => r.productId === lowStock[0].productId)?.recommendedOrderQty || 0}.` : 'No immediate stockout risk detected.',
           sources: ['inventory', 'products', 'inventory_reorder_rules']
         },
         {
           title: 'Slow moving stock',
-          detail: d.inventorySlowMoving[0] ? `${d.inventorySlowMoving[0].productName} has not moved for ${d.inventorySlowMoving[0].daysSinceLastMovement} days. Recommendation: ${d.inventorySlowMoving[0].recommendation}.` : 'No slow-moving stock in the selected period.',
+          detail: (d.inventorySlowMoving || [])[0] ? `${d.inventorySlowMoving[0].productName} has not moved for ${d.inventorySlowMoving[0].daysSinceLastMovement} days. Recommendation: ${d.inventorySlowMoving[0].recommendation}.` : 'No slow-moving stock in the selected period.',
           sources: ['inventory_transactions', 'inventory_slow_moving']
         },
         {
           title: 'Warehouse capacity',
-          detail: `${d.inventoryWarehouses.sort((a, b) => (b.used / b.capacity) - (a.used / a.capacity))[0].name} has the highest capacity utilization.`,
+          detail: `${((d.inventoryWarehouses || []).slice().sort((a, b) => (num(b.used) / Math.max(1, num(b.capacity))) - (num(a.used) / Math.max(1, num(a.capacity))))[0] || { name: 'Main Store Njiru' }).name} has the highest capacity utilization.`,
           sources: ['inventory_warehouses', 'inventory_locations']
         }
       ]
     };
+    } catch (err) {
+      console.error('getInventoryWorkspaceData', err && err.message);
+      return {
+        filters: { dateRange: 'This Month', warehouse: 'All Warehouses', category: 'All Categories', status: 'All Statuses', valuation: 'FIFO' },
+        overview: { totalSkus: 0, totalStockValue: 0, availableStock: 0, reservedStock: 0, lowStock: 0, inventoryAccuracy: 0, quarantined: 0, abcA: 0 },
+        stock: [], movements: [], adjustments: [], warehouses: [], alerts: [], reports: [], analytics: {}, ai: [], searchIndex: [], pendingProductionIssues: [],
+        errorSafe: true, errorMessage: err && err.message
+      };
+    }
   },
   /**
    * Manufacturing → Inventory material request.
@@ -7053,7 +7066,7 @@ const api = {
     const items = Array.isArray(payload.items) ? payload.items : [];
     if (!items.length) throw new Error('Add at least one material line');
     const lines = items.map((line, index) => {
-      const inv = d.inventory.find(x => x.id === line.inventoryId)
+      const inv = (d.inventory||[]).find(x => x.id === line.inventoryId)
         || d.inventory.find(x => x.productName === line.productName)
         || d.inventory.find(x => x.sku === line.sku);
       if (!inv) throw new Error(`Inventory item not found: ${line.productName || line.sku || index + 1}`);
@@ -7117,7 +7130,7 @@ const api = {
       const override = (lineIssues || []).find(x => x.lineId === line.id);
       const issueQty = num(override?.quantity ?? line.quantityRequested);
       if (issueQty <= 0) continue;
-      const inv = d.inventory.find(x => x.id === line.inventoryId)
+      const inv = (d.inventory||[]).find(x => x.id === line.inventoryId)
         || d.inventory.find(x => x.productName === line.productName);
       if (!inv) throw new Error(`Stock not found for ${line.productName}`);
       if (num(inv.quantity) < issueQty) throw new Error(`Insufficient stock for ${inv.productName}: have ${num(inv.quantity)}, need ${issueQty}`);
@@ -9393,21 +9406,25 @@ territory: geo,
   markDeliveryDelivered(user, id) { reqRole(user); const x = data().deliveries.find(d => d.id === id); if (x) x.status = 'Delivered'; return { success: true, message: 'OK Delivered!' }; },
   getPurchaseOrders: user => (reqRole(user), list('purchaseOrders')),
   getProcurementWorkspaceData(user, filters = {}) {
+    try {
     reqRole(user);
-    const d = data();
+    const d = data() || {};
+    ['purchaseOrders','purchaseRequests','procurementDeliveries','goodsReceipts','accountsPayable','creditPurchases','suppliers','supplierPerformance','supplierContacts','supplierPayments','purchaseOrderItems','procurementForecasts','procurementReports','products','inventory'].forEach(k => {
+      if (!Array.isArray(d[k])) d[k] = [];
+    });
     const scope = filters && filters.period ? { ...periodRange(filters.period), ...filters } : (filters || {});
-    const purchaseOrders = list('purchaseOrders').filter(row => inDateRange(row, scope));
-    const requests = list('purchaseRequests').filter(row => inDateRange(row, scope));
-    const deliveries = list('procurementDeliveries').filter(row => inDateRange(row, scope));
-    const grns = list('goodsReceipts').filter(row => inDateRange(row, scope));
-    const ap = list('accountsPayable').filter(row => inDateRange(row, scope));
-    const credit = list('creditPurchases').filter(row => inDateRange(row, scope));
-    const suppliers = list('suppliers').map(supplier => ({
+    const purchaseOrders = (list('purchaseOrders') || []).filter(row => inDateRange(row, scope));
+    const requests = (list('purchaseRequests') || []).filter(row => inDateRange(row, scope));
+    const deliveries = (list('procurementDeliveries') || []).filter(row => inDateRange(row, scope));
+    const grns = (list('goodsReceipts') || []).filter(row => inDateRange(row, scope));
+    const ap = (list('accountsPayable') || []).filter(row => inDateRange(row, scope));
+    const credit = (list('creditPurchases') || []).filter(row => inDateRange(row, scope));
+    const suppliers = (list('suppliers') || []).map(supplier => ({
       ...supplier,
-      ...(d.supplierPerformance.find(row => row.supplierId === supplier.id) || {}),
-      contactPerson: d.supplierContacts.find(row => row.supplierId === supplier.id)?.contactPerson || 'Account Manager',
+      ...((d.supplierPerformance || []).find(row => row.supplierId === supplier.id) || {}),
+      contactPerson: (d.supplierContacts || []).find(row => row.supplierId === supplier.id)?.contactPerson || 'Account Manager',
       purchaseHistory: purchaseOrders.filter(po => po.supplierId === supplier.id).length,
-      paymentHistory: d.supplierPayments.filter(pay => pay.supplierId === supplier.id).length,
+      paymentHistory: (d.supplierPayments || []).filter(pay => pay.supplierId === supplier.id).length,
       outstandingBalance: ap.filter(row => row.supplierId === supplier.id).reduce((sum, row) => sum + num(row.outstandingBalance), 0)
     }));
     const spend = purchaseOrders.reduce((sum, po) => sum + num(po.total), 0);
@@ -9472,7 +9489,7 @@ territory: geo,
       })),
       creditExposure: credit.map(row => ({ supplierName: row.supplierName, outstandingBalance: row.outstandingBalance, creditLimit: row.creditLimit, aiRiskScore: row.aiRiskScore, status: row.status })),
       leadTimes: suppliers.map(row => ({ supplier: row.name, leadTime: row.leadTime || 0, reliability: row.reliability || 0 })),
-      spendByProduct: Object.values(d.purchaseOrderItems.reduce((acc, item) => {
+      spendByProduct: Object.values((d.purchaseOrderItems || []).reduce((acc, item) => {
         acc[item.productName] ||= { product: item.productName, spend: 0, quantity: 0 };
         acc[item.productName].spend += num(item.total);
         acc[item.productName].quantity += num(item.quantity);
@@ -9560,6 +9577,15 @@ territory: geo,
         }
       ]
     };
+    } catch (err) {
+      console.error('getProcurementWorkspaceData', err && err.message);
+      return {
+        filters: { dateRange: 'This Month', supplier: 'All Suppliers', warehouse: 'All Warehouses', county: 'All Counties', product: 'All Products' },
+        overview: { totalPOs: 0, procurementSpend: 0, outstandingSupplierBalances: 0, openRequests: 0, overdueDeliveries: 0 },
+        purchaseOrders: [], requests: [], suppliers: [], deliveries: [], receiving: [], reports: [], analytics: {}, ai: [], searchIndex: [],
+        errorSafe: true, errorMessage: err && err.message
+      };
+    }
   },
   createPurchaseRequest(user, row = {}) {
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.PROCUREMENT, ROLES.WAREHOUSE, ROLES.PRODUCTION);
