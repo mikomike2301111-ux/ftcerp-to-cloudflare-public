@@ -180,7 +180,7 @@ async function taxInvoicePdfBuffer({ invoice, items, customer, settings, options
     } catch {}
   }
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ margin: 40, size: 'A4', layout: 'portrait' });
+    const doc = new PDFDocument({ margin: 28, size: 'A4', layout: 'portrait', autoFirstPage: true });
     const chunks = [];
     doc.on('data', chunk => chunks.push(chunk));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
@@ -220,19 +220,19 @@ async function taxInvoicePdfBuffer({ invoice, items, customer, settings, options
     const balance = Math.max(0, num(invoice.balance || total - paid));
 
     // ── Header: company info (left) ──
-    doc.fillColor('#2a2a2a').fontSize(10).font('Helvetica-Bold').text(company.name, left, 36, { width: width * 0.55 });
+    doc.fillColor('#2a2a2a').fontSize(10).font('Helvetica-Bold').text(company.name, left, 30, { width: width * 0.52 });
     doc.fontSize(9).font('Helvetica').fillColor('#333');
     [
       company.addressLine1,
       `${company.city}, ${company.postal} ${company.country}`,
       company.phone,
       company.email
-    ].forEach((line, i) => doc.text(line, left, 52 + i * 12, { width: width * 0.55 }));
+    ].forEach((line, i) => doc.text(line, left, 44 + i * 11, { width: width * 0.52 }));
 
     // ── Logo mark (right) — green rounded square with "F" ──
-    const logoSize = 72;
+    const logoSize = 88;
     const logoX = right - logoSize;
-    const logoY = 32;
+    const logoY = 28;
     doc.save();
     doc.roundedRect(logoX - 4, logoY - 4, logoSize + 8, logoSize + 8, 8).fill('#ffffff');
     doc.restore();
@@ -362,7 +362,7 @@ async function taxInvoicePdfBuffer({ invoice, items, customer, settings, options
     });
 
     // ── Footer split: bank block (left) + totals (right) ──
-    if (y + 205 > pageBottom()) y = addSummaryPage();
+    if (y + 160 > pageBottom()) y = addSummaryPage(); // only when footer truly cannot fit
     y += 16;
     doc.moveTo(left, y).lineTo(right, y).strokeColor('#eee').lineWidth(1).stroke();
     const bankTop = y + 10;

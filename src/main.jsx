@@ -5651,8 +5651,8 @@ function NewSaleModal({ user, onClose, onSaved }) {
           <div className={`sales-order-pricing ${stockWarning ? 'danger' : lowStockWarning ? 'warn' : ''}`}>
             <article><span>Unit Price</span><strong>{currency(selectedPrice)}</strong></article>
             <article><span>Available Stock</span><strong>{selectedStock.toLocaleString()} {selectedProduct.unit || ''}</strong></article>
-            <article><span>Margin</span><strong>{selectedPrice ? Math.round(((selectedPrice - selectedCost) / selectedPrice) * 100) : 0}%</strong></article>
-            <article><span>Order Total</span><strong>{currency(projectedTotal)}</strong></article>
+            <article><span>Line Amount</span><strong>{currency(projectedSubtotal)}</strong></article>
+            <article><span>Order Total (incl. VAT)</span><strong>{currency(projectedTotal)}</strong></article>
             {stockWarning && <p>Insufficient stock. Reduce quantity or restock before confirming.</p>}
             {lowStockWarning && <p>This order will push stock close to reorder level.</p>}
           </div>
