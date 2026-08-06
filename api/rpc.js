@@ -6826,6 +6826,16 @@ const api = {
     visit.createdAt = now;
     d.visits ||= [];
     d.visits.unshift(visit);
+    d.salesVisits ||= [];
+    // Keep geo / territory views in sync
+    if (!d.salesVisits.find(v => v.id === visit.id)) {
+      d.salesVisits.unshift({
+        ...visit,
+        salesRepName: visit.salesperson,
+        customerName: visit.shopOrCustomer,
+        date: visit.visitDate
+      });
+    }
     if (/interest/i.test(visit.outcome) || /order/i.test(visit.purpose)) {
       const leadExists = (d.leads || []).find(l => String(l.name || '').toLowerCase() === String(visit.shopOrCustomer || '').toLowerCase());
       if (!leadExists) {
@@ -6867,7 +6877,7 @@ const api = {
         };
         if (!payload.shopOrCustomer) throw new Error('Shop / Customer is required');
         if (!payload.salesperson) throw new Error('Salesperson is required');
-        if (!payload.comments) throw new Error('Comment is required');
+        payload.comments = payload.comments || payload.outcome || 'Imported from sheet';
         api.logVisit(user, payload);
         imported++;
       } catch (err) {
@@ -8160,12 +8170,27 @@ const api = {
   async pullAllSalesFieldData(user, options = {}) {
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD);
     const service = new GoogleSheetsService();
+    const shareEmail = GOOGLE_SHEETS_SERVICE_EMAIL || 'erp-sheets-integration@erp-sheets-integration-503110.iam.gserviceaccount.com';
     const visitResults = [];
     let visitsImported = 0;
     const visitErrors = [];
+    const sheetCandidates = options.sheetName
+      ? [options.sheetName]
+      : ['Form Responses 1', 'Form Responses', 'Responses', 'Sheet1'];
     for (const src of SALES_FIELD_SOURCES.visits) {
       try {
-        const result = await service.readObjects(src.spreadsheetId, options.sheetName || 'Form Responses 1');
+        let result = { rows: [] };
+        let lastErr = null;
+        for (const sheetName of sheetCandidates) {
+          try {
+            result = await service.readObjects(src.spreadsheetId, sheetName);
+            if ((result.rows || []).length) break;
+          } catch (e) {
+            lastErr = e;
+            result = { rows: [] };
+          }
+        }
+        if (!(result.rows || []).length && lastErr) throw lastErr;
         const rows = (result.rows || []).filter(row => row && (row['Shop / Customer Name'] || row['Salesperson'] || row['Shop/Customer'] || Object.keys(row).length > 2));
         const mapped = rows.map(row => ({
           salesperson: row['Salesperson'] || row.Salesperson || src.rep,
@@ -8212,15 +8237,20 @@ const api = {
     }
 
     log(u, 'Pull all field sales data', 'Sales', `visits ${visitsImported}, orders ${ordersImported}`);
+    const allErrors = [...visitErrors, ...orderErrors];
+    const permissionHint = allErrors.some(e => /permission/i.test(String(e)))
+      ? ` Share each Google Sheet with Editor access to: ${shareEmail}`
+      : '';
     return {
-      success: visitErrors.length === 0 && orderErrors.length === 0,
+      success: allErrors.length === 0,
       visitsImported,
       ordersImported,
       visitResults,
       orderResults,
-      errors: [...visitErrors, ...orderErrors],
+      errors: allErrors,
+      shareWith: shareEmail,
       sources: SALES_FIELD_SOURCES,
-      message: `Synced ${visitsImported} visits and ${ordersImported} order rows from Google Forms sheets.`
+      message: `Synced ${visitsImported} visits and ${ordersImported} order rows from Google Forms sheets.${permissionHint}`
     };
   },
 
