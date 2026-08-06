@@ -171,8 +171,8 @@ function sortByDateDesc(rows, key = 'createdAt') {
   });
 }
 const REPORT_FORMATS = ['PDF', 'Excel', 'CSV', 'PowerPoint', 'Print', 'Email Package'];
-const SERVER_CACHE_TTL = 5 * 60 * 1000;
-const STALE_WHILE_REVALIDATE_TTL = 30 * 60 * 1000;
+const SERVER_CACHE_TTL = 12000 * 60 * 1000;
+const STALE_WHILE_REVALIDATE_TTL = 60000 * 60 * 1000;
 const serverCache = new globalThis.Map();
 const serverInFlight = new globalThis.Map();
 
@@ -307,7 +307,10 @@ async function rpc(fn, args = []) {
   }
   if (body.error) throw new Error(body.error);
   if (mutatingRpc(fn)) {
-    serverCache.clear();
+    // Optimistic UX: keep showing last good data; mark cache entries stale instead of wiping
+    for (const [key, hit] of serverCache.entries()) {
+      if (hit) hit.time = 0;
+    }
     serverInFlight.clear();
     window.dispatchEvent(new CustomEvent('erp:data-mutated', { detail: { fn } }));
   }

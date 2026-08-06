@@ -10078,3 +10078,158 @@ aside.sidebar {
 @media (max-width: 640px) {
   .pay-slip-two-col, .pay-slip-info-grid { grid-template-columns: 1fr; }
 }
+
+/* Professional pay stub (FarmTrack) */
+.paystub-sheet {
+  background: #fff;
+  color: #111;
+  padding: 12px 8px 20px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.paystub-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 16px;
+  align-items: flex-start;
+}
+.paystub-company {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.paystub-logo {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  background: #fff;
+  border: 1px solid #e8ecf1;
+  border-radius: 10px;
+  padding: 4px;
+}
+.paystub-company-name {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 4px;
+}
+.paystub-company div { font-size: 12px; color: #333; }
+.paystub-meta { text-align: right; min-width: 200px; }
+.paystub-title {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  margin-bottom: 8px;
+  color: #0b1220;
+}
+.paystub-meta span { color: #667085; margin-right: 6px; }
+.paystub-emp-band {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  background: #c8e86c;
+  color: #0b1220;
+  padding: 14px 16px;
+  border-radius: 4px;
+  margin-bottom: 18px;
+}
+.paystub-emp-name { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+.paystub-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 0;
+}
+.paystub-table th {
+  text-align: left;
+  border-bottom: 2px solid #111;
+  padding: 8px 6px;
+  font-size: 12px;
+  text-transform: none;
+}
+.paystub-table td {
+  padding: 7px 6px;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 13px;
+}
+.paystub-table .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.paystub-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #c8e86c;
+  color: #0b1220;
+  font-weight: 700;
+  padding: 10px 12px;
+  margin: 0 0 4px;
+  letter-spacing: 0.02em;
+}
+.paystub-bar-vals {
+  display: flex;
+  gap: 32px;
+  min-width: 220px;
+  justify-content: flex-end;
+}
+.paystub-bar-vals strong { font-variant-numeric: tabular-nums; }
+.paystub-net-row {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 16px;
+  margin: 16px 0 12px;
+}
+.paystub-net-label {
+  background: #c8e86c;
+  color: #0b1220;
+  font-weight: 800;
+  padding: 10px 16px;
+  letter-spacing: 0.04em;
+}
+.paystub-net-amount {
+  background: #c8e86c;
+  color: #0b1220;
+  font-weight: 800;
+  font-size: 18px;
+  padding: 10px 18px;
+  font-variant-numeric: tabular-nums;
+}
+.paystub-ytd-foot {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+}
+.paystub-ytd-foot th {
+  border-top: 2px solid #111;
+  border-bottom: 2px solid #111;
+  padding: 8px;
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+}
+.paystub-ytd-foot td {
+  text-align: center;
+  padding: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.paystub-note {
+  margin-top: 14px;
+  font-size: 11px;
+  color: #667085;
+  line-height: 1.45;
+}
+
+@media print {
+  body * { visibility: hidden !important; }
+  #payslip-print-root, #payslip-print-root * { visibility: visible !important; }
+  #payslip-print-root {
+    position: absolute; left: 0; top: 0; width: 100%;
+    padding: 10mm; background: #fff !important;
+  }
+  .no-print { display: none !important; }
+  .modal-scrim, .modal-card, .payslip-modal {
+    position: static !important; box-shadow: none !important;
+    background: #fff !important; max-width: none !important;
+  }
+  @page { size: A4 portrait; margin: 8mm; }
+}
