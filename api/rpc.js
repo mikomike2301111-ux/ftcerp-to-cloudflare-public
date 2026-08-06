@@ -55,9 +55,75 @@ function roleCanAccessPage(role, pageId) {
   return allowed.includes(role);
 }
 
+
 function isPrivilegedRole(role) {
   return [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER].includes(role);
 }
+
+/** Default staff roster — simple distinct passwords (change in Settings after go-live) */
+const STAFF_ROSTER = [
+  { name: 'Miko Admin', email: 'miko@gmail.com', password: '1234567890', role: ROLES.DEV, department: 'Executive' },
+  { name: 'Boss Executive', email: 'boss@farmtrack.co.ke', password: 'Boss2026!', role: ROLES.EXECUTIVE, department: 'Executive' },
+  { name: 'Office Admin', email: 'admin@farmtrack.co.ke', password: 'Admin2026!', role: ROLES.ADMIN, department: 'Administration' },
+  { name: 'HR Officer', email: 'hr@farmtrack.co.ke', password: 'Hr2026!', role: ROLES.HR, department: 'HR' },
+  { name: 'Accounts Officer', email: 'accounts@farmtrack.co.ke', password: 'Acc2026!', role: ROLES.ACCOUNTANT, department: 'Finance' },
+  { name: 'Reception', email: 'reception@farmtrack.co.ke', password: 'Rec2026!', role: ROLES.RECEPTION, department: 'Administration' },
+  { name: 'Edna', email: 'edna@farmtrack.co.ke', password: 'SalesEdna1!', role: ROLES.SALES, department: 'Sales' },
+  { name: 'Joseph', email: 'joseph@farmtrack.co.ke', password: 'SalesJoe1!', role: ROLES.SALES, department: 'Sales' },
+  { name: 'Njoroge', email: 'njoroge@farmtrack.co.ke', password: 'SalesNjo1!', role: ROLES.SALES, department: 'Sales' },
+  { name: 'Purity', email: 'purity@farmtrack.co.ke', password: 'SalesPur1!', role: ROLES.SALES, department: 'Sales' },
+  { name: 'Manufacturing Lead', email: 'mfg1@farmtrack.co.ke', password: 'Mfg2026a!', role: ROLES.PRODUCTION, department: 'Manufacturing' },
+  { name: 'Manufacturing Tech', email: 'mfg2@farmtrack.co.ke', password: 'Mfg2026b!', role: ROLES.PRODUCTION, department: 'Manufacturing' },
+  { name: 'Security Casual', email: 'security@farmtrack.co.ke', password: 'Casual1!', role: ROLES.CASUAL, department: 'Operations' },
+  { name: 'Casual Staff 2', email: 'casual2@farmtrack.co.ke', password: 'Casual2!', role: ROLES.CASUAL, department: 'Operations' }
+];
+
+function ensureStaffUsers(db) {
+  db.users = Array.isArray(db.users) ? db.users : [];
+  for (const row of STAFF_ROSTER) {
+    const email = String(row.email).toLowerCase();
+    let u = db.users.find(x => String(x.email || '').toLowerCase() === email);
+    if (!u) {
+      u = {
+        id: gid(),
+        name: row.name,
+        email,
+        password: row.password,
+        role: row.role,
+        department: row.department,
+        status: 'Active',
+        phone: '',
+        warehouse: 'All',
+        county: 'Nairobi',
+        canChangePassword: false,
+        createdAt: new Date().toISOString()
+      };
+      db.users.push(u);
+    } else {
+      // Keep existing custom passwords; only fill role/name if missing
+      if (!u.role) u.role = row.role;
+      if (!u.name) u.name = row.name;
+      if (!u.password) u.password = row.password;
+      if (u.status !== 'Inactive') u.status = 'Active';
+    }
+  }
+  // Ensure primary dev account stays usable
+  const miko = db.users.find(x => String(x.email || '').toLowerCase() === 'miko@gmail.com');
+  if (miko) {
+    miko.role = ROLES.DEV;
+    miko.status = 'Active';
+    if (!miko.password) miko.password = '1234567890';
+  }
+  return db.users;
+}
+
+function hrAndApproverEmails(d) {
+  const roles = [ROLES.HR, ROLES.EXECUTIVE, ROLES.ADMIN, ROLES.DEV, ROLES.MANAGER];
+  return (d.users || [])
+    .filter(u => u.status === 'Active' && roles.includes(u.role) && u.email)
+    .map(u => String(u.email).toLowerCase());
+}
+
 
 
 const gid = () => 'ID' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 7).toUpperCase();
@@ -2490,9 +2556,18 @@ function ensureFarmtrackCatalogue(state) {
 function seed() {
   const now = new Date().toISOString();
   // Production-safe seed: admin user + Farmtrack product catalogue only. No fake customers/sales/invoices.
-  const users = [
-    { id: 'USER001', name: 'Miko Admin', email: 'miko@gmail.com', password: '1234567890', role: ROLES.ADMIN, phone: '+254700111', status: 'Active' }
-  ];
+  const users = STAFF_ROSTER.map((row, i) => ({
+    id: i === 0 ? 'USER001' : `USER-${String(i + 1).padStart(3, '0')}`,
+    name: row.name,
+    email: row.email,
+    password: row.password,
+    role: row.role,
+    phone: '',
+    status: 'Active',
+    department: row.department,
+    warehouse: 'All',
+    county: 'Nairobi'
+  }));
   const products = [
     ['Bactrolure', 'FTC-01', 'Lures', 'Finished Product', 'unit', 450, 900, 30],
     ['Cue Lure Plug', 'FTC-02', 'Lures', 'Finished Product', 'unit', 380, 750, 40],
@@ -6462,6 +6537,8 @@ const api = {
     return { success: errors.length === 0, module: moduleName, imported: upserted, errors, log: logEntry };
   },
   getSettingsWorkspaceData(user) {
+    const _d0 = data(); ensureStaffUsers(_d0);
+
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER);
     const d = data();
     const settings = {
@@ -11884,8 +11961,10 @@ territory: geo,
     };
   },
   applyLeave(user, form = {}) {
+    // Any active role may apply for leave
     const u = reqRole(user);
     const d = data();
+    ensureStaffUsers(d);
     ensureLeaveData();
     assertRequired(form.type, 'Leave type');
     assertRequired(form.startDate, 'Start date');
@@ -11894,46 +11973,62 @@ territory: geo,
     if (end < start) throw new Error('End date cannot be before start date');
     const days = Math.max(leaveBusinessDays(start, end), 1);
     const lt = (d.leaveTypes || []).find(t => String(t.name).toLowerCase() === String(form.type).toLowerCase()) || { name: form.type, deducts: 'annual' };
-    const emp = (d.employees || []).find(e => e.id === u.id || e.email === u.email) || { name: u.name, department: 'Admin' };
+    const emp = (d.employees || []).find(e => e.id === u.id || String(e.email || '').toLowerCase() === String(u.email || '').toLowerCase())
+      || { name: u.name, department: u.department || roleDepartment(u.role) };
     const application = {
       id: gid(),
       applicantId: u.id,
       applicantEmail: u.email,
       applicantName: u.name,
-      department: clean(form.department) || emp.department || '',
+      applicantRole: u.role,
+      department: clean(form.department) || emp.department || u.department || '',
       type: lt.name,
       startDate: start,
       endDate: end,
       days,
-      reason: clean(form.reason),
+      reason: clean(form.reason) || 'Leave request',
       emergencyContact: clean(form.emergencyContact),
       coveringEmployee: clean(form.coveringEmployee),
       status: 'Pending',
       appliedAt: new Date().toISOString(),
       attachments: []
     };
+    d.leaveApplications = Array.isArray(d.leaveApplications) ? d.leaveApplications : [];
     d.leaveApplications.unshift(application);
-    emitBusinessEvent(u, 'hr.leave_applied', 'leaveApplications', application.id, { type: lt.name, days });
-    // High-priority alert to managers
+    emitBusinessEvent(u, 'hr.leave_applied', 'leaveApplications', application.id, { type: lt.name, days, role: u.role });
+    // In-app notification (HR + managers)
     pushManualNotification(d, {
-      category: 'payroll',
+      category: 'hr',
       priority: 'high',
       title: 'Leave approval required',
-      message: `${u.name} requested ${days} day(s) ${lt.name} leave (${start} → ${end})`,
+      message: `${u.name} (${u.role}) requested ${days} day(s) ${lt.name} leave (${start} → ${end}). Reason: ${application.reason}`,
       sourceModule: 'leaves',
       sourceId: application.id,
-      sourceLabel: `${lt.name} · ${u.name}`
+      sourceLabel: `${lt.name} · ${u.name}`,
+      audienceRoles: [ROLES.HR, ROLES.EXECUTIVE, ROLES.ADMIN, ROLES.DEV, ROLES.MANAGER]
     });
-    // Email managers about leave approval request
-    const mgrEmails = managerEmails(d);
-    if (mgrEmails.length) {
-      deliverEmail(u, 'leave_approval_request', mgrEmails, () => EmailService.sendLeaveRequestSubmitted({
-        to: u.email, employeeName: u.name, department: emp.department, leaveType: lt.name, startDate: start, endDate: end, days,
-        reason: clean(form.reason), leaveId: application.id, managerEmail: mgrEmails.join(',')
-      }), { subject: `Leave approval — ${u.name}`, relatedModule: 'leaves', relatedId: application.id }).catch(() => {});
+    // Email HR @farmtrack + all HR/approver users
+    const hrEmails = Array.from(new Set([
+      'hr@farmtrack.co.ke',
+      ...hrAndApproverEmails(d),
+      ...(typeof managerEmails === 'function' ? managerEmails(d) : [])
+    ].filter(Boolean)));
+    for (const to of hrEmails) {
+      deliverEmail(u, 'leave_approval_request', to, () => EmailService.sendLeaveRequestSubmitted({
+        to,
+        employeeName: u.name,
+        department: application.department,
+        leaveType: lt.name,
+        startDate: start,
+        endDate: end,
+        days,
+        reason: application.reason,
+        leaveId: application.id,
+        managerEmail: to
+      }), { subject: `Leave approval needed — ${u.name} (${lt.name})`, relatedModule: 'leaves', relatedId: application.id }).catch(() => {});
     }
-    log(u, `Apply for ${lt.name} leave`, 'Leaves', `${days} days`);
-    return { success: true, application };
+    log(u, `Apply for ${lt.name} leave`, 'Leaves', `${days} days · ${u.role}`);
+    return { success: true, application, notified: hrEmails };
   },
   decideLeave(user, id, decision = {}) {
     // Boss / Executive / HR / Admin
