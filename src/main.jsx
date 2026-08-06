@@ -126,7 +126,7 @@ import {
   AccountDeepDive
 } from './components/HR/AccountsModals';
 
-const DEFAULT_USER = { email: 'miko@gmail.com', password: '1234567890' };
+const DEFAULT_USER = { email: '', password: '' };
 const num = value => Number.parseFloat(value || 0) || 0;
 const currency = value => {
   const n = Number(value || 0);
@@ -805,59 +805,117 @@ async function optimisticSave(applyLocal, remoteCall) {
 }
 
 function Login({ onLogin }) {
-  const [form, setForm] = useState(DEFAULT_USER);
+  const [form, setForm] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [now, setNow] = useState(() => new Date());
-  const [health, setHealth] = useState(null);
-
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
-
-  useEffect(() => {
-    rpc('appHealth', [{}]).then(setHealth).catch(() => setHealth({ ok: false }));
-  }, []);
+  const [showPw, setShowPw] = useState(false);
+  const [lockUntil, setLockUntil] = useState(0);
+  const failsRef = useRef(0);
 
   async function submit(e) {
     e.preventDefault();
-    setLoading(true);
     setError('');
+    if (Date.now() < lockUntil) {
+      const secs = Math.ceil((lockUntil - Date.now()) / 1000);
+      setError(`Too many attempts. Try again in ${secs}s.`);
+      return;
+    }
+    const email = String(form.email || '').trim().toLowerCase();
+    const password = String(form.password || '');
+    if (!email || !password) {
+      setError('Enter your work email and password.');
+      return;
+    }
+    setLoading(true);
     try {
-      const result = await rpc('loginUser', [form.email, form.password]);
+      const meta = {
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+        language: typeof navigator !== 'undefined' ? navigator.language : '',
+        screen: typeof window !== 'undefined' ? `${window.screen?.width}x${window.screen?.height}` : '',
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+        at: new Date().toISOString()
+      };
+      const result = await rpc('loginUser', [email, password, meta]);
       if (!result.success) throw new Error(result.message || 'Login failed');
+      failsRef.current = 0;
       onLogin(result.user);
     } catch (err) {
-      setError(err.message);
+      failsRef.current += 1;
+      if (failsRef.current >= 5) {
+        setLockUntil(Date.now() + 60_000);
+        failsRef.current = 0;
+        setError('Too many failed attempts. Locked for 60 seconds.');
+      } else {
+        // Generic message — do not reveal whether email exists
+        setError('Invalid email or password.');
+      }
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="login-screen">
-      <section className="login-panel">
-        <div className="brand-lockup">
-          <div className="brand-mark"><img src="https://i.postimg.cc/CM9BdKbH/logo-ftc.png" alt="Farmtrack Biosciences logo" /></div>
-          <div>
-            <h1>Farmtrack Biosciences</h1>
-            <p>Staff operations portal · staff.farmtrack.co.ke</p>
+    <div className="login-screen-v2">
+      <div className="login-card-v2">
+        <aside className="login-hero-v2" aria-hidden="true">
+          <div className="login-hero-mark">
+            <img src="https://i.postimg.cc/CM9BdKbH/logo-ftc.png" alt="" />
           </div>
-        </div>
-        <div className="login-live-strip">
-          <span>{now.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span>
-          <strong>{now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</strong>
-          <em className={health?.ok ? 'live-ok' : 'live-warn'}>{health?.ok ? 'Systems online' : 'Checking systems…'}</em>
-        </div>
-        <form onSubmit={submit} className="login-form">
-          {error && <div className="error-banner">{error}</div>}
-          <label>Email<input type="email" autoComplete="username" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></label>
-          <label>Password<input type="password" autoComplete="current-password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} /></label>
-          <button type="submit" disabled={loading}>{loading ? <Loader2 className="spin" size={20} /> : 'Sign in'}</button>
-          <span className="login-hint">Authorized staff only. Contact admin for access.</span>
-        </form>
-      </section>
+          <div className="login-hero-copy">
+            <p className="login-hero-kicker">FarmTrack BioSciences</p>
+            <h2>Staff operations portal</h2>
+            <p>Secure access for authorized team members only.</p>
+          </div>
+        </aside>
+        <section className="login-form-pane-v2">
+          <div className="login-form-head">
+            <span className="login-asterisk" aria-hidden="true">*</span>
+            <h1>Sign in</h1>
+            <p>Use the email and password issued by your administrator.</p>
+          </div>
+          <form onSubmit={submit} className="login-form-v2" autoComplete="off" data-lpignore="true" data-1p-ignore="true">
+            {error && <div className="login-error-v2" role="alert">{error}</div>}
+            <label className="login-field-v2">
+              <span>Work email</span>
+              <input
+                type="email"
+                name="ftc-staff-email"
+                inputMode="email"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                value={form.email}
+                onChange={e => setForm({ ...form, email: e.target.value })}
+                placeholder="name@farmtrack.co.ke"
+                required
+              />
+            </label>
+            <label className="login-field-v2">
+              <span>Password</span>
+              <div className="login-pw-wrap">
+                <input
+                  type={showPw ? 'text' : 'password'}
+                  name="ftc-staff-password"
+                  autoComplete="new-password"
+                  value={form.password}
+                  onChange={e => setForm({ ...form, password: e.target.value })}
+                  placeholder="••••••••"
+                  required
+                />
+                <button type="button" className="login-pw-toggle" onClick={() => setShowPw(v => !v)} tabIndex={-1}>
+                  {showPw ? 'Hide' : 'Show'}
+                </button>
+              </div>
+            </label>
+            <button type="submit" className="login-submit-v2" disabled={loading}>
+              {loading ? <Loader2 className="spin" size={18} /> : null}
+              {loading ? 'Signing in…' : 'Sign in'}
+            </button>
+            <p className="login-secure-note">Protected access · No public registration · Contact admin for an account</p>
+          </form>
+        </section>
+      </div>
     </div>
   );
 }
@@ -9227,6 +9285,9 @@ function SettingsPage({ user }) {
         </div>
       )}
 
+      {view === 'security' && (user?.canManageUsers || ['Administrator','Developer','Executive'].includes(user?.role)) && (
+        <LoginSecurityPanel user={user} />
+      )}
       {view === 'permissions' && (
         <div className="dashboard-grid">
           <Panel className="span-5" title="Permission Actions"><SettingsPillList items={data.permissionActions} /></Panel>
@@ -9752,6 +9813,56 @@ function SupabaseIntegrationPanel({ user }) {
 
       <Panel className={normalizedReady ? 'span-12' : 'span-7'} title="Page Integration Map" action={`${pages.length} workspaces`}>
         <SimpleTable rows={pages} columns={['page', 'interactions', 'mode']} />
+      </Panel>
+    </div>
+  );
+}
+
+
+function LoginSecurityPanel({ user }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let live = true;
+    setLoading(true);
+    rpc('getLoginAuditLogs', [user, { limit: 100 }])
+      .then(res => { if (live) setRows(res?.rows || []); })
+      .catch(() => { if (live) setRows([]); })
+      .finally(() => { if (live) setLoading(false); });
+    return () => { live = false; };
+  }, [user?.id, user?.email]);
+  return (
+    <div className="dashboard-grid">
+      <Panel className="span-12" title="Login security logs" action={`${rows.length} recent`}>
+        <p style={{ margin: '0 0 12px', color: '#667085', fontSize: 13 }}>
+          Successful and failed sign-ins with time, device, and browser. Only Administrator / Developer / Executive can view this.
+        </p>
+        {loading ? <div className="empty-state">Loading…</div> : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Time</th><th>Email</th><th>User</th><th>Role</th><th>Status</th><th>Device</th><th>Timezone</th><th>Browser</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.length === 0 && <tr><td colSpan={8}>No login events yet</td></tr>}
+                {rows.map(r => (
+                  <tr key={r.id}>
+                    <td>{String(r.createdAt || '').replace('T', ' ').slice(0, 19)}</td>
+                    <td>{r.email}</td>
+                    <td>{r.userName || '—'}</td>
+                    <td>{r.role || '—'}</td>
+                    <td><span className={`status ${r.status === 'success' ? 'active' : 'cancelled'}`}>{r.status}</span></td>
+                    <td>{r.device || '—'}</td>
+                    <td>{r.timezone || '—'}</td>
+                    <td style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.userAgent}>{r.userAgent || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Panel>
     </div>
   );

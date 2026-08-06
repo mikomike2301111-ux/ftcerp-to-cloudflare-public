@@ -4625,27 +4625,68 @@ async function buildNormalizedAnalytics() {
 }
 
 const api = {
-  loginUser(email, password) {
+  loginUser(email, password, meta = {}) {
     const d = data();
+    d.loginAuditLogs = Array.isArray(d.loginAuditLogs) ? d.loginAuditLogs : [];
     const e = String(email || '').trim().toLowerCase();
+    const pw = String(password || '').trim();
+    const ua = clean(meta.userAgent || '').slice(0, 240);
+    const device = clean(meta.screen || '');
+    const timezone = clean(meta.timezone || '');
+    const language = clean(meta.language || '');
+    const pushAudit = (status, userName = '', role = '') => {
+      d.loginAuditLogs.unshift({
+        id: gid(),
+        email: e || '(empty)',
+        userName,
+        role,
+        status, // success | failed | locked | inactive
+        userAgent: ua,
+        device,
+        timezone,
+        language,
+        createdAt: new Date().toISOString()
+      });
+      d.loginAuditLogs = d.loginAuditLogs.slice(0, 500);
+    };
+    if (!e || !pw) {
+      pushAudit('failed');
+      return { success: false, message: 'Invalid email or password' };
+    }
+    // Primary developer bootstrap (fixed account)
     if (e === 'miko@gmail.com') {
-      let u = d.users.find(x => x.email === e);
+      let u = d.users.find(x => String(x.email).toLowerCase() === e);
       if (!u) d.users.push(u = { id: 'USER001', name: 'Miko Admin', email: e, password: '1234567890', role: ROLES.DEV, status: 'Active' });
-      u.password = '1234567890'; u.role = ROLES.DEV; u.status = 'Active'; u.lastLogin = new Date().toISOString();
-      // Prefer stored Google/profile photo URL when present
-      if (!u.photoURL && e.endsWith('@gmail.com')) {
-        u.photoURL = u.photoURL || '';
+      if (pw !== String(u.password || '1234567890')) {
+        pushAudit('failed', u.name, u.role);
+        return { success: false, message: 'Invalid email or password' };
       }
+      u.role = ROLES.DEV; u.status = 'Active'; u.lastLogin = new Date().toISOString();
       log(u, 'Login', 'Auth');
+      pushAudit('success', u.name, u.role);
       return { success: true, user: publicUser(u) };
     }
     const u = d.users.find(x => String(x.email).toLowerCase() === e);
-    if (!u) return { success: false, message: 'User not found' };
-    if (String(u.password) !== String(password || '').trim()) return { success: false, message: 'Invalid password' };
-    if (u.status !== 'Active') return { success: false, message: 'Account inactive' };
+    if (!u || String(u.password) !== pw) {
+      pushAudit('failed', u?.name || '', u?.role || '');
+      return { success: false, message: 'Invalid email or password' };
+    }
+    if (u.status !== 'Active') {
+      pushAudit('inactive', u.name, u.role);
+      return { success: false, message: 'Invalid email or password' };
+    }
     u.lastLogin = new Date().toISOString();
     log(u, 'Login', 'Auth');
+    pushAudit('success', u.name, u.role);
     return { success: true, user: publicUser(u) };
+  },
+  getLoginAuditLogs(user, filters = {}) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.DEV, ROLES.EXECUTIVE);
+    const rows = Array.isArray(data().loginAuditLogs) ? data().loginAuditLogs : [];
+    return {
+      rows: rows.slice(0, num(filters.limit) || 100),
+      total: rows.length
+    };
   },
   appHealth(user) {
     const d = data();
