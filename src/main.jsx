@@ -885,7 +885,17 @@ function Sidebar({ page, setPage, open, setOpen, collapsed, setCollapsed, user, 
           </button>
         </div>
         <nav>
-          {nav.map(item => {
+          {nav.filter(item => {
+            const allowed = user?.allowedPages;
+            if (!Array.isArray(allowed) || !allowed.length) {
+              // fallback: admin/dev see all
+              if ([ 'Administrator', 'Developer' ].includes(user?.role)) return true;
+              // shared modules always
+              if (['dashboard','notifications','email','leaves','requisitions'].includes(item.id)) return true;
+              return true; // until roles populated, show all then server enforces
+            }
+            return allowed.includes(item.id);
+          }).map(item => {
             const Icon = item.icon;
             return (
               <button key={item.id} type="button" className={page === item.id ? 'active' : ''} onClick={() => {
@@ -9171,7 +9181,7 @@ function SettingsPage({ user }) {
           </Panel>
         </div>
       )}
-      {view === 'users' && (
+      {view === 'users' && (user?.canManageUsers || ['Administrator','Developer'].includes(user?.role)) && (
         <div className="dashboard-grid">
           <Panel className="span-12" title="Users & Roles" action={`${(data.users || []).length} accounts`}>
             <div className="settings-toolbar">
@@ -9198,6 +9208,11 @@ function SettingsPage({ user }) {
                           summary={row.name}
                           actions={[
                             { label: 'Edit user', icon: <UserCog size={15} />, onClick: () => setUserModal(row) },
+                            { label: 'Reset password', icon: <ShieldCheck size={15} />, onClick: async () => {
+                              const pw = prompt(`New password for ${row.email}`);
+                              if (!pw) return;
+                              try { await rpc('resetUserPassword', [user, row.id, pw]); alert('Password updated'); setRefreshKey?.(k => k + 1); } catch (e) { alert(e.message); }
+                            } },
                             { label: 'Copy details', icon: <FileText size={15} />, onClick: () => copyText(rowSummary(row)) },
                             { label: 'Export CSV', icon: <Download size={15} />, onClick: () => downloadRowsFile(`user-${row.name}`, [row], 'CSV') }
                           ]}
@@ -9779,6 +9794,8 @@ function SettingsUserModal({ user, meta, initial, onClose, onSaved }) {
           <label>Email<input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required /></label>
           <label>Phone<input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} /></label>
           <label>Role<select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>{meta.roles.map(x => <option key={x}>{x}</option>)}</select></label>
+          <label>Login password{!initial?.id ? ' *' : ''}<input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder={initial?.id ? 'Leave blank to keep current' : 'Set initial password'} autoComplete="new-password" required={!initial?.id} /></label>
+          <p style={{ gridColumn: '1 / -1', fontSize: 12, color: '#667085', margin: 0 }}>Users cannot change their own email or password. Only Administrator / Developer can create users and reset passwords.</p>
           <label>Department<select value={form.department} onChange={e => setForm({ ...form, department: e.target.value })}>{(meta.departments || []).map(x => <option key={x.id || x.name} value={x.name}>{x.name}</option>)}</select></label>
           <label>Warehouse<select value={form.warehouse} onChange={e => setForm({ ...form, warehouse: e.target.value })}>{['All', ...(meta.warehouses || []).map(x => x.name)].map(x => <option key={x}>{x}</option>)}</select></label>
           <label>County<input value={form.county} onChange={e => setForm({ ...form, county: e.target.value })} /></label>

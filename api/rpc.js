@@ -10,16 +10,55 @@ const PptxGenJS = require('pptxgenjs');
 const quickBooksSeed = require('../data/quickbooks-seed.json');
 
 const ROLES = {
+  DEV: 'Developer',
   ADMIN: 'Administrator',
+  EXECUTIVE: 'Executive',
   MANAGER: 'Manager',
-  SALES: 'Sales Officer',
-  PROCUREMENT: 'Procurement Officer',
-  WAREHOUSE: 'Warehouse Staff',
-  PRODUCTION: 'Production Supervisor',
+  HR: 'HR Officer',
   ACCOUNTANT: 'Accountant',
+  RECEPTION: 'Reception',
+  SALES: 'Sales Officer',
   FIELD: 'Field Officer',
-  HR: 'HR Officer'
+  PRODUCTION: 'Production Supervisor',
+  WAREHOUSE: 'Warehouse Staff',
+  PROCUREMENT: 'Procurement Officer',
+  CASUAL: 'Casual Staff'
 };
+
+/** Page-level access matrix (module ids match frontend nav) */
+const PAGE_ACCESS = {
+  dashboard: ['*'],
+  analytics: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.ACCOUNTANT, ROLES.HR, ROLES.SALES],
+  sales: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD, ROLES.RECEPTION],
+  purchasing: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.PROCUREMENT, ROLES.ACCOUNTANT, ROLES.PRODUCTION, ROLES.WAREHOUSE],
+  inventory: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.WAREHOUSE, ROLES.PRODUCTION, ROLES.PROCUREMENT, ROLES.ACCOUNTANT],
+  finance: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.ACCOUNTANT],
+  accounts: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.ACCOUNTANT],
+  production: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.PRODUCTION, ROLES.WAREHOUSE],
+  customers: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD, ROLES.RECEPTION],
+  reports: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.ACCOUNTANT, ROLES.HR, ROLES.SALES],
+  inputs: [ROLES.DEV, ROLES.ADMIN, ROLES.MANAGER, ROLES.RECEPTION, ROLES.SALES, ROLES.HR],
+  notifications: ['*'],
+  email: ['*'],
+  'email-admin': [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER],
+  hr: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.HR],
+  leaves: ['*'],
+  requisitions: ['*'],
+  settings: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.HR, ROLES.ACCOUNTANT]
+};
+
+function roleCanAccessPage(role, pageId) {
+  const allowed = PAGE_ACCESS[pageId];
+  if (!allowed) return false;
+  if (allowed.includes('*')) return true;
+  if (role === ROLES.ADMIN || role === ROLES.DEV) return true;
+  return allowed.includes(role);
+}
+
+function isPrivilegedRole(role) {
+  return [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER].includes(role);
+}
+
 
 const gid = () => 'ID' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 7).toUpperCase();
 const today = () => new Date().toISOString().slice(0, 10);
@@ -3400,30 +3439,39 @@ function ensureGeoSalesData() {
 }
 
 function publicUser(u) {
-  return u && {
+  if (!u) return null;
+  return {
     id: u.id,
     name: u.name,
     email: u.email,
     role: u.role,
-    phone: u.phone,
-    department: u.department || '',
+    phone: u.phone || '',
     status: u.status || 'Active',
-    photoURL: u.photoURL || u.avatarUrl || '',
-    avatarUrl: u.photoURL || u.avatarUrl || '',
-    lastLogin: u.lastLogin || null
+    department: u.department || '',
+    warehouse: u.warehouse || '',
+    county: u.county || '',
+    lastLogin: u.lastLogin || '',
+    canManageUsers: [ROLES.DEV, ROLES.ADMIN].includes(u.role),
+    canChangeOwnPassword: false,
+    allowedPages: Object.keys(PAGE_ACCESS).filter(p => roleCanAccessPage(u.role, p))
   };
 }
 
 function roleDepartment(role) {
   const map = {
+    [ROLES.DEV]: 'Executive',
     [ROLES.ADMIN]: 'Executive',
+    [ROLES.EXECUTIVE]: 'Executive',
     [ROLES.MANAGER]: 'Executive',
-    [ROLES.SALES]: 'Sales',
-    [ROLES.PROCUREMENT]: 'Procurement',
-    [ROLES.WAREHOUSE]: 'Inventory',
-    [ROLES.PRODUCTION]: 'Manufacturing',
+    [ROLES.HR]: 'HR',
     [ROLES.ACCOUNTANT]: 'Finance',
-    [ROLES.FIELD]: 'Field Operations'
+    [ROLES.RECEPTION]: 'Administration',
+    [ROLES.SALES]: 'Sales',
+    [ROLES.FIELD]: 'Field Operations',
+    [ROLES.PRODUCTION]: 'Manufacturing',
+    [ROLES.WAREHOUSE]: 'Inventory',
+    [ROLES.PROCUREMENT]: 'Procurement',
+    [ROLES.CASUAL]: 'Operations'
   };
   return map[role] || 'Operations';
 }
@@ -3436,9 +3484,17 @@ function reqRole(user, ...roles) {
   const u = d.users.find(x => String(x.email).toLowerCase() === email || x.id === id);
   if (!u) throw new Error('User not found');
   if (u.status !== 'Active') throw new Error('Account is inactive');
-  if (u.role === ROLES.ADMIN || !roles.length || roles.includes(u.role)) return u;
+  if (u.role === ROLES.ADMIN || u.role === ROLES.DEV || !roles.length || roles.includes(u.role)) return u;
+  // Executive can act as manager for approvals
+  if (u.role === ROLES.EXECUTIVE && roles.some(r => [ROLES.MANAGER, ROLES.ADMIN, ROLES.EXECUTIVE].includes(r))) return u;
   throw new Error('Insufficient permissions');
 }
+
+function getAllowedPagesForUser(user) {
+  const u = reqRole(user);
+  return Object.keys(PAGE_ACCESS).filter(p => roleCanAccessPage(u.role, p));
+}
+
 
 function log(u, action, module, details = '') {
   data().activity.unshift({ id: gid(), userName: u.name, action, module, details, createdAt: new Date().toISOString() });
@@ -4574,8 +4630,8 @@ const api = {
     const e = String(email || '').trim().toLowerCase();
     if (e === 'miko@gmail.com') {
       let u = d.users.find(x => x.email === e);
-      if (!u) d.users.push(u = { id: 'USER001', name: 'Miko Admin', email: e, password: '1234567890', role: ROLES.ADMIN, status: 'Active' });
-      u.password = '1234567890'; u.role = ROLES.ADMIN; u.status = 'Active'; u.lastLogin = new Date().toISOString();
+      if (!u) d.users.push(u = { id: 'USER001', name: 'Miko Admin', email: e, password: '1234567890', role: ROLES.DEV, status: 'Active' });
+      u.password = '1234567890'; u.role = ROLES.DEV; u.status = 'Active'; u.lastLogin = new Date().toISOString();
       // Prefer stored Google/profile photo URL when present
       if (!u.photoURL && e.endsWith('@gmail.com')) {
         u.photoURL = u.photoURL || '';
@@ -4587,6 +4643,8 @@ const api = {
     if (!u) return { success: false, message: 'User not found' };
     if (String(u.password) !== String(password || '').trim()) return { success: false, message: 'Invalid password' };
     if (u.status !== 'Active') return { success: false, message: 'Account inactive' };
+    u.lastLogin = new Date().toISOString();
+    log(u, 'Login', 'Auth');
     return { success: true, user: publicUser(u) };
   },
   appHealth(user) {
@@ -6446,15 +6504,15 @@ const api = {
       roles,
       modules,
       permissionActions,
-      permissionMatrix: roles.slice(0, 10).map(role => ({
+      permissionMatrix: roles.map(role => ({
         role,
         view: true,
-        create: !['Viewer', 'Auditor'].includes(role),
-        edit: !['Viewer', 'Auditor'].includes(role),
-        approve: ['Administrator', 'Manager', 'Finance Manager', 'Sales Manager', 'Production Manager'].includes(role),
-        export: role !== 'Viewer',
-        delete: ['Admin'].includes(role),
-        manage: ['Administrator', 'Manager'].includes(role)
+        create: ![ROLES.CASUAL].includes(role),
+        edit: ![ROLES.CASUAL, ROLES.RECEPTION].includes(role) || role === ROLES.RECEPTION,
+        approve: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.HR].includes(role),
+        export: role !== ROLES.CASUAL,
+        delete: [ROLES.DEV, ROLES.ADMIN].includes(role),
+        manage: [ROLES.DEV, ROLES.ADMIN].includes(role)
       })),
       departments: (() => {
         const fromHr = (d.departments || []).map(dep => ({
@@ -6549,22 +6607,57 @@ const api = {
     return { success: true, settings: d.settings, section: key };
   },
   saveSettingsUser(user, payload = {}) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.DEV);
+    assertRequired(payload.name, 'Name');
+    assertRequired(payload.email, 'Email');
+    assertRequired(payload.role, 'Role');
+    const d = data();
+    d.users = Array.isArray(d.users) ? d.users : [];
+    const email = clean(payload.email).toLowerCase();
+    const existing = payload.id ? d.users.find(x => x.id === payload.id) : d.users.find(x => String(x.email || '').toLowerCase() === email);
+    if (!payload.id && !clean(payload.password)) {
+      throw new Error('Password is required when creating a new user');
+    }
+    // Prevent non-dev demoting the primary admin
+    if (existing && existing.email === 'miko@gmail.com' && u.email !== 'miko@gmail.com') {
+      throw new Error('Only the primary developer can edit the root admin account');
+    }
     const row = {
-      id: payload.id,
-      name: payload.name || 'New User',
-      email: payload.email || `user${Date.now()}@farmtrack.local`,
-      password: payload.password || 'ChangeMe123',
-      role: payload.role || ROLES.SALES,
-      phone: payload.phone || '',
-      status: payload.status || 'Active',
-      department: payload.department || roleDepartment(payload.role || ROLES.SALES),
-      warehouse: payload.warehouse || 'All',
-      county: payload.county || 'Nairobi'
+      id: existing?.id || payload.id || gid(),
+      name: clean(payload.name),
+      email,
+      role: Object.values(ROLES).includes(payload.role) ? payload.role : ROLES.SALES,
+      phone: clean(payload.phone || ''),
+      status: payload.status === 'Inactive' ? 'Inactive' : 'Active',
+      department: clean(payload.department) || roleDepartment(payload.role || ROLES.SALES),
+      warehouse: clean(payload.warehouse || 'All') || 'All',
+      county: clean(payload.county || 'Nairobi') || 'Nairobi',
+      canChangePassword: false,
+      updatedAt: new Date().toISOString()
     };
+    if (clean(payload.password)) row.password = clean(payload.password);
+    else if (existing?.password) row.password = existing.password;
+    else throw new Error('Password is required');
+    if (!existing) row.createdAt = new Date().toISOString();
     const saved = save('users', u, row);
-    emitBusinessEvent(u, 'settings.user.saved', 'users', saved.id || row.id, row);
-    return saved;
+    emitBusinessEvent(u, 'settings.user.saved', 'users', saved.id || row.id, { email: row.email, role: row.role, status: row.status });
+    log(u, `Save user ${row.name} (${row.role})`, 'Settings');
+    return { success: true, user: publicUser({ ...row, password: undefined }) };
+  },
+  resetUserPassword(user, userId, newPassword) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.DEV);
+    assertRequired(newPassword, 'New password');
+    if (String(newPassword).length < 6) throw new Error('Password must be at least 6 characters');
+    const d = data();
+    const target = (d.users || []).find(x => x.id === userId || String(x.email).toLowerCase() === String(userId).toLowerCase());
+    if (!target) throw new Error('User not found');
+    target.password = clean(newPassword);
+    target.updatedAt = new Date().toISOString();
+    log(u, `Reset password for ${target.email}`, 'Settings');
+    return { success: true };
+  },
+  getAllowedPages(user) {
+    return { pages: getAllowedPagesForUser(user), role: reqRole(user).role };
   },
   getBackupList: () => [],
   createDailyBackup: () => 'Backup is configured in Vercel deployment.',
@@ -6575,7 +6668,7 @@ const api = {
     const d = data();
     const range = periodRange(filters.period);
     const recentFirst = (a, b) => String(b.updatedAt || b.createdAt || b.date || '').localeCompare(String(a.updatedAt || a.createdAt || a.date || ''));
-    const customers = list('customers').map(customer => {
+    let customers = list('customers').map(customer => {
       const sales = d.sales.filter(s => s.customerId === customer.id || s.customerName === customer.name);
       const customerInvoices = d.invoices.filter(inv => inv.customerId === customer.id || inv.customerName === customer.name);
       const revenue = sales.reduce((sum, sale) => sum + num(sale.total), 0);
@@ -6589,9 +6682,27 @@ const api = {
         lastOrderNo: lastSale?.saleNo || '',
         lastActivity: lastSale?.date || customer.updatedAt || customer.createdAt || today(),
         health: revenue > 200000 ? 'VIP' : revenue > 0 ? 'Active' : 'Prospect',
-        priority: revenue > 200000 ? 'High' : revenue > 50000 ? 'Medium' : 'Normal'
+        priority: revenue > 200000 ? 'High' : revenue > 50000 ? 'Medium' : 'Normal',
+        salesPerson: customer.salesPerson || customer.salesRep || customer.owner || customer.assignedTo || '',
+        salesPersonTag: customer.salesPerson || customer.salesRep || customer.owner || customer.assignedTo || 'Unassigned'
       };
     }).sort(recentFirst);
+    
+    // Tag every customer with owning salesperson; Reception sees all, Sales sees own when tagged
+    const viewer = reqRole(user);
+    customers.forEach(c => {
+      c.salesPerson = c.salesPerson || c.salesRep || c.owner || c.assignedTo || '';
+      c.salesPersonTag = c.salesPerson ? String(c.salesPerson) : 'Unassigned';
+    });
+    let visibleCustomers = customers;
+    if (viewer.role === ROLES.SALES || viewer.role === ROLES.FIELD) {
+      const mine = String(viewer.name || '').toLowerCase();
+      const tagged = customers.filter(c => String(c.salesPersonTag || '').toLowerCase() === mine || String(c.salesPersonTag || '').toLowerCase().includes(mine));
+      // If nothing tagged yet, show all so reception-style seeding can happen; once tags exist, scope to own
+      if (tagged.length) visibleCustomers = tagged;
+    }
+
+    customers = visibleCustomers;
     const activeCustomers = customers.filter(c => c.status === 'Active').length;
     const leads = list('leads').sort(recentFirst);
     const calls = list('calls').sort(recentFirst);
@@ -11768,6 +11879,7 @@ territory: geo,
     return { success: true, application };
   },
   decideLeave(user, id, decision = {}) {
+    // Boss / Executive / HR / Admin
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER);
     const d = data();
     ensureLeaveData();
