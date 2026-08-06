@@ -10027,3 +10027,54 @@ aside.sidebar {
 .app-sidebar .logo {
   color: #ffffff !important;
 }
+
+/* Payslip — printable, full deductions */
+.pay-slip-sheet { background: #fff; color: #111; padding: 8px 4px; }
+.pay-slip-brand { display: flex; gap: 16px; align-items: center; margin-bottom: 12px; }
+.pay-slip-logo { width: 72px; height: 72px; object-fit: contain; background: #fff; border-radius: 10px; border: 1px solid #e8ecf1; padding: 4px; }
+.pay-slip-brand strong { display: block; font-size: 16px; letter-spacing: -0.02em; }
+.pay-slip-brand span { display: block; font-size: 12px; color: #475467; }
+.pay-slip-title { font-size: 20px; margin: 8px 0 12px; letter-spacing: -0.02em; color: #0b1220; }
+.pay-slip-info-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+.pay-slip-info-grid label { display: block; font-size: 11px; color: #667085; text-transform: uppercase; letter-spacing: 0.04em; }
+.pay-slip-info-grid span { font-weight: 600; font-size: 13px; }
+.pay-slip-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.pay-slip-table .num { text-align: right; white-space: nowrap; }
+.pay-slip-table .total-row td { border-top: 2px solid #0b1220; padding-top: 8px; }
+.pay-slip-net { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; padding: 14px 16px; background: #0b1220; color: #fff; border-radius: 12px; }
+.pay-slip-net strong { font-size: 22px; letter-spacing: -0.02em; }
+.pay-slip-verify { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; font-size: 12px; color: #475467; }
+.pay-slip-footnote { font-size: 11px; color: #667085; margin-top: 12px; line-height: 1.45; }
+.payslip-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; align-items: center; }
+.payslip-email-label { display: flex; gap: 8px; align-items: center; flex: 1; min-width: 220px; }
+.payslip-email-label input { flex: 1; height: 40px; border-radius: 8px; border: 1px solid #e4e7ec; padding: 0 10px; }
+
+/* Enlarge top-right profile / brand chips */
+.topbar-profile-btn img,
+.user-menu .avatar img,
+.user-menu img {
+  width: 40px !important;
+  height: 40px !important;
+  object-fit: cover;
+  border-radius: 50%;
+}
+.topbar-brand-chip { width: 42px !important; height: 42px !important; }
+.topbar-brand-chip img { padding: 2px !important; }
+.sidebar-logo-img { width: 48px !important; height: 48px !important; object-fit: contain; }
+
+@media print {
+  body * { visibility: hidden !important; }
+  #payslip-print-root, #payslip-print-root * { visibility: visible !important; }
+  #payslip-print-root {
+    position: absolute; left: 0; top: 0; width: 100%;
+    padding: 12mm; background: #fff;
+  }
+  .no-print, .modal-scrim header, .payslip-actions { display: none !important; }
+  .modal-scrim, .modal-card, .payslip-modal { position: static !important; box-shadow: none !important; background: #fff !important; max-width: none !important; }
+  .pay-slip-two-col { grid-template-columns: 1fr 1fr; }
+  @page { size: A4 portrait; margin: 10mm; }
+}
+
+@media (max-width: 640px) {
+  .pay-slip-two-col, .pay-slip-info-grid { grid-template-columns: 1fr; }
+}

@@ -181,19 +181,19 @@ async function taxInvoicePdfBuffer({ invoice, items, customer, settings, options
     const balance = Math.max(0, num(invoice.balance || total - paid));
 
     // ── Header: company info (left) ──
-    doc.fillColor('#2a2a2a').fontSize(10.5).font('Helvetica-Bold').text(company.name, left, 50, { width: width * 0.55 });
+    doc.fillColor('#2a2a2a').fontSize(10).font('Helvetica-Bold').text(company.name, left, 36, { width: width * 0.55 });
     doc.fontSize(9).font('Helvetica').fillColor('#333');
     [
       company.addressLine1,
       `${company.city}, ${company.postal} ${company.country}`,
       company.phone,
       company.email
-    ].forEach((line, i) => doc.text(line, left, 70 + i * 14, { width: width * 0.55 }));
+    ].forEach((line, i) => doc.text(line, left, 52 + i * 12, { width: width * 0.55 }));
 
     // ── Logo mark (right) — green rounded square with "F" ──
-    const logoSize = 52;
+    const logoSize = 72;
     const logoX = right - logoSize;
-    const logoY = 48;
+    const logoY = 32;
     doc.save();
     doc.roundedRect(logoX - 4, logoY - 4, logoSize + 8, logoSize + 8, 8).fill('#ffffff');
     doc.restore();
@@ -1614,6 +1614,22 @@ function compactStateForPersistence(source = {}) {
 /** Serialize concurrent mutations so ~100 simultaneous users don't clobber shared erp_state */
 let stateOpChain = Promise.resolve();
 let lastPersistedAt = 0;
+
+
+function auditFinanceDelete(user, module, recordType, recordId, detail) {
+  const d = data();
+  d.financeAuditLogs = Array.isArray(d.financeAuditLogs) ? d.financeAuditLogs : [];
+  d.financeAuditLogs.unshift({
+    id: gid(),
+    module: module || 'Accounts',
+    action: 'Delete',
+    recordType,
+    recordId,
+    detail: detail || '',
+    userName: user?.name || user?.email || 'System',
+    createdAt: new Date().toISOString()
+  });
+}
 
 function withStateLock(task) {
   const run = stateOpChain.then(task, task);
