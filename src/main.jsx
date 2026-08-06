@@ -1173,12 +1173,13 @@ function Topbar({ user, onMenu, onToggleSidebar, sidebarCollapsed, onNew, onLogo
         </div>
         <button className="new-button" type="button" onClick={onNew} title="Create new record"><Plus size={18} /> New</button>
         <button className="topbar-email-btn" type="button" onClick={() => setComposeOpen(true)} title="Compose Email"><Mail size={18} /></button>
+        {(['Developer','Administrator','Executive','Manager','Accountant','HR Officer'].includes(user?.role) || user?.canManageUsers) && (
         <div className="sheets-dropdown-wrap">
           <button
             type="button"
-            className="spreadsheet-link"
+            className="sheets-btn spreadsheet-link"
             onClick={e => { e.stopPropagation(); setSheetsOpen(v => !v); }}
-            title="Google Sheets"
+            title="Google Sheets — view / export only"
           >
             <FileText size={16} /> Sheets
           </button>
@@ -1204,6 +1205,7 @@ function Topbar({ user, onMenu, onToggleSidebar, sidebarCollapsed, onNew, onLogo
             </div>
           )}
         </div>
+        )}
         <div className="topbar-profile-wrap">
           <button
             type="button"
@@ -9239,8 +9241,11 @@ function SettingsPage({ user }) {
           </Panel>
         </div>
       )}
-      {view === 'users' && (user?.canManageUsers || ['Administrator','Developer'].includes(user?.role)) && (
+      {view === 'users' && (
         <div className="dashboard-grid">
+          {!(user?.canManageUsers || ['Administrator','Developer','Administrator','Manager'].includes(user?.role) || /admin|developer/i.test(String(user?.role||''))) ? (
+            <Panel className="span-12" title="Users & Roles"><div className="empty-state">Only Administrator / Developer can manage users. Re-login if you just changed roles.</div></Panel>
+          ) : (
           <Panel className="span-12" title="Users & Roles" action={`${(data.users || []).length} accounts`}>
             <div className="settings-toolbar">
               <button type="button" onClick={() => setUserModal({})}><Plus size={16} /> New User</button>
@@ -9282,6 +9287,7 @@ function SettingsPage({ user }) {
               </table>
             </div>
           </Panel>
+          )}
         </div>
       )}
 

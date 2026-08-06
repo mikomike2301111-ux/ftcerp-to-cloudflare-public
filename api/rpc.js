@@ -3451,7 +3451,7 @@ function publicUser(u) {
     warehouse: u.warehouse || '',
     county: u.county || '',
     lastLogin: u.lastLogin || '',
-    canManageUsers: [ROLES.DEV, ROLES.ADMIN].includes(u.role),
+    canManageUsers: [ROLES.DEV, ROLES.ADMIN].includes(u.role) || /^(developer|administrator)$/i.test(String(u.role || '')),
     canChangeOwnPassword: false,
     allowedPages: Object.keys(PAGE_ACCESS).filter(p => roleCanAccessPage(u.role, p))
   };
@@ -4626,10 +4626,25 @@ async function buildNormalizedAnalytics() {
 
 const api = {
   loginUser(email, password, meta = {}) {
+    const sanitizeLoginEmail = (raw) => {
+      let s = String(raw || '').trim().toLowerCase().slice(0, 120);
+      // strip null bytes and control chars
+      s = s.replace(/[\u0000-\u001F\u007F]/g, '');
+      // reject obvious injection / path tricks
+      if (/[<>'"();\\]|--|\/\*|\*\/|xp_|union\s+select|drop\s+table|insert\s+into|sleep\s*\(/i.test(s)) return '';
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s)) return '';
+      return s;
+    };
+    const sanitizePassword = (raw) => {
+      let s = String(raw || '').slice(0, 128);
+      s = s.replace(/[\u0000-\u001F\u007F]/g, '');
+      return s;
+    };
+
     const d = data();
     d.loginAuditLogs = Array.isArray(d.loginAuditLogs) ? d.loginAuditLogs : [];
-    const e = String(email || '').trim().toLowerCase();
-    const pw = String(password || '').trim();
+    const e = sanitizeLoginEmail(email);
+    const pw = sanitizePassword(password);
     const ua = clean(meta.userAgent || '').slice(0, 240);
     const device = clean(meta.screen || '');
     const timezone = clean(meta.timezone || '');
@@ -6541,6 +6556,7 @@ const api = {
       settings,
       products: (d.products || []).map(p => ({ id: p.id, name: p.name, sku: p.sku, category: p.category, unit: p.unit, costPrice: num(p.costPrice), sellingPrice: num(p.sellingPrice), minStock: num(p.minStock) })),
       currentUser: publicUser(u),
+      // mirror for UI that reads data.currentUser
       users,
       roles,
       modules,
