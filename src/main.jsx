@@ -4850,6 +4850,8 @@ function todayStr() { return new Date().toISOString().slice(0, 10); }
 function SalesVisitsWorkspace({ user, visits = [], salesPeople = [], onDone }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  const [syncDetail, setSyncDetail] = useState('');
+  const [logOpen, setLogOpen] = useState(false);
   const list = Array.isArray(visits) ? visits : [];
   const FIELD = [
     { rep: 'Edna', sheet: 'https://docs.google.com/spreadsheets/d/1CvpTd26OLLOfSbVT3rLEQt62DI_SlEFE3OujFIK3m2k/edit#gid=1418179458', form: 'https://docs.google.com/forms/d/e/1FAIpQLSfpabQbCcjmPflzWccaqXR62ZNsP9-2ImEi6dBrc7zEbue4mg/viewform' },
@@ -4858,13 +4860,20 @@ function SalesVisitsWorkspace({ user, visits = [], salesPeople = [], onDone }) {
     { rep: 'Purity', sheet: 'https://docs.google.com/spreadsheets/d/1Dt_VDE4nepDmDEWRPwF48Qv3WQB6GQZMIbCPP1bdzKs/edit#gid=1073923333', form: 'https://docs.google.com/forms/d/e/1FAIpQLSdoowdRLmCaSo5lbSDsHYqVhM67l07d4_jUQGl0er2MZ6nN2g/viewform' }
   ];
   async function syncSheets() {
-    setBusy(true); setMsg('');
+    setBusy(true); setMsg(''); setSyncDetail('');
     try {
       const res = await rpc('pullAllSalesFieldData', [user, {}]);
-      setMsg(res?.message || `Synced ${res?.visitsImported || 0} visits / ${res?.ordersImported || 0} orders`);
+      const detail = (res?.visitResults || []).map(v => `${v.rep}: ${v.imported || 0} imported${(v.errors || []).length ? ' — ' + (v.errors || []).join('; ') : ''}`).join('\n');
+      setSyncDetail(detail);
+      const share = res?.shareWith || 'erp-sheets-integration@erp-sheets-integration-503110.iam.gserviceaccount.com';
+      if ((res?.errors || []).length) {
+        setMsg(`${res?.message || 'Sync finished with errors'} Share sheets with: ${share}`);
+      } else {
+        setMsg(res?.message || `Synced ${res?.visitsImported || 0} visits / ${res?.ordersImported || 0} orders`);
+      }
       onDone?.();
     } catch (e) {
-      setMsg(e.message || 'Sync failed — share each sheet with the service account');
+      setMsg(e.message || 'Sync failed — share each sheet with erp-sheets-integration@erp-sheets-integration-503110.iam.gserviceaccount.com as Editor');
     } finally {
       setBusy(false);
     }
@@ -4873,7 +4882,7 @@ function SalesVisitsWorkspace({ user, visits = [], salesPeople = [], onDone }) {
     <div className="dashboard-grid">
       <Panel className="span-12" title="Field Visits — Google Forms & Sheets" action="Tracking">
         <p style={{ margin: '0 0 12px', color: '#667085', fontSize: 13 }}>
-          Visits are captured on each rep form and land in their sheet. Use Sync to pull into the ERP. Order forms use a separate shared workbook (configured under Settings → Spreadsheets).
+          Visits are captured on each rep form and land in their sheet. Use Sync to pull into the ERP, or log a visit manually below.
         </p>
         <div className="sales-report-grid">
           {FIELD.map(f => (
@@ -4891,18 +4900,43 @@ function SalesVisitsWorkspace({ user, visits = [], salesPeople = [], onDone }) {
           <button type="button" className="primary-action" disabled={busy} onClick={syncSheets}>
             {busy ? 'Syncing…' : 'Sync all visit & order sheets'}
           </button>
-          {msg && <em className="sheets-msg">{msg}</em>}
+          <button type="button" className="secondary-action" onClick={() => setLogOpen(true)}>Log visit manually</button>
+          {msg && <em className="sheets-msg" style={{ color: /permission|error|denied/i.test(msg) ? '#b42318' : '#067647' }}>{msg}</em>}
         </div>
+        {syncDetail ? <pre style={{ marginTop: 10, fontSize: 12, background: '#f9fafb', padding: 12, borderRadius: 8, whiteSpace: 'pre-wrap' }}>{syncDetail}</pre> : null}
+        <p style={{ marginTop: 10, fontSize: 12, color: '#667085' }}>
+          Permission errors: open each rep sheet → Share → add <strong>erp-sheets-integration@erp-sheets-integration-503110.iam.gserviceaccount.com</strong> as <strong>Editor</strong>, then Sync again.
+        </p>
       </Panel>
-      <Panel className="span-12" title="Recent Visits in ERP" action={`${list.length} rows`}>
-        <SimpleTable
-          rows={list.slice(0, 80)}
-          columns={['visitDate', 'salesperson', 'shopOrCustomer', 'contactPerson', 'phone', 'productDiscussed', 'outcome', 'status']}
+      {logOpen && (
+        <VisitFormModal
+          user={user}
+          salesPeople={salesPeople}
+          onClose={() => setLogOpen(false)}
+          onSave={async (form) => {
+            try {
+              await rpc('logVisit', [user, form]);
+              setLogOpen(false);
+              setMsg('Visit saved in ERP');
+              onDone?.();
+            } catch (e) { alert(e.message); }
+          }}
         />
+      )}
+      <Panel className="span-12" title="Recent Visits in ERP" action={`${list.length} rows`}>
+        {list.length === 0 ? (
+          <div className="empty-state">No visits in ERP yet. Sync sheets (after sharing) or log a visit manually.</div>
+        ) : (
+          <SimpleTable
+            rows={list.slice(0, 80)}
+            columns={['visitDate', 'salesperson', 'shopOrCustomer', 'contactPerson', 'phone', 'productDiscussed', 'outcome', 'status']}
+          />
+        )}
       </Panel>
     </div>
   );
 }
+
 
 
 function VisitFormModal({ user, salesPeople, onClose, onSave, initial }) {
