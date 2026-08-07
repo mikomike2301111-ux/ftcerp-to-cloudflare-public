@@ -3766,6 +3766,7 @@ function getAllowedPagesForUser(user) {
 
 function log(u, action, module, details = '') {
   data().activity.unshift({ id: gid(), userName: u.name, action, module, details, createdAt: new Date().toISOString() });
+  data().activity = (data().activity || []).slice(0, 500);
 }
 
 function emitBusinessEvent(user, eventType, aggregateType, aggregateId, payload = {}) {

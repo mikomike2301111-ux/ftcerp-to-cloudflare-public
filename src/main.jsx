@@ -5039,7 +5039,7 @@ function SalesVisitsWorkspace({ user, visits = [], salesPeople = [], onDone }) {
             <thead><tr><th>Date</th><th>Salesperson</th><th>Shop / Customer</th><th>Phone</th><th>Products</th><th>Purpose</th><th>Outcome</th><th>Comment</th></tr></thead>
             <tbody>
               {list.length === 0 && <tr><td colSpan={8}>No visits yet — log one or sync from Google Sheets</td></tr>}
-              {list.slice(0, 200).map(v => (
+              {list.slice(0, 25).map(v => (
                 <tr key={v.id || `${v.shopOrCustomer}-${v.date}`}>
                   <td>{String(v.date || v.createdAt || '').slice(0, 10)}</td>
                   <td>{v.salesperson || v.salesPerson || '—'}</td>
@@ -11774,11 +11774,38 @@ function LeaveApplyModal({ user, leaveTypes, departments = [], balances = [], on
   );
 }
 
-function SimpleTable({ rows, columns, onRowClick }) {
-  const [limit, setLimit] = useState(20);
-  const step = 20;
-  const safeRows = (rows || []).filter(Boolean);
+function usePageSlice(rows, pageSize = 25) {
+  const [limit, setLimit] = useState(pageSize);
+  const safeRows = useMemo(() => (Array.isArray(rows) ? rows : []).filter(Boolean), [rows]);
+  // Reset to first page when dataset size changes sharply (new module / filter)
+  useEffect(() => {
+    setLimit(pageSize);
+  }, [safeRows.length > pageSize ? safeRows.length : pageSize, pageSize]);
   const shown = safeRows.slice(0, limit);
+  const hasMore = safeRows.length > limit;
+  const loadMore = () => setLimit(l => l + pageSize);
+  return { shown, total: safeRows.length, hasMore, loadMore, limit, pageSize };
+}
+
+function TablePager({ shown, total, hasMore, loadMore, pageSize = 25 }) {
+  if (!total) return null;
+  return (
+    <div className="table-more-note" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: '10px 4px' }}>
+      <span style={{ fontSize: 12, color: '#667085' }}>
+        Showing <strong>{shown}</strong> of <strong>{total.toLocaleString()}</strong>
+        {hasMore ? ' — load more as needed' : ' — all loaded'}
+      </span>
+      {hasMore && (
+        <button type="button" className="mini-action" onClick={loadMore}>
+          Load next {pageSize}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function SimpleTable({ rows, columns, onRowClick, pageSize = 25 }) {
+  const { shown, total, hasMore, loadMore, pageSize: step } = usePageSlice(rows, pageSize);
   function actionsFor(row, index) {
     const summary = rowSummary(row);
     const base = [
@@ -11805,7 +11832,7 @@ function SimpleTable({ rows, columns, onRowClick }) {
   }
   return (
     <div className="table-wrap">
-      {safeRows.length > 0 && <div className="table-count">{safeRows.length.toLocaleString()} records</div>}
+      {total > 0 && <div className="table-count">{total.toLocaleString()} records</div>}
       <table>
         <thead>
           <tr>{columns.map(c => <th key={c}>{label(c)}</th>)}<th /></tr>
@@ -11819,13 +11846,8 @@ function SimpleTable({ rows, columns, onRowClick }) {
           ))}
         </tbody>
       </table>
-      {rows.length > limit && (
-        <div className="table-more-note">
-          Showing {shown.length} of {rows.length.toLocaleString()} records.{' '}
-          <button className="mini-action" style={{ display: 'inline-flex', marginLeft: 8 }} onClick={() => setLimit(l => l + step)}>Load {step} more</button>
-        </div>
-      )}
-      {!rows.length && <div className="empty-state">No records yet</div>}
+      <TablePager shown={shown.length} total={total} hasMore={hasMore} loadMore={loadMore} pageSize={step} />
+      {!total && <div className="empty-state">No records yet</div>}
     </div>
   );
 }
