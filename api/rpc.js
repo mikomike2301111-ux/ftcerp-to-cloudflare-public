@@ -10546,7 +10546,7 @@ territory: geo,
   },
 
   receiveInventoryStock(user, form = {}) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.PROCUREMENT, ROLES.WAREHOUSE, ROLES.PRODUCTION);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.DEV, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.PROCUREMENT, ROLES.WAREHOUSE, ROLES.PRODUCTION, ROLES.ACCOUNTANT);
     const d = data();
     d.inventory = Array.isArray(d.inventory) ? d.inventory : [];
     d.products = Array.isArray(d.products) ? d.products : [];

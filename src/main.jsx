@@ -1164,15 +1164,18 @@ function Sidebar({ page, setPage, open, setOpen, collapsed, setCollapsed, user, 
         </div>
         <nav>
           {nav.filter(item => {
-            const allowed = user?.allowedPages;
-            if (!Array.isArray(allowed) || !allowed.length) {
-              // fallback: admin/dev see all
-              if ([ 'Administrator', 'Developer' ].includes(user?.role)) return true;
-              // shared modules always
-              if (['dashboard','notifications','email','leaves','requisitions'].includes(item.id)) return true;
-              return true; // until roles populated, show all then server enforces
+            const role = user?.role || '';
+            // Developer / Admin / Executive always see Admin Office + full ops
+            if (['Developer', 'Administrator', 'Executive'].includes(role)) {
+              return true;
             }
-            return allowed.includes(item.id);
+            const allowed = Array.isArray(user?.allowedPages) ? user.allowedPages : [];
+            if (allowed.includes(item.id)) return true;
+            // Shared modules
+            if (['dashboard', 'notifications', 'email', 'leaves', 'requisitions'].includes(item.id)) return true;
+            // If allowedPages stale/empty, show nav (server still enforces writes)
+            if (!allowed.length) return true;
+            return false;
           }).map(item => {
             const Icon = item.icon;
             return (
@@ -3605,7 +3608,7 @@ function InventoryWorkspace({ user, setPage, globalPeriod }) {
       </div>
 
       <div className="inline-actions inventory-control-bar">
-        <button onClick={() => setReceiveOpen(true)}><Package size={16} /> Receive</button>
+        <button type="button" className="primary-action" onClick={() => { setReceiveOpen(true); setView('receiving'); }}><Package size={16} /> Receive stock</button>
         <button onClick={() => setAdjustOpen(true)}><Plus size={16} /> Adjust</button>
         <button onClick={() => setTransferOpen(true)}><Route size={16} /> Transfer</button>
         <button onClick={() => setCountOpen(true)}><ClipboardCheck size={16} /> Cycle count</button>
