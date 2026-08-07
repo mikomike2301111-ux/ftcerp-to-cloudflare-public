@@ -8856,20 +8856,25 @@ select {
   cursor: pointer;
 }
 .topbar-profile-name { font-size: 13px; font-weight: 700; color: #101828; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar-profile-wrap { position: relative; z-index: 5000; }
 .topbar-profile-menu {
   position: absolute;
   right: 0;
   top: calc(100% + 8px);
-  width: 260px;
+  width: min(280px, 92vw);
   background: #fff;
   border: 1px solid #eaecf0;
   border-radius: 12px;
-  box-shadow: 0 16px 40px rgba(16,24,40,.14);
+  box-shadow: 0 20px 50px rgba(16,24,40,.22);
   padding: 8px;
-  z-index: 60;
+  z-index: 9999 !important;
   display: grid;
   gap: 2px;
 }
+.notify-dropdown, .sheets-dropdown {
+  z-index: 9998 !important;
+}
+
 .topbar-profile-head {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -10634,3 +10639,56 @@ svg.sparkline path {
     max-width: calc(100% - 76px) !important;
   }
 }
+
+/* Field sales form — full screen mobile friendly */
+.field-form-screen {
+  position: fixed; inset: 0; z-index: 12000;
+  background: #f8fafc;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.field-form-top {
+  flex: 0 0 auto;
+  background: #0f172a;
+  color: #fff;
+  padding: 12px 16px;
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between;
+}
+.field-form-top h2 { margin: 0; font-size: 16px; font-weight: 700; }
+.field-form-tabs { display: flex; gap: 8px; }
+.field-form-tabs button {
+  border: 0; border-radius: 999px; padding: 10px 18px; font-weight: 700; font-size: 14px;
+  background: rgba(255,255,255,.12); color: #fff; cursor: pointer;
+}
+.field-form-tabs button.active { background: #22c55e; color: #052e16; }
+.field-form-body {
+  flex: 1 1 auto; overflow: auto; -webkit-overflow-scrolling: touch;
+  padding: 16px; max-width: 720px; width: 100%; margin: 0 auto;
+}
+.field-form-body label {
+  display: grid; gap: 6px; margin-bottom: 14px; font-size: 13px; font-weight: 600; color: #334155;
+}
+.field-form-body input, .field-form-body select, .field-form-body textarea {
+  min-height: 48px; border-radius: 12px; border: 1px solid #e2e8f0;
+  padding: 12px 14px; font-size: 16px; background: #fff;
+}
+.field-form-body textarea { min-height: 96px; resize: vertical; }
+.field-form-body .req::after { content: ' *'; color: #dc2626; }
+.field-chip-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px;
+}
+.field-chip-grid label.chip {
+  display: flex; align-items: center; gap: 8px; min-height: 44px;
+  border: 1px solid #e2e8f0; border-radius: 10px; padding: 8px 10px;
+  font-size: 13px; font-weight: 600; background: #fff; margin: 0;
+}
+.field-chip-grid label.chip input { width: 18px; height: 18px; min-height: auto; }
+.field-form-actions {
+  flex: 0 0 auto; padding: 12px 16px 20px; background: #fff; border-top: 1px solid #e2e8f0;
+  display: flex; gap: 10px; max-width: 720px; width: 100%; margin: 0 auto;
+}
+.field-form-actions button {
+  flex: 1; min-height: 52px; border-radius: 14px; border: 0; font-weight: 800; font-size: 16px; cursor: pointer;
+}
+.field-form-actions .submit { background: #16a34a; color: #fff; }
+.field-form-actions .cancel { background: #f1f5f9; color: #0f172a; }

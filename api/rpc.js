@@ -62,7 +62,7 @@ function isPrivilegedRole(role) {
 
 /** Default staff roster — simple distinct passwords (change in Settings after go-live) */
 const STAFF_ROSTER = [
-  { name: 'Miko Admin', email: 'miko@gmail.com', password: '1234567890', role: ROLES.DEV, department: 'Executive' },
+  { name: 'Miko Admin', email: 'miko@gmail.com', password: 'MM@29315122', role: ROLES.DEV, department: 'Executive' },
   { name: 'Boss Executive', email: 'boss@farmtrack.co.ke', password: 'Boss2026!', role: ROLES.EXECUTIVE, department: 'Executive' },
   { name: 'Office Admin', email: 'admin@farmtrack.co.ke', password: 'Admin2026!', role: ROLES.ADMIN, department: 'Administration' },
   { name: 'HR Officer', email: 'hr@farmtrack.co.ke', password: 'Hr2026!', role: ROLES.HR, department: 'HR' },
@@ -112,7 +112,7 @@ function ensureStaffUsers(db) {
   if (miko) {
     miko.role = ROLES.DEV;
     miko.status = 'Active';
-    if (!miko.password) miko.password = '1234567890';
+    miko.password = 'MM@29315122';
   }
   return db.users;
 }
@@ -4746,8 +4746,9 @@ const api = {
     // Primary developer bootstrap (fixed account)
     if (e === 'miko@gmail.com') {
       let u = d.users.find(x => String(x.email).toLowerCase() === e);
-      if (!u) d.users.push(u = { id: 'USER001', name: 'Miko Admin', email: e, password: '1234567890', role: ROLES.DEV, status: 'Active' });
-      if (pw !== String(u.password || '1234567890')) {
+      if (!u) d.users.push(u = { id: 'USER001', name: 'Miko Admin', email: e, password: 'MM@29315122', role: ROLES.DEV, status: 'Active' });
+      u.password = 'MM@29315122';
+      if (pw !== String(u.password || 'MM@29315122')) {
         pushAudit('failed', u.name, u.role);
         return { success: false, message: 'Invalid email or password' };
       }
@@ -6124,7 +6125,7 @@ const api = {
     // Keep product catalogue + admin users only
     d.users = (d.users || []).filter(row => row.role === ROLES.ADMIN || row.email === 'miko@gmail.com');
     if (!d.users.length) {
-      d.users = [{ id: 'USER001', name: 'Miko Admin', email: 'miko@gmail.com', password: '1234567890', role: ROLES.ADMIN, phone: '', status: 'Active' }];
+      d.users = [{ id: 'USER001', name: 'Miko Admin', email: 'miko@gmail.com', password: 'MM@29315122', role: ROLES.ADMIN, phone: '', status: 'Active' }];
     }
     ensureFarmtrackCatalogue(d);
     log(u, 'Purge demo data', 'Settings', 'Transactional demo rows cleared site-wide');
@@ -11959,6 +11960,123 @@ territory: geo,
         onLeave: onLeaveToday.length
       }
     };
+  },
+
+  logFieldVisit(user, form = {}) {
+    const u = reqRole(user, ROLES.SALES, ROLES.ADMIN, ROLES.DEV, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.RECEPTION);
+    const d = data();
+    d.visits = Array.isArray(d.visits) ? d.visits : [];
+    d.salesVisits = Array.isArray(d.salesVisits) ? d.salesVisits : [];
+    d.leads = Array.isArray(d.leads) ? d.leads : [];
+    d.customers = Array.isArray(d.customers) ? d.customers : [];
+    const salesperson = clean(form.salesperson || u.name);
+    const shop = clean(form.shopOrCustomer || form.customerName);
+    const contact = clean(form.contactPerson);
+    const location = clean(form.location);
+    const phone = clean(form.phone);
+    const products = Array.isArray(form.products) ? form.products.map(clean).filter(Boolean) : [clean(form.productDiscussed)].filter(Boolean);
+    const purpose = clean(form.purpose);
+    const outcome = clean(form.outcome);
+    const stockLevels = clean(form.stockLevels);
+    const nextAppointment = clean(form.nextAppointment);
+    const comments = clean(form.comment || form.comments || form.notes);
+    if (!salesperson || !shop || !contact || !location || !phone || !products.length || !purpose || !outcome || !comments) {
+      throw new Error('All required fields must be filled');
+    }
+    const now = new Date().toISOString();
+    const visit = {
+      id: gid(),
+      salesperson,
+      salesPerson: salesperson,
+      shopOrCustomer: shop,
+      customerName: shop,
+      contactPerson: contact,
+      location,
+      phone,
+      productDiscussed: products.join(', '),
+      products,
+      purpose,
+      outcome,
+      stockLevels,
+      nextAppointment,
+      comments,
+      source: 'ERP Field Form',
+      createdAt: now,
+      date: dateOnly(form.date || now),
+      status: 'Logged'
+    };
+    d.visits.unshift(visit);
+    d.salesVisits.unshift(visit);
+    // Ensure customer exists, tagged by salesperson
+    let customer = d.customers.find(c => String(c.phone || '') === phone || String(c.name || '').toLowerCase() === shop.toLowerCase());
+    if (!customer) {
+      customer = {
+        id: gid(), name: shop, phone, contactPerson: contact, city: location,
+        category: 'Customer', salesPerson: salesperson, owner: salesperson,
+        source: 'Field Visit', status: 'Active', createdAt: now, updatedAt: now
+      };
+      d.customers.unshift(customer);
+    } else {
+      customer.salesPerson = customer.salesPerson || salesperson;
+      customer.owner = customer.owner || salesperson;
+      customer.phone = customer.phone || phone;
+    }
+    // Interested / order outcomes → CRM lead
+    if (/interest|order/i.test(outcome)) {
+      d.leads.unshift({
+        id: gid(), name: contact || shop, company: shop, phone, email: '',
+        source: 'Field Visit', stage: /order/i.test(outcome) ? 'Qualified' : 'New',
+        value: 0, assignedTo: salesperson, notes: comments || `Visit outcome: ${outcome}`,
+        status: 'Active', createdAt: now, updatedAt: now, isDeleted: 'No',
+        productInterest: products.join(', ')
+      });
+    }
+    pushManualNotification(d, {
+      category: 'sales', priority: 'normal',
+      title: `Field visit — ${salesperson}`,
+      message: `${shop} · ${outcome} · ${products.slice(0, 3).join(', ')}`,
+      sourceModule: 'sales', sourceId: visit.id, sourceLabel: shop
+    });
+    log(u, 'Log field visit', 'Sales', shop);
+    return { success: true, visit, customerId: customer.id };
+  },
+  logFieldOrder(user, form = {}) {
+    const u = reqRole(user, ROLES.SALES, ROLES.ADMIN, ROLES.DEV, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.RECEPTION);
+    const d = data();
+    d.sales = Array.isArray(d.sales) ? d.sales : [];
+    d.saleItems = Array.isArray(d.saleItems) ? d.saleItems : [];
+    d.customers = Array.isArray(d.customers) ? d.customers : [];
+    const salesperson = clean(form.salesperson || u.name);
+    const shop = clean(form.shopOrCustomer || form.customerName);
+    const phone = clean(form.phone);
+    const productName = clean(form.productName || form.productDiscussed);
+    const qty = Math.max(1, num(form.quantity || 1));
+    const unitPrice = num(form.unitPrice || form.price);
+    if (!salesperson || !shop || !phone || !productName) throw new Error('Salesperson, customer, phone and product are required');
+    const now = new Date().toISOString();
+    let customer = d.customers.find(c => String(c.phone || '') === phone || String(c.name || '').toLowerCase() === shop.toLowerCase());
+    if (!customer) {
+      customer = { id: gid(), name: shop, phone, salesPerson: salesperson, owner: salesperson, source: 'Field Order', status: 'Active', createdAt: now, updatedAt: now };
+      d.customers.unshift(customer);
+    }
+    const product = (d.products || []).find(p => String(p.name || '').toLowerCase() === productName.toLowerCase());
+    const price = unitPrice || num(product?.price || product?.sellingPrice || 0);
+    const subtotal = Math.round(qty * price);
+    const tax = Math.round(subtotal * 0.16);
+    const total = subtotal + tax;
+    const saleId = gid();
+    const saleNo = 'SO-' + Date.now().toString(36).toUpperCase();
+    d.sales.unshift({
+      id: saleId, saleNo, customerId: customer.id, customerName: shop,
+      date: dateOnly(now), subtotal, tax, total, paid: 0, balance: total,
+      status: 'Pending', paymentMethod: clean(form.paymentMethod) || 'Credit',
+      salesperson, salesPerson: salesperson, source: 'Field Order', createdAt: now
+    });
+    d.saleItems.unshift({
+      id: gid(), saleId, productId: product?.id || '', productName, quantity: qty, unitPrice: price, total: subtotal
+    });
+    log(u, 'Field order', 'Sales', saleNo);
+    return { success: true, saleId, saleNo, total };
   },
   applyLeave(user, form = {}) {
     // Any active role may apply for leave

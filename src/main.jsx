@@ -4933,10 +4933,27 @@ const daysUntil = date => { if (!date) return null; const d = Math.round((new Da
 function todayStr() { return new Date().toISOString().slice(0, 10); }
 
 function SalesVisitsWorkspace({ user, visits = [], salesPeople = [], onDone }) {
+  const PRODUCTS = [
+    'Bactrolure','Cue Lure Plug','Cera-Lure','Torula/Bait Track','FCM Lure','TutaLure','FAW Lure',
+    'Dupontrack Lure','Helitrack Lure','Supa Track Lure','Spodotrack Lure','Metatrack Plus','Miltrack Fungicide',
+    'Yellow / Clear Lynfield Trap','MaXtrap','Yellow & Blue Rollers','Delta Inserts','Delta Trap',
+    'Blue and Yellow Sticky Cards','Femitrack','Bacitrack','Wiltrack','Tichotrack','Other'
+  ];
+  const PURPOSES = ['Stock check','Delivery of sample','Client Follow-up','Product introduction','Order follow up','payment follow up'];
+  const OUTCOMES = ['Not interested','To order at later date','Product still in stock','interested'];
+  const REPS = ['Edna','Joseph','Njoroge','Purity'];
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [syncDetail, setSyncDetail] = useState('');
-  const [logOpen, setLogOpen] = useState(false);
+  const [mode, setMode] = useState(null); // 'visit' | 'order' | null
+  const defaultRep = REPS.find(r => String(user?.name || '').toLowerCase().includes(r.toLowerCase())) || REPS[0];
+  const [visitForm, setVisitForm] = useState({
+    salesperson: defaultRep, shopOrCustomer: '', contactPerson: '', location: '', phone: '',
+    products: [], purpose: '', outcome: '', stockLevels: '', nextAppointment: '', comment: ''
+  });
+  const [orderForm, setOrderForm] = useState({
+    salesperson: defaultRep, shopOrCustomer: '', phone: '', productName: '', quantity: 1, unitPrice: '', paymentMethod: 'Credit', comment: ''
+  });
   const list = Array.isArray(visits) ? visits : [];
   const FIELD = [
     { rep: 'Edna', sheet: 'https://docs.google.com/spreadsheets/d/1CvpTd26OLLOfSbVT3rLEQt62DI_SlEFE3OujFIK3m2k/edit#gid=1418179458', form: 'https://docs.google.com/forms/d/e/1FAIpQLSfpabQbCcjmPflzWccaqXR62ZNsP9-2ImEi6dBrc7zEbue4mg/viewform' },
@@ -4951,77 +4968,193 @@ function SalesVisitsWorkspace({ user, visits = [], salesPeople = [], onDone }) {
       const detail = (res?.visitResults || []).map(v => `${v.rep}: ${v.imported || 0} imported${(v.errors || []).length ? ' — ' + (v.errors || []).join('; ') : ''}`).join('\n');
       setSyncDetail(detail);
       const share = res?.shareWith || 'erp-sheets-integration@erp-sheets-integration-503110.iam.gserviceaccount.com';
-      if ((res?.errors || []).length) {
-        setMsg(`${res?.message || 'Sync finished with errors'} Share sheets with: ${share}`);
-      } else {
-        setMsg(res?.message || `Synced ${res?.visitsImported || 0} visits / ${res?.ordersImported || 0} orders`);
-      }
+      if ((res?.errors || []).length) setMsg(`${res?.message || 'Sync finished with errors'} Share sheets with: ${share}`);
+      else setMsg(res?.message || `Synced ${res?.visitsImported || 0} visits / ${res?.ordersImported || 0} orders`);
       onDone?.();
     } catch (e) {
-      setMsg(e.message || 'Sync failed — share each sheet with erp-sheets-integration@erp-sheets-integration-503110.iam.gserviceaccount.com as Editor');
-    } finally {
-      setBusy(false);
-    }
+      setMsg(e.message || 'Sync failed');
+    } finally { setBusy(false); }
+  }
+  function toggleProduct(name) {
+    setVisitForm(f => {
+      const set = new Set(f.products || []);
+      if (set.has(name)) set.delete(name); else set.add(name);
+      return { ...f, products: Array.from(set) };
+    });
+  }
+  async function submitVisit(e) {
+    e.preventDefault();
+    setBusy(true); setMsg('');
+    try {
+      const res = await rpc('logFieldVisit', [user, visitForm]);
+      setMsg(`Visit saved for ${res?.visit?.shopOrCustomer || 'customer'}`);
+      setMode(null);
+      setVisitForm({ salesperson: defaultRep, shopOrCustomer: '', contactPerson: '', location: '', phone: '', products: [], purpose: '', outcome: '', stockLevels: '', nextAppointment: '', comment: '' });
+      onDone?.();
+    } catch (err) { setMsg(err.message || 'Could not save visit'); }
+    finally { setBusy(false); }
+  }
+  async function submitOrder(e) {
+    e.preventDefault();
+    setBusy(true); setMsg('');
+    try {
+      const res = await rpc('logFieldOrder', [user, orderForm]);
+      setMsg(`Order ${res?.saleNo || ''} saved · Total ${currency(res?.total || 0)}`);
+      setMode(null);
+      setOrderForm({ salesperson: defaultRep, shopOrCustomer: '', phone: '', productName: '', quantity: 1, unitPrice: '', paymentMethod: 'Credit', comment: '' });
+      onDone?.();
+    } catch (err) { setMsg(err.message || 'Could not save order'); }
+    finally { setBusy(false); }
   }
   return (
     <div className="dashboard-grid">
-      <Panel className="span-12" title="Field Visits — Google Forms & Sheets" action="Tracking">
+      <Panel className="span-12" title="Field Visits" action={`${list.length} logged`}>
         <p style={{ margin: '0 0 12px', color: '#667085', fontSize: 13 }}>
-          Visits are captured on each rep form and land in their sheet. Use Sync to pull into the ERP, or log a visit manually below.
+          One entry = one visit. Interested / order outcomes create CRM leads. Use the full-screen form in the field, or sync from Google Forms.
         </p>
-        <div className="sales-report-grid">
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+          <button type="button" className="primary-action" onClick={() => setMode('visit')}>Log visit</button>
+          <button type="button" className="secondary-action" onClick={() => setMode('order')}>Direct order</button>
+          <button type="button" className="mini-action" disabled={busy} onClick={syncSheets}>{busy ? 'Syncing…' : 'Sync from Sheets'}</button>
+        </div>
+        {msg && <div className="crm-sheet-message" style={{ marginBottom: 10 }}>{msg}</div>}
+        {syncDetail ? <pre style={{ fontSize: 12, background: '#f9fafb', padding: 12, borderRadius: 8, whiteSpace: 'pre-wrap' }}>{syncDetail}</pre> : null}
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Salesperson</th><th>Shop / Customer</th><th>Phone</th><th>Products</th><th>Purpose</th><th>Outcome</th><th>Comment</th></tr></thead>
+            <tbody>
+              {list.length === 0 && <tr><td colSpan={8}>No visits yet — log one or sync from Google Sheets</td></tr>}
+              {list.slice(0, 200).map(v => (
+                <tr key={v.id || `${v.shopOrCustomer}-${v.date}`}>
+                  <td>{String(v.date || v.createdAt || '').slice(0, 10)}</td>
+                  <td>{v.salesperson || v.salesPerson || '—'}</td>
+                  <td><strong>{v.shopOrCustomer || v.customerName || '—'}</strong></td>
+                  <td>{v.phone || '—'}</td>
+                  <td>{v.productDiscussed || (Array.isArray(v.products) ? v.products.join(', ') : '—')}</td>
+                  <td>{v.purpose || '—'}</td>
+                  <td>{v.outcome || '—'}</td>
+                  <td style={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={v.comments || v.comment}>{v.comments || v.comment || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {FIELD.map(f => (
-            <article key={f.rep}>
-              <strong>{f.rep}</strong>
-              <span>Visit form + response sheet</span>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
-                <a className="crm-sheet-link" href={f.form} target="_blank" rel="noopener noreferrer">Open form</a>
-                <a className="crm-sheet-link" href={f.sheet} target="_blank" rel="noopener noreferrer">Open sheet</a>
-              </div>
-            </article>
+            <a key={f.rep} className="mini-action" href={f.form} target="_blank" rel="noreferrer">{f.rep} Google Form</a>
           ))}
         </div>
-        <div style={{ marginTop: 14, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button type="button" className="primary-action" disabled={busy} onClick={syncSheets}>
-            {busy ? 'Syncing…' : 'Sync all visit & order sheets'}
-          </button>
-          <button type="button" className="secondary-action" onClick={() => setLogOpen(true)}>Log visit manually</button>
-          {msg && <em className="sheets-msg" style={{ color: /permission|error|denied/i.test(msg) ? '#b42318' : '#067647' }}>{msg}</em>}
+      </Panel>
+
+      {mode && (
+        <div className="field-form-screen" role="dialog" aria-modal="true">
+          <div className="field-form-top">
+            <h2>Field {mode === 'visit' ? 'Visit Log' : 'Direct Order'} · FarmTrack</h2>
+            <div className="field-form-tabs">
+              <button type="button" className={mode === 'visit' ? 'active' : ''} onClick={() => setMode('visit')}>Visit</button>
+              <button type="button" className={mode === 'order' ? 'active' : ''} onClick={() => setMode('order')}>Direct order</button>
+            </div>
+          </div>
+          {mode === 'visit' ? (
+            <form className="field-form-body" onSubmit={submitVisit}>
+              <label className="req">Salesperson
+                <select required value={visitForm.salesperson} onChange={e => setVisitForm({ ...visitForm, salesperson: e.target.value })}>
+                  {REPS.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </label>
+              <label className="req">Shop / Customer Name
+                <input required value={visitForm.shopOrCustomer} onChange={e => setVisitForm({ ...visitForm, shopOrCustomer: e.target.value })} />
+              </label>
+              <label className="req">Contact Person
+                <input required value={visitForm.contactPerson} onChange={e => setVisitForm({ ...visitForm, contactPerson: e.target.value })} />
+              </label>
+              <label className="req">Location
+                <input required value={visitForm.location} onChange={e => setVisitForm({ ...visitForm, location: e.target.value })} />
+              </label>
+              <label className="req">Phone
+                <input required inputMode="tel" value={visitForm.phone} onChange={e => setVisitForm({ ...visitForm, phone: e.target.value })} />
+              </label>
+              <div style={{ marginBottom: 14 }}>
+                <div className="req" style={{ fontSize: 13, fontWeight: 600, color: '#334155', marginBottom: 8 }}>Product Discussed</div>
+                <div className="field-chip-grid">
+                  {PRODUCTS.map(p => (
+                    <label key={p} className="chip">
+                      <input type="checkbox" checked={(visitForm.products || []).includes(p)} onChange={() => toggleProduct(p)} />
+                      {p}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <label className="req">Purpose of the Visit
+                <select required value={visitForm.purpose} onChange={e => setVisitForm({ ...visitForm, purpose: e.target.value })}>
+                  <option value="">Select…</option>
+                  {PURPOSES.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </label>
+              <label className="req">Outcome
+                <select required value={visitForm.outcome} onChange={e => setVisitForm({ ...visitForm, outcome: e.target.value })}>
+                  <option value="">Select…</option>
+                  {OUTCOMES.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </label>
+              <label>Stock Levels Observed
+                <input value={visitForm.stockLevels} onChange={e => setVisitForm({ ...visitForm, stockLevels: e.target.value })} />
+              </label>
+              <label>Next Expected Appointment
+                <input type="date" value={visitForm.nextAppointment} onChange={e => setVisitForm({ ...visitForm, nextAppointment: e.target.value })} />
+              </label>
+              <label className="req">Comment
+                <textarea required value={visitForm.comment} onChange={e => setVisitForm({ ...visitForm, comment: e.target.value })} />
+              </label>
+              <div className="field-form-actions">
+                <button type="button" className="cancel" onClick={() => setMode(null)}>Close</button>
+                <button type="submit" className="submit" disabled={busy}>{busy ? 'Saving…' : 'Submit visit'}</button>
+              </div>
+            </form>
+          ) : (
+            <form className="field-form-body" onSubmit={submitOrder}>
+              <label className="req">Salesperson
+                <select required value={orderForm.salesperson} onChange={e => setOrderForm({ ...orderForm, salesperson: e.target.value })}>
+                  {REPS.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </label>
+              <label className="req">Shop / Customer Name
+                <input required value={orderForm.shopOrCustomer} onChange={e => setOrderForm({ ...orderForm, shopOrCustomer: e.target.value })} />
+              </label>
+              <label className="req">Phone
+                <input required inputMode="tel" value={orderForm.phone} onChange={e => setOrderForm({ ...orderForm, phone: e.target.value })} />
+              </label>
+              <label className="req">Product
+                <select required value={orderForm.productName} onChange={e => setOrderForm({ ...orderForm, productName: e.target.value })}>
+                  <option value="">Select product…</option>
+                  {PRODUCTS.filter(p => p !== 'Other').map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </label>
+              <label className="req">Quantity
+                <input required type="number" min="1" value={orderForm.quantity} onChange={e => setOrderForm({ ...orderForm, quantity: Number(e.target.value) })} />
+              </label>
+              <label>Unit price (KES) — leave blank to use catalogue price
+                <input type="number" min="0" value={orderForm.unitPrice} onChange={e => setOrderForm({ ...orderForm, unitPrice: e.target.value })} />
+              </label>
+              <label>Payment method
+                <select value={orderForm.paymentMethod} onChange={e => setOrderForm({ ...orderForm, paymentMethod: e.target.value })}>
+                  <option>Credit</option><option>Cash</option><option>Mpesa</option><option>Bank</option>
+                </select>
+              </label>
+              <label>Comment
+                <textarea value={orderForm.comment} onChange={e => setOrderForm({ ...orderForm, comment: e.target.value })} />
+              </label>
+              <div className="field-form-actions">
+                <button type="button" className="cancel" onClick={() => setMode(null)}>Close</button>
+                <button type="submit" className="submit" disabled={busy}>{busy ? 'Saving…' : 'Submit order'}</button>
+              </div>
+            </form>
+          )}
         </div>
-        {syncDetail ? <pre style={{ marginTop: 10, fontSize: 12, background: '#f9fafb', padding: 12, borderRadius: 8, whiteSpace: 'pre-wrap' }}>{syncDetail}</pre> : null}
-        <p style={{ marginTop: 10, fontSize: 12, color: '#667085' }}>
-          Permission errors: open each rep sheet → Share → add <strong>erp-sheets-integration@erp-sheets-integration-503110.iam.gserviceaccount.com</strong> as <strong>Editor</strong>, then Sync again.
-        </p>
-      </Panel>
-      {logOpen && (
-        <VisitFormModal
-          user={user}
-          salesPeople={salesPeople}
-          onClose={() => setLogOpen(false)}
-          onSave={async (form) => {
-            try {
-              await rpc('logVisit', [user, form]);
-              setLogOpen(false);
-              setMsg('Visit saved in ERP');
-              onDone?.();
-            } catch (e) { alert(e.message); }
-          }}
-        />
       )}
-      <Panel className="span-12" title="Recent Visits in ERP" action={`${list.length} rows`}>
-        {list.length === 0 ? (
-          <div className="empty-state">No visits in ERP yet. Sync sheets (after sharing) or log a visit manually.</div>
-        ) : (
-          <SimpleTable
-            rows={list.slice(0, 80)}
-            columns={['visitDate', 'salesperson', 'shopOrCustomer', 'contactPerson', 'phone', 'productDiscussed', 'outcome', 'status']}
-          />
-        )}
-      </Panel>
     </div>
   );
 }
-
 
 
 function VisitFormModal({ user, salesPeople, onClose, onSave, initial }) {
