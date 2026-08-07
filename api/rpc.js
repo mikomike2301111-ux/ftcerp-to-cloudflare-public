@@ -117,6 +117,44 @@ function ensureStaffUsers(db) {
   return db.users;
 }
 
+
+/** True if user may see all records (not limited to own sales book) */
+function canSeeAllSalesData(user) {
+  const role = user?.role;
+  return [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.ACCOUNTANT, ROLES.HR, ROLES.RECEPTION].includes(role);
+}
+
+/** Match record ownership for a sales person (name / email local-part) */
+function salesOwnerKeys(user) {
+  const name = String(user?.name || '').trim().toLowerCase();
+  const email = String(user?.email || '').trim().toLowerCase();
+  const local = email.split('@')[0] || '';
+  // Known rep short names
+  const keys = new Set([name, local].filter(Boolean));
+  for (const rep of ['edna', 'joseph', 'njoroge', 'purity']) {
+    if (name.includes(rep) || local.includes(rep)) keys.add(rep);
+  }
+  return keys;
+}
+
+function ownsSalesRecord(user, row = {}) {
+  if (canSeeAllSalesData(user)) return true;
+  const keys = salesOwnerKeys(user);
+  if (!keys.size) return false;
+  const fields = [
+    row.salesperson, row.salesPerson, row.sales_person, row.owner, row.assignedTo,
+    row.salesOwner, row.createdBy, row.createdByName, row.rep, row.agent
+  ].map(v => String(v || '').trim().toLowerCase());
+  return fields.some(f => f && (keys.has(f) || [...keys].some(k => f.includes(k) || k.includes(f))));
+}
+
+function filterSalesScoped(user, rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  if (canSeeAllSalesData(user)) return list;
+  return list.filter(row => ownsSalesRecord(user, row));
+}
+
+
 function hrAndApproverEmails(d) {
   const roles = [ROLES.HR, ROLES.EXECUTIVE, ROLES.ADMIN, ROLES.DEV, ROLES.MANAGER];
   return (d.users || [])
@@ -6803,7 +6841,7 @@ const api = {
     const d = data();
     const range = periodRange(filters.period);
     const recentFirst = (a, b) => String(b.updatedAt || b.createdAt || b.date || '').localeCompare(String(a.updatedAt || a.createdAt || a.date || ''));
-    let customers = list('customers').map(customer => {
+    let customers = filterSalesScoped(user, list('customers')).map(customer => {
       const sales = d.sales.filter(s => s.customerId === customer.id || s.customerName === customer.name);
       const customerInvoices = d.invoices.filter(inv => inv.customerId === customer.id || inv.customerName === customer.name);
       const revenue = sales.reduce((sum, sale) => sum + num(sale.total), 0);
@@ -6839,7 +6877,7 @@ const api = {
 
     customers = visibleCustomers;
     const activeCustomers = customers.filter(c => c.status === 'Active').length;
-    const leads = list('leads').sort(recentFirst);
+    const leads = filterSalesScoped(user, list('leads')).sort(recentFirst);
     const calls = list('calls').sort(recentFirst);
     const invoices = list('invoices');
     const periodSales = d.sales.filter(row => dateOnly(row.date || row.createdAt) >= range.startDate && dateOnly(row.date || row.createdAt) <= range.endDate);
@@ -8509,10 +8547,14 @@ const api = {
       if (!Array.isArray(d[k])) d[k] = [];
     });
     const scope = filters && filters.period ? { ...periodRange(filters.period), ...filters } : (filters || {});
+    const scopedVisits = filterSalesScoped(user, d.visits || d.salesVisits || []);
+    const scopedLeads = filterSalesScoped(user, d.leads || []);
+    const scopedCustomers = filterSalesScoped(user, d.customers || []);
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const sales = (list('sales') || []).filter(row => inDateRange(row, scope));
-    const invoices = (list('invoices') || []).filter(row => inDateRange(row, scope));
-    const quotations = list('quotations') || [];
+    const salesAll = (list('sales') || []).filter(row => inDateRange(row, scope));
+    const sales = filterSalesScoped(user, salesAll);
+    const invoices = filterSalesScoped(user, (list('invoices') || []).filter(row => inDateRange(row, scope)));
+    const quotations = filterSalesScoped(user, list('quotations') || []);
     const saleIds = new Set(sales.map(s => s.id));
     const revenue = sales.reduce((sum, sale) => sum + num(sale.total), 0);
     const cogs = (d.saleItems || []).filter(item => saleIds.has(item.saleId)).reduce((sum, item) => sum + num(item.cost) * num(item.quantity), 0);
@@ -11969,7 +12011,14 @@ territory: geo,
     d.salesVisits = Array.isArray(d.salesVisits) ? d.salesVisits : [];
     d.leads = Array.isArray(d.leads) ? d.leads : [];
     d.customers = Array.isArray(d.customers) ? d.customers : [];
-    const salesperson = clean(form.salesperson || u.name);
+    let salesperson = clean(form.salesperson || u.name);
+    if (u.role === ROLES.SALES) {
+      // Sales officers cannot log under another rep's name
+      salesperson = clean(u.name).split(' ')[0] || clean(u.name);
+      const known = ['Edna','Joseph','Njoroge','Purity'];
+      const match = known.find(k => String(u.name).toLowerCase().includes(k.toLowerCase()) || String(u.email).toLowerCase().includes(k.toLowerCase()));
+      if (match) salesperson = match;
+    }
     const shop = clean(form.shopOrCustomer || form.customerName);
     const contact = clean(form.contactPerson);
     const location = clean(form.location);
@@ -12046,7 +12095,13 @@ territory: geo,
     d.sales = Array.isArray(d.sales) ? d.sales : [];
     d.saleItems = Array.isArray(d.saleItems) ? d.saleItems : [];
     d.customers = Array.isArray(d.customers) ? d.customers : [];
-    const salesperson = clean(form.salesperson || u.name);
+    let salesperson = clean(form.salesperson || u.name);
+    if (u.role === ROLES.SALES) {
+      salesperson = clean(u.name).split(' ')[0] || clean(u.name);
+      const known = ['Edna','Joseph','Njoroge','Purity'];
+      const match = known.find(k => String(u.name).toLowerCase().includes(k.toLowerCase()) || String(u.email).toLowerCase().includes(k.toLowerCase()));
+      if (match) salesperson = match;
+    }
     const shop = clean(form.shopOrCustomer || form.customerName);
     const phone = clean(form.phone);
     const productName = clean(form.productName || form.productDiscussed);

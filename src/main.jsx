@@ -5058,8 +5058,8 @@ function SalesVisitsWorkspace({ user, visits = [], salesPeople = [], onDone }) {
           {mode === 'visit' ? (
             <form className="field-form-body" onSubmit={submitVisit}>
               <label className="req">Salesperson
-                <select required value={visitForm.salesperson} onChange={e => setVisitForm({ ...visitForm, salesperson: e.target.value })}>
-                  {REPS.map(r => <option key={r} value={r}>{r}</option>)}
+                <select required value={visitForm.salesperson} disabled={user?.role === 'Sales Officer' || /sales/i.test(String(user?.role||''))} onChange={e => setVisitForm({ ...visitForm, salesperson: e.target.value })}>
+                  {(user?.role === 'Sales Officer' || /sales/i.test(String(user?.role||'')) ? [defaultRep] : REPS).map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
               </label>
               <label className="req">Shop / Customer Name
@@ -5114,8 +5114,8 @@ function SalesVisitsWorkspace({ user, visits = [], salesPeople = [], onDone }) {
           ) : (
             <form className="field-form-body" onSubmit={submitOrder}>
               <label className="req">Salesperson
-                <select required value={orderForm.salesperson} onChange={e => setOrderForm({ ...orderForm, salesperson: e.target.value })}>
-                  {REPS.map(r => <option key={r} value={r}>{r}</option>)}
+                <select required value={orderForm.salesperson} disabled={user?.role === 'Sales Officer' || /sales/i.test(String(user?.role||''))} onChange={e => setOrderForm({ ...orderForm, salesperson: e.target.value })}>
+                  {(user?.role === 'Sales Officer' || /sales/i.test(String(user?.role||'')) ? [defaultRep] : REPS).map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
               </label>
               <label className="req">Shop / Customer Name
