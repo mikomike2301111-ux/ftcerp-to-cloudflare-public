@@ -9265,7 +9265,7 @@ territory: geo,
     return { success: errors.length === 0, imported: imported.length, errors, importedRows: imported, log: logEntry };
   },
   sendQuotation(user, id) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD, ROLES.RECEPTION, ROLES.DEV, ROLES.EXECUTIVE);
     const quote = data().quotations.find(q => q.id === id);
     if (!quote) throw new Error('Quotation not found');
     const now = new Date().toISOString();
@@ -9496,7 +9496,7 @@ territory: geo,
   },
   getQuotations: user => (reqRole(user), list('quotations')),
   saveQuotation(user, row) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD, ROLES.RECEPTION, ROLES.DEV, ROLES.EXECUTIVE);
     const d = data();
     let customerId = row.customerId || '';
     let customerName = row.customerName || '';
@@ -9620,7 +9620,7 @@ territory: geo,
     return result;
   },
   convertQuotationToSale(user, id) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD, ROLES.RECEPTION, ROLES.DEV, ROLES.EXECUTIVE);
     const quote = data().quotations.find(q => q.id === id);
     if (!quote) throw new Error('Quotation not found');
     const items = (data().quotationItems || []).filter(i => i.quotationId === id) || (quote.items || []);
@@ -9692,7 +9692,7 @@ territory: geo,
     return { success: true, invoice: invoiceResult.invoice, emailSent: !!customerEmail };
   },
   async generateQuotePdf(user, quoteId, options = {}) {
-    reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES);
+    reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD, ROLES.RECEPTION, ROLES.DEV, ROLES.EXECUTIVE);
     const d = data();
     const quote = d.quotations.find(q => q.id === quoteId);
     if (!quote) throw new Error('Quotation not found');
@@ -9702,7 +9702,7 @@ territory: geo,
     return { content: buffer.toString('base64'), filename: `${quote.quoteNo || 'quote'}.pdf`, mimeType: 'application/pdf' };
   },
   async sendQuoteEmail(user, quoteId) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD, ROLES.RECEPTION, ROLES.DEV, ROLES.EXECUTIVE);
     const d = data();
     const quote = d.quotations.find(q => q.id === quoteId);
     if (!quote) throw new Error('Quotation not found');
@@ -10829,7 +10829,7 @@ territory: geo,
     return { pnl: { revenue: f.overview.revenue, expenses: f.overview.expenses, netProfit: f.overview.netProfit, netMargin: f.overview.revenue ? Math.round((f.overview.netProfit / f.overview.revenue) * 100) : 0 } };
   },
   acceptQuotation(user, id, notes = '') {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD, ROLES.RECEPTION, ROLES.DEV, ROLES.EXECUTIVE);
     const quote = data().quotations.find(q => q.id === id);
     if (!quote) throw new Error('Quotation not found');
     if (quote.status !== 'Sent' && quote.status !== 'Viewed') throw new Error('Quotation must be sent before accepting');
@@ -10846,7 +10846,7 @@ territory: geo,
     return { success: true, quote };
   },
   rejectQuotation(user, id, notes = '') {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD, ROLES.RECEPTION, ROLES.DEV, ROLES.EXECUTIVE);
     const quote = data().quotations.find(q => q.id === id);
     if (!quote) throw new Error('Quotation not found');
     if (quote.status !== 'Sent' && quote.status !== 'Viewed') throw new Error('Quotation must be sent before rejecting');
@@ -10941,7 +10941,7 @@ territory: geo,
     };
   },
   updateQuotationStatus(user, id, newStatus, notes = '') {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD, ROLES.RECEPTION, ROLES.DEV, ROLES.EXECUTIVE);
     const quote = data().quotations.find(q => q.id === id);
     if (!quote) throw new Error('Quotation not found');
     const validStatuses = ['Draft', 'Sent', 'Viewed', 'Accepted', 'Rejected', 'Expired', 'Converted', 'Invoiced'];
@@ -10964,7 +10964,7 @@ territory: geo,
     return { success: true, quote };
   },
   duplicateQuotation(user, id) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD, ROLES.RECEPTION, ROLES.DEV, ROLES.EXECUTIVE);
     const quote = data().quotations.find(q => q.id === id);
     if (!quote) throw new Error('Quotation not found');
     const newQuote = {

@@ -10247,9 +10247,20 @@ aside.sidebar {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  background: linear-gradient(145deg, #1e3a8a 0%, #4f46e5 42%, #a855f7 78%, #c4b5fd 100%);
+  background:
+    linear-gradient(180deg, rgba(6, 30, 18, 0.55) 0%, rgba(6, 30, 18, 0.72) 100%),
+    url('/login-hero.webp') center center / cover no-repeat;
   color: #fff;
 }
+.login-hero-v2::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 40%, rgba(0,0,0,0.35) 100%);
+  pointer-events: none;
+}
+.login-hero-v2 > * { position: relative; z-index: 1; }
+
 .login-hero-mark {
   width: 56px;
   height: 56px;

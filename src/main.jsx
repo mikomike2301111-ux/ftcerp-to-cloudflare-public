@@ -863,8 +863,8 @@ function Login({ onLogin }) {
           </div>
           <div className="login-hero-copy">
             <p className="login-hero-kicker">FarmTrack BioSciences</p>
-            <h2>Staff operations portal</h2>
-            <p>Secure access for authorized team members only.</p>
+            <h2>Growing with precision</h2>
+            <p>Staff portal for field sales, CRM follow-ups, production and accounts.</p>
           </div>
         </aside>
         <section className="login-form-pane-v2">
