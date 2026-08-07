@@ -214,6 +214,37 @@ function ensureStaffUsers(db) {
 
 
 /** True if user may see all records (not limited to own sales book) */
+function notificationVisibleTo(n, user) {
+  if (!user) return false;
+  // Global broadcast (no audience) — only privileged roles see system-wide ops alerts
+  const email = String(user.email || '').toLowerCase();
+  const role = user.role;
+  const targets = []
+    .concat(n.targetEmail ? [String(n.targetEmail).toLowerCase()] : [])
+    .concat(Array.isArray(n.targetEmails) ? n.targetEmails.map(e => String(e).toLowerCase()) : [])
+    .concat(n.userEmail ? [String(n.userEmail).toLowerCase()] : []);
+  const roles = Array.isArray(n.audienceRoles) ? n.audienceRoles : (n.audienceRole ? [n.audienceRole] : []);
+  const userIds = []
+    .concat(n.targetUserId ? [n.targetUserId] : [])
+    .concat(Array.isArray(n.targetUserIds) ? n.targetUserIds : [])
+    .concat(n.userId ? [n.userId] : []);
+  if (targets.length || roles.length || userIds.length) {
+    if (targets.includes(email)) return true;
+    if (userIds.includes(user.id)) return true;
+    if (roles.includes(role)) return true;
+    // Privileged can still see HR/leave style alerts aimed at managers
+    if ([ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE].includes(role) && roles.some(r => [ROLES.HR, ROLES.MANAGER, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.DEV].includes(r))) return true;
+    return false;
+  }
+  // Untargeted: sales only see sales-category; otherwise managers+
+  if (role === ROLES.SALES || role === ROLES.FIELD) {
+    return ['sales', 'crm', 'visit'].includes(String(n.category || n.sourceModule || '').toLowerCase())
+      && (!n.salesperson || String(n.salesperson).toLowerCase().includes(String(user.name || '').toLowerCase().split(' ')[0]));
+  }
+  if ([ROLES.CASUAL].includes(role)) return String(n.category || '') === 'hr' || String(n.sourceModule || '') === 'leaves';
+  return true; // admin/hr/accounts see general board
+}
+
 function canSeeAllSalesData(user) {
   const role = user?.role;
   return [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.ACCOUNTANT, ROLES.HR, ROLES.RECEPTION].includes(role);
@@ -9213,6 +9244,9 @@ territory: geo,
     const d = data();
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.ACCOUNTANT);
     if (!Array.isArray(rows) || !rows.length) throw new Error('No rows to import');
+    // Reject malformed rows early to protect backend
+    rows = rows.filter(r => r && typeof r === 'object' && !Array.isArray(r));
+    if (!rows.length) throw new Error('Import rejected: rows must be objects with named columns (e.g. customerName, productName, quantity).');
     const errors = [];
     const imported = [];
     const skipStock = String(options.skipStockCheck || '').toLowerCase() === 'true' || options.skipStockCheck === true;
@@ -11160,6 +11194,8 @@ territory: geo,
 
   // ─────────────────────────── NOTIFICATION & ALERT CENTER ───────────────────────────
   getNotificationCenterData(user, filters = {}) {
+    // Note: results filtered per-user below via notificationVisibleTo
+
     const u = reqRole(user);
     const d = data();
     refreshAlerts(d);
@@ -11191,9 +11227,9 @@ territory: geo,
     const u = reqRole(user);
     const d = data();
     refreshAlerts(d);
-    const all = (d.notifications || []).filter(n => n.status !== 'archived');
+    const all = (d.notifications || []).filter(n => n.status !== 'archived' && notificationVisibleTo(n, u));
     const unread = all.filter(n => !n.read);
-    const critical = all.filter(n => n.priority === 'critical');
+    const critical = all.filter(n => n.priority === 'critical' || n.priority === 'high');
     return {
       unread: unread.length,
       critical: critical.length,

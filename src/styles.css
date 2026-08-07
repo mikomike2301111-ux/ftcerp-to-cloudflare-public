@@ -10703,3 +10703,102 @@ svg.sparkline path {
 }
 .field-form-actions .submit { background: #16a34a; color: #fff; }
 .field-form-actions .cancel { background: #f1f5f9; color: #0f172a; }
+
+/* ── Mobile topbar + black hero stats (sales/finance) — no overlap ── */
+@media (max-width: 900px) {
+  .topbar {
+    grid-template-columns: 40px minmax(0, 1fr) auto !important;
+    gap: 8px !important;
+    padding: 10px 12px !important;
+    min-height: 56px !important;
+    align-items: center !important;
+  }
+  .topbar-actions {
+    display: inline-flex !important;
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+    max-width: 52vw;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .topbar-period {
+    display: none !important; /* period stays accessible via page controls on small phones */
+  }
+  .topbar-profile-name { display: none !important; }
+  .command-search input { font-size: 14px !important; }
+  .new-button span, .sheets-btn { font-size: 0 !important; padding: 0 10px !important; }
+  .sheets-btn svg, .new-button svg { margin: 0 !important; }
+
+  .sales-hero,
+  .command-hero,
+  .analytics-hero,
+  .finance-hero,
+  .accounts-hero,
+  .crm-hero,
+  .procurement-hero,
+  .inventory-hero,
+  .manufacturing-hero {
+    grid-template-columns: 1fr !important;
+    min-height: auto !important;
+    padding: 16px 14px !important;
+    gap: 14px !important;
+  }
+  .sales-hero > div:first-child:after { display: none !important; }
+  .sales-hero h1,
+  .command-hero h1,
+  .analytics-hero h1 {
+    font-size: 22px !important;
+    line-height: 1.15 !important;
+    margin: 6px 0 8px !important;
+  }
+  .sales-hero-stats,
+  .hero-stats,
+  .command-hero-stats {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+  .sales-hero-stats article,
+  .hero-stats article,
+  .command-hero-stats article,
+  .sales-hero .stat-pill {
+    min-width: 0 !important;
+    padding: 10px 10px !important;
+    border-radius: 10px !important;
+    background: rgba(255,255,255,0.06) !important;
+  }
+  .sales-hero-stats strong,
+  .hero-stats strong,
+  .command-hero-stats strong {
+    font-size: 15px !important;
+    line-height: 1.2 !important;
+    word-break: break-word !important;
+    overflow-wrap: anywhere !important;
+    white-space: normal !important;
+  }
+  .sales-hero-stats span,
+  .hero-stats span,
+  .command-hero-stats span {
+    font-size: 10px !important;
+    letter-spacing: 0.04em !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .sales-hero-stats,
+  .hero-stats,
+  .command-hero-stats {
+    grid-template-columns: 1fr 1fr !important;
+  }
+  .topbar-actions { max-width: 48vw; gap: 4px !important; }
+}
+
+/* Charts containers — prevent zero height / overflow */
+.recharts-responsive-container,
+.chart-wrap,
+.panel .recharts-wrapper {
+  min-height: 220px !important;
+  width: 100% !important;
+}
+.panel { overflow: hidden; }

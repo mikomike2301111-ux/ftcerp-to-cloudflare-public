@@ -2285,58 +2285,73 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
 {view === 'leads' && <Panel title="Leads and Opportunities" action="Live"><SimpleTable rows={allLeads} columns={['name', 'company', 'phone', 'stage', 'assignedTo', 'status']} /></Panel>}
       {view === 'calls' && (
         <div className="dashboard-grid">
-          <Panel className="span-5" title="Log call · Reception" action="DATE · NAME · COMMENTS · TRANSFERRED / RECEIVED">
+          <Panel className="span-5" title="Log call · Reception" action="DATE · TIME · NUMBER · COMMENTS">
             <form className="settings-form-grid" onSubmit={async e => {
               e.preventDefault();
-              if (!receptionForm.customerName) return alert('Name is required');
+              if (!receptionForm.phone) return alert('Phone number is required');
               if (!receptionForm.comments) return alert('Comments are required');
               setReceptionBusy(true);
               try {
+                const date = receptionForm.date || new Date().toISOString().slice(0, 10);
+                const time = receptionForm.time || new Date().toTimeString().slice(0, 5);
                 await rpc('saveCall', [user, {
                   recordType: 'reception',
-                  customerName: receptionForm.customerName,
+                  customerName: receptionForm.phone,
+                  phone: receptionForm.phone,
                   comments: receptionForm.comments,
                   notes: receptionForm.comments,
-                  transferredTo: receptionForm.transferredTo || '',
-                  receivedBy: receptionForm.receivedBy || user.name,
-                  assignedTo: receptionForm.transferredTo || receptionForm.receivedBy || user.name,
+                  receivedBy: user?.name || 'Reception',
+                  assignedTo: user?.name || 'Reception',
                   stage: 'Reception',
-                  date: receptionForm.date || new Date().toISOString().slice(0, 10)
+                  date,
+                  time,
+                  datetime: `${date} ${time}`
                 }]);
-                setReceptionForm({ customerName: '', comments: '', transferredTo: '', receivedBy: user?.name || '', date: new Date().toISOString().slice(0, 10) });
+                setReceptionForm({ phone: '', comments: '', date: new Date().toISOString().slice(0, 10), time: new Date().toTimeString().slice(0, 5) });
                 setRefreshKey(x => x + 1);
               } catch (err) { alert(err.message); }
               finally { setReceptionBusy(false); }
             }}>
               <label>Date<input type="date" value={receptionForm.date} onChange={e => setReceptionForm({ ...receptionForm, date: e.target.value })} required /></label>
-              <label>Name<input value={receptionForm.customerName} onChange={e => setReceptionForm({ ...receptionForm, customerName: e.target.value })} placeholder="Caller or customer name" required /></label>
+              <label>Time<input type="time" value={receptionForm.time} onChange={e => setReceptionForm({ ...receptionForm, time: e.target.value })} required /></label>
+              <label>Number<input type="tel" inputMode="tel" value={receptionForm.phone} onChange={e => setReceptionForm({ ...receptionForm, phone: e.target.value })} placeholder="Caller phone number" required /></label>
               <label>Comments<textarea value={receptionForm.comments} onChange={e => setReceptionForm({ ...receptionForm, comments: e.target.value })} rows={3} placeholder="What the call was about" required /></label>
-              <label>Transferred to<input value={receptionForm.transferredTo} onChange={e => setReceptionForm({ ...receptionForm, transferredTo: e.target.value })} placeholder="Staff member transferred to" list="crm-staff-list" /></label>
-              <label>Received by<input value={receptionForm.receivedBy} onChange={e => setReceptionForm({ ...receptionForm, receivedBy: e.target.value })} placeholder="Who took the call" list="crm-staff-list" /></label>
-              <datalist id="crm-staff-list">{['Edna', 'Njoroge', 'Joseph', 'Purity', user?.name].filter(Boolean).map(n => <option key={n} value={n} />)}</datalist>
-              <button type="submit" className="primary-action" disabled={receptionBusy}>{receptionBusy ? 'Saving…' : 'Save reception call'}</button>
+              <button type="submit" className="primary-action" disabled={receptionBusy}>{receptionBusy ? 'Saving…' : 'Log call'}</button>
             </form>
           </Panel>
           <Panel className="span-7" title="Reception calls" action={`${(allCalls || []).filter(r => r.recordType === 'reception' || r.stage === 'Reception').length} calls`}>
             <div className="table-wrap">
               <table>
-                <thead><tr><th>Date</th><th>Name</th><th>Comments</th><th>Transferred to</th><th>Received by</th></tr></thead>
+                <thead><tr><th>Date</th><th>Time</th><th>Number</th><th>Comments</th></tr></thead>
                 <tbody>
-                  {(allCalls || [])
-                    .filter(r => r.recordType === 'reception' || r.stage === 'Reception')
-                    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
-                    .map(row => (
-                      <tr key={row.id}>
-                        <td>{row.date || '—'}</td>
-                        <td><strong>{row.customerName || '—'}</strong></td>
-                        <td>{row.comments || row.notes || '—'}</td>
-                        <td>{row.transferredTo || '—'}</td>
-                        <td>{row.receivedBy || row.assignedTo || '—'}</td>
-                      </tr>
-                    ))}
-                  {(allCalls || []).filter(r => r.recordType === 'reception' || r.stage === 'Reception').length === 0 && (
-                    <tr><td colSpan={5}><div className="empty-state">No reception calls yet.</div></td></tr>
-                  )}
+                  {(() => {
+                    const rows = (allCalls || [])
+                      .filter(r => r.recordType === 'reception' || r.stage === 'Reception')
+                      .sort((a, b) => String(b.datetime || b.date || '').localeCompare(String(a.datetime || a.date || '')));
+                    if (!rows.length) return <tr><td colSpan={4}><div className="empty-state">No reception calls yet.</div></td></tr>;
+                    let lastDay = '';
+                    const out = [];
+                    rows.forEach(row => {
+                      const day = String(row.date || '').slice(0, 10);
+                      if (day && day !== lastDay) {
+                        lastDay = day;
+                        out.push(
+                          <tr key={`day-${day}`} className="day-separator-row">
+                            <td colSpan={4} style={{ background: '#f8fafc', fontWeight: 700, color: '#334155', padding: '8px 12px' }}>{day}</td>
+                          </tr>
+                        );
+                      }
+                      out.push(
+                        <tr key={row.id}>
+                          <td>{row.date || '—'}</td>
+                          <td>{row.time || String(row.datetime || '').slice(11, 16) || '—'}</td>
+                          <td><strong>{row.phone || row.customerName || '—'}</strong></td>
+                          <td>{row.comments || row.notes || '—'}</td>
+                        </tr>
+                      );
+                    });
+                    return out;
+                  })()}
                 </tbody>
               </table>
             </div>
