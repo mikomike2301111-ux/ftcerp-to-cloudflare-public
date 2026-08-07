@@ -4911,7 +4911,7 @@ function SalesImportConfirmOverlay({ user, rows, onClose, onImported }) {
   );
 }
 
-const VISIT_PRODUCTS = ['Bactrolure', 'Cue Lure Plug', 'Cera-Lure', 'Torula/Bait Track', 'FCM Lure', 'TutaLure', 'FAW Lure', 'Dupontrack Lure', 'Helitrack Lure', 'Supa Track Lure', 'Spodotrack Lure', 'Metatrack Plus', 'Miltrack Fungicide', 'Yellow / Clear Lynfield Trap', 'MaXtrap', 'Yellow & Blue Rollers', 'Delta Inserts', 'Delta Trap', 'Blue and Yellow Sticky Cards', 'Femitrack', 'Bacitrack', 'Wiltrack', 'Tichotrack', 'Other'];
+const VISIT_PRODUCTS = ['Bactrolure', 'Cue Lure Plug', 'Cera-Lure', 'Torula/Bait Track', 'FCM Lure', 'TutaLure', 'FAW Lure', 'Dupontrack Lure', 'Duponttrack Lure', 'Helitrack Lure', 'Supa Track Lure', 'Spodotrack Lure', 'Metatrack Plus', 'Miltrack Fungicide', 'Yellow / Clear Lynfield Trap', 'MaXtrap', 'Yellow & Blue Rollers', 'Delta Inserts', 'Delta Trap', 'Blue and Yellow Sticky Cards', 'Femitrack', 'Femittrack', 'Generallure', 'Bacitrack', 'Wiltrack', 'Tichotrack', 'Other'];
 const VISIT_PURPOSES = ['Stock check', 'Delivery of sample', 'Client Follow-up', 'Product introduction', 'Order follow up', 'Payment follow up'];
 const VISIT_OUTCOMES = ['Not interested', 'To order at later date', 'Product still in stock', 'Interested'];
 
@@ -4935,9 +4935,9 @@ function todayStr() { return new Date().toISOString().slice(0, 10); }
 function SalesVisitsWorkspace({ user, visits = [], salesPeople = [], onDone }) {
   const PRODUCTS = [
     'Bactrolure','Cue Lure Plug','Cera-Lure','Torula/Bait Track','FCM Lure','TutaLure','FAW Lure',
-    'Dupontrack Lure','Helitrack Lure','Supa Track Lure','Spodotrack Lure','Metatrack Plus','Miltrack Fungicide',
+    'Dupontrack Lure','Duponttrack Lure','Helitrack Lure','Supa Track Lure','Spodotrack Lure','Metatrack Plus','Miltrack Fungicide',
     'Yellow / Clear Lynfield Trap','MaXtrap','Yellow & Blue Rollers','Delta Inserts','Delta Trap',
-    'Blue and Yellow Sticky Cards','Femitrack','Bacitrack','Wiltrack','Tichotrack','Other'
+    'Blue and Yellow Sticky Cards','Femitrack','Femittrack','Generallure','Bacitrack','Wiltrack','Tichotrack','Other'
   ];
   const PURPOSES = ['Stock check','Delivery of sample','Client Follow-up','Product introduction','Order follow up','payment follow up'];
   const OUTCOMES = ['Not interested','To order at later date','Product still in stock','interested'];

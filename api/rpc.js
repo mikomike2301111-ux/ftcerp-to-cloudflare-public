@@ -61,6 +61,101 @@ function isPrivilegedRole(role) {
 }
 
 /** Default staff roster — simple distinct passwords (change in Settings after go-live) */
+const FTC_PRODUCT_NAMES = [
+  'Bactrolure', 'Cue Lure Plug', 'Cera-Lure', 'Torula/Bait Track', 'FCM Lure', 'TutaLure', 'FAW Lure',
+  'Dupontrack Lure', 'Duponttrack Lure', 'Helitrack Lure', 'Supa Track Lure', 'Spodotrack Lure',
+  'Metatrack Plus', 'Miltrack Fungicide', 'Yellow / Clear Lynfield Trap', 'MaXtrap',
+  'Yellow & Blue Rollers', 'Delta Inserts', 'Delta Trap', 'Blue and Yellow Sticky Cards',
+  'Femitrack', 'Femittrack', 'Generallure', 'Bacitrack', 'bacitrack', 'Wiltrack', 'wiltrack',
+  'Tichotrack', 'tichotrack', 'Other'
+];
+
+function ensureCrmCustomer(d, { name, phone, contactPerson, location, salesperson, source, email, category }) {
+  d.customers = Array.isArray(d.customers) ? d.customers : [];
+  d.leads = Array.isArray(d.leads) ? d.leads : [];
+  const shop = clean(name);
+  const ph = clean(phone);
+  const now = new Date().toISOString();
+  let customer = d.customers.find(c =>
+    (ph && String(c.phone || '') === ph) ||
+    (shop && String(c.name || '').toLowerCase() === shop.toLowerCase())
+  );
+  if (!customer) {
+    customer = {
+      id: gid(),
+      name: shop,
+      phone: ph,
+      email: clean(email),
+      contactPerson: clean(contactPerson),
+      city: clean(location),
+      category: clean(category) || 'Customer',
+      type: 'Customer',
+      salesPerson: clean(salesperson),
+      owner: clean(salesperson),
+      assignedTo: clean(salesperson),
+      source: clean(source) || 'Sales',
+      status: 'Active',
+      pipelineStage: 'Customer',
+      balance: 0,
+      creditLimit: 0,
+      createdAt: now,
+      updatedAt: now,
+      isDeleted: 'No'
+    };
+    d.customers.unshift(customer);
+  } else {
+    customer.salesPerson = customer.salesPerson || clean(salesperson);
+    customer.owner = customer.owner || clean(salesperson);
+    customer.assignedTo = customer.assignedTo || clean(salesperson);
+    customer.phone = customer.phone || ph;
+    customer.contactPerson = customer.contactPerson || clean(contactPerson);
+    customer.city = customer.city || clean(location);
+    customer.updatedAt = now;
+    customer.status = customer.status === 'Inactive' ? 'Active' : (customer.status || 'Active');
+  }
+  return customer;
+}
+
+function ensureCrmPipelineLead(d, customer, { salesperson, stage, notes, productInterest, value }) {
+  d.leads = Array.isArray(d.leads) ? d.leads : [];
+  const now = new Date().toISOString();
+  const company = customer.name;
+  let lead = d.leads.find(l =>
+    String(l.company || '').toLowerCase() === String(company).toLowerCase() &&
+    String(l.assignedTo || l.salesPerson || '').toLowerCase() === String(salesperson || '').toLowerCase() &&
+    String(l.status || 'Active') !== 'Closed'
+  );
+  if (!lead) {
+    lead = {
+      id: gid(),
+      name: customer.contactPerson || company,
+      company,
+      phone: customer.phone,
+      email: customer.email || '',
+      source: customer.source || 'Sales',
+      stage: stage || 'New',
+      value: num(value),
+      assignedTo: salesperson,
+      salesPerson: salesperson,
+      notes: notes || '',
+      productInterest: productInterest || '',
+      status: 'Active',
+      createdAt: now,
+      updatedAt: now,
+      isDeleted: 'No',
+      customerId: customer.id
+    };
+    d.leads.unshift(lead);
+  } else {
+    lead.stage = stage || lead.stage;
+    lead.notes = notes || lead.notes;
+    lead.productInterest = productInterest || lead.productInterest;
+    lead.value = num(value) || lead.value;
+    lead.updatedAt = now;
+  }
+  return lead;
+}
+
 const STAFF_ROSTER = [
   { name: 'Miko Admin', email: 'miko@gmail.com', password: 'MM@29315122', role: ROLES.DEV, department: 'Executive' },
   { name: 'Boss Executive', email: 'boss@farmtrack.co.ke', password: 'Boss2026!', role: ROLES.EXECUTIVE, department: 'Executive' },
@@ -9062,14 +9157,37 @@ territory: geo,
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.ACCOUNTANT);
     const product = d.products.find(p => p.id === row?.productId) || d.products[0];
     const typedName = clean(row?.customerName || row?.companyName);
-    let customer = d.customers.find(c => c.id === row?.customerId)
-      || d.customers.find(c => typedName && String(c.name || '').toLowerCase() === typedName.toLowerCase());
-    if (!customer && typedName) {
-      customer = { id: gid(), name: typedName, email: clean(row?.customerEmail), phone: clean(row?.customerPhone || row?.phone), city: clean(row?.destination), type: 'Customer', creditLimit: 0, balance: 0, status: 'Active', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), isDeleted: 'No' };
-      d.customers.unshift(customer);
-      log(u, 'Create Customer from Sales Order', 'CRM', typedName);
+    if (!typedName && !row?.customerId) throw new Error('Customer name is required');
+    let salesperson = clean(row?.salesperson || row?.salesPerson || u.name);
+    if (u.role === ROLES.SALES) {
+      const known = ['Edna','Joseph','Njoroge','Purity'];
+      const match = known.find(k => String(u.name).toLowerCase().includes(k.toLowerCase()) || String(u.email).toLowerCase().includes(k.toLowerCase()));
+      if (match) salesperson = match;
     }
-    if (!customer) throw new Error('Customer name is required');
+    let customer = d.customers.find(c => c.id === row?.customerId);
+    if (!customer) {
+      customer = ensureCrmCustomer(d, {
+        name: typedName,
+        phone: clean(row?.customerPhone || row?.phone),
+        email: clean(row?.customerEmail),
+        location: clean(row?.destination),
+        salesperson,
+        source: 'Sales Order',
+        category: 'Customer'
+      });
+      log(u, 'Upsert Customer from Sales Order', 'CRM', typedName);
+    } else {
+      customer.salesPerson = customer.salesPerson || salesperson;
+      customer.owner = customer.owner || salesperson;
+      customer.assignedTo = customer.assignedTo || salesperson;
+    }
+    ensureCrmPipelineLead(d, customer, {
+      salesperson,
+      stage: 'Qualified',
+      notes: clean(row?.notes) || 'Opened from sales order',
+      productInterest: clean(product?.name),
+      value: num(row?.quantity || 1) * num(row?.unitPrice || product?.sellingPrice || product?.price)
+    });
     return api.saveSale(user, {
       customerId: customer.id,
       customerName: customer.name,
@@ -12084,29 +12202,18 @@ territory: geo,
     d.visits.unshift(visit);
     d.salesVisits.unshift(visit);
     // Ensure customer exists, tagged by salesperson
-    let customer = d.customers.find(c => String(c.phone || '') === phone || String(c.name || '').toLowerCase() === shop.toLowerCase());
-    if (!customer) {
-      customer = {
-        id: gid(), name: shop, phone, contactPerson: contact, city: location,
-        category: 'Customer', salesPerson: salesperson, owner: salesperson,
-        source: 'Field Visit', status: 'Active', createdAt: now, updatedAt: now
-      };
-      d.customers.unshift(customer);
-    } else {
-      customer.salesPerson = customer.salesPerson || salesperson;
-      customer.owner = customer.owner || salesperson;
-      customer.phone = customer.phone || phone;
-    }
-    // Interested / order outcomes → CRM lead
-    if (/interest|order/i.test(outcome)) {
-      d.leads.unshift({
-        id: gid(), name: contact || shop, company: shop, phone, email: '',
-        source: 'Field Visit', stage: /order/i.test(outcome) ? 'Qualified' : 'New',
-        value: 0, assignedTo: salesperson, notes: comments || `Visit outcome: ${outcome}`,
-        status: 'Active', createdAt: now, updatedAt: now, isDeleted: 'No',
-        productInterest: products.join(', ')
-      });
-    }
+    const customer = ensureCrmCustomer(d, {
+      name: shop, phone, contactPerson: contact, location, salesperson, source: 'Field Visit', category: 'Customer'
+    });
+    // Always touch CRM pipeline; interested/order advances stage
+    const stage = /order/i.test(outcome) ? 'Qualified' : /interest/i.test(outcome) ? 'New' : 'Contacted';
+    ensureCrmPipelineLead(d, customer, {
+      salesperson,
+      stage,
+      notes: comments || `Visit outcome: ${outcome} · ${purpose}`,
+      productInterest: products.join(', '),
+      value: 0
+    });
     pushManualNotification(d, {
       category: 'sales', priority: 'normal',
       title: `Field visit — ${salesperson}`,
@@ -12136,16 +12243,19 @@ territory: geo,
     const unitPrice = num(form.unitPrice || form.price);
     if (!salesperson || !shop || !phone || !productName) throw new Error('Salesperson, customer, phone and product are required');
     const now = new Date().toISOString();
-    let customer = d.customers.find(c => String(c.phone || '') === phone || String(c.name || '').toLowerCase() === shop.toLowerCase());
-    if (!customer) {
-      customer = { id: gid(), name: shop, phone, salesPerson: salesperson, owner: salesperson, source: 'Field Order', status: 'Active', createdAt: now, updatedAt: now };
-      d.customers.unshift(customer);
-    }
-    const product = (d.products || []).find(p => String(p.name || '').toLowerCase() === productName.toLowerCase());
+    const customer = ensureCrmCustomer(d, {
+      name: shop, phone, salesperson, source: 'Field Order', category: 'Customer'
+    });
+    // Fuzzy product match including Generallure / Femitrack aliases
+    const product = (d.products || []).find(p => {
+      const n = String(p.name || '').toLowerCase();
+      const want = productName.toLowerCase();
+      return n === want || n.includes(want) || want.includes(n);
+    });
     const price = unitPrice || num(product?.price || product?.sellingPrice || 0);
-    const subtotal = Math.round(qty * price);
-    const tax = Math.round(subtotal * 0.16);
-    const total = subtotal + tax;
+    const subtotal = Math.round(qty * price * 100) / 100;
+    const tax = Math.round(subtotal * 0.16 * 100) / 100;
+    const total = Math.round((subtotal + tax) * 100) / 100;
     const saleId = gid();
     const saleNo = 'SO-' + Date.now().toString(36).toUpperCase();
     d.sales.unshift({
@@ -12155,10 +12265,25 @@ territory: geo,
       salesperson, salesPerson: salesperson, source: 'Field Order', createdAt: now
     });
     d.saleItems.unshift({
-      id: gid(), saleId, productId: product?.id || '', productName, quantity: qty, unitPrice: price, total: subtotal
+      id: gid(), saleId, productId: product?.id || '', productName: product?.name || productName, quantity: qty, unitPrice: price, total: subtotal
+    });
+    // Always land in CRM pipeline for follow-up
+    ensureCrmPipelineLead(d, customer, {
+      salesperson,
+      stage: 'Won',
+      notes: clean(form.comment) || `Field order ${saleNo} · ${productName} x${qty}`,
+      productInterest: productName,
+      value: total
+    });
+    pushManualNotification(d, {
+      category: 'sales', priority: 'normal',
+      title: `Field order ${saleNo}`,
+      message: `${shop} · ${productName} x${qty} · ${salesperson}`,
+      sourceModule: 'sales', sourceId: saleId, sourceLabel: saleNo
     });
     log(u, 'Field order', 'Sales', saleNo);
-    return { success: true, saleId, saleNo, total };
+    try { if (typeof saveState === 'function') Promise.resolve(saveState()).catch(() => {}); } catch {}
+    return { success: true, saleId, saleNo, total, customerId: customer.id };
   },
   applyLeave(user, form = {}) {
     // Any active role may apply for leave
