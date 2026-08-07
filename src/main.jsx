@@ -11775,8 +11775,8 @@ function LeaveApplyModal({ user, leaveTypes, departments = [], balances = [], on
 }
 
 function SimpleTable({ rows, columns, onRowClick }) {
-  const [limit, setLimit] = useState(25);
-  const step = 50;
+  const [limit, setLimit] = useState(20);
+  const step = 20;
   const safeRows = (rows || []).filter(Boolean);
   const shown = safeRows.slice(0, limit);
   function actionsFor(row, index) {

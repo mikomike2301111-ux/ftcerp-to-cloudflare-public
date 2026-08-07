@@ -245,6 +245,18 @@ function notificationVisibleTo(n, user) {
   return true; // admin/hr/accounts see general board
 }
 
+/** First-page slice for large lists (keeps UI fast; full data stays in state) */
+function pageSlice(rows, limit = 25) {
+  const list = Array.isArray(rows) ? rows : [];
+  const n = Math.max(1, Math.min(100, Number(limit) || 25));
+  return {
+    rows: list.slice(0, n),
+    total: list.length,
+    hasMore: list.length > n,
+    limit: n
+  };
+}
+
 function canSeeAllSalesData(user) {
   const role = user?.role;
   return [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.ACCOUNTANT, ROLES.HR, ROLES.RECEPTION].includes(role);
@@ -3717,15 +3729,32 @@ function roleDepartment(role) {
 
 function reqRole(user, ...roles) {
   const d = data();
+  ensureStaffUsers(d);
   if (!user) throw new Error('Authentication required');
   const email = String(user.email || '').trim().toLowerCase();
   const id = String(user.id || '').trim();
-  const u = d.users.find(x => String(x.email).toLowerCase() === email || x.id === id);
+  let u = d.users.find(x => String(x.email || '').toLowerCase() === email || String(x.id || '') === id);
+  // Bootstrap from session if missing in state
+  if (!u && email) {
+    u = {
+      id: id || gid(),
+      name: user.name || email.split('@')[0],
+      email,
+      role: user.role || ROLES.CASUAL,
+      status: 'Active',
+      password: ''
+    };
+    d.users.push(u);
+  }
   if (!u) throw new Error('User not found');
   if (u.status !== 'Active') throw new Error('Account is inactive');
+  // Prefer live role from session if state is stale
+  if (user.role && Object.values(ROLES).includes(user.role)) u.role = user.role;
   if (u.role === ROLES.ADMIN || u.role === ROLES.DEV || !roles.length || roles.includes(u.role)) return u;
   // Executive can act as manager for approvals
   if (u.role === ROLES.EXECUTIVE && roles.some(r => [ROLES.MANAGER, ROLES.ADMIN, ROLES.EXECUTIVE].includes(r))) return u;
+  // HR can do manager-level HR work when role list includes MANAGER but forgot HR
+  if (u.role === ROLES.HR && roles.some(r => [ROLES.MANAGER, ROLES.HR, ROLES.ADMIN].includes(r))) return u;
   throw new Error('Insufficient permissions');
 }
 
@@ -11727,7 +11756,7 @@ territory: geo,
     };
   },
   saveEmployee(user, form = {}) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.DEV, ROLES.EXECUTIVE);
     const d = data();
     ensureHrData();
     const fullName = clean(form.name) || [form.firstName, form.middleName, form.lastName].filter(Boolean).join(' ').trim();
@@ -11837,7 +11866,7 @@ territory: geo,
     return { success: true, email: row, result };
   },
   deleteEmployee(user, id) {
-    const u = reqRole(user, ROLES.ADMIN);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.HR, ROLES.DEV, ROLES.EXECUTIVE);
     const d = data();
     const emp = (d.employees || []).find(e => e.id === id);
     if (!emp) throw new Error('Employee not found');
@@ -12018,7 +12047,7 @@ territory: geo,
     return { success: true, period, totalGrossPay, totalDeductions, totalNetPay, employeeCount: employees.length, rows };
   },
   recordAttendance(user, form = {}) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.DEV, ROLES.EXECUTIVE);
     const d = data();
     ensureHrData();
     d.employees = Array.isArray(d.employees) ? d.employees : [];
@@ -12044,7 +12073,7 @@ territory: geo,
     return { success: true, record };
   },
   saveCandidate(user, form = {}) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.DEV, ROLES.EXECUTIVE);
     const d = data();
     ensureHrData();
     assertRequired(form.name, 'Candidate name');
@@ -12062,7 +12091,7 @@ territory: geo,
     return { success: true, candidate: c };
   },
   moveCandidate(user, id, stage) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.DEV, ROLES.EXECUTIVE);
     const d = data();
     ensureHrData();
     d.candidates = Array.isArray(d.candidates) ? d.candidates : [];
@@ -12078,7 +12107,7 @@ territory: geo,
     return { success: true, candidate: c };
   },
   saveReview(user, form = {}) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.DEV, ROLES.EXECUTIVE);
     const d = data();
     ensureHrData();
     assertRequired(form.employeeId, 'Employee');
