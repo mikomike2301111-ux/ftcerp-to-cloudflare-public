@@ -11631,26 +11631,28 @@ territory: geo,
         ? Math.round(hours * hourlyRate)
         : Math.round(num(emp.salary) * (Number.isFinite(attendanceFactor) ? attendanceFactor : 1));
       const grossPay = Math.round(basePay + totalAllowances + overtimePay);
-      // Statutory: NSSF removed. NHIF removed (use SHIF only if HR enables on employee).
-      const nssf = 0;
+      // Kenya statutory tax-exempt first: NSSF, SHIF, Housing Levy + custom tax-exempt
+      const nssfEnabled = emp.applyNssf !== false && String(emp.applyNssf || 'yes').toLowerCase() !== 'no';
+      const shifEnabled = emp.applyShif !== false && String(emp.applyShif || emp.shifEnabled || 'yes').toLowerCase() !== 'no';
+      const ahlEnabled = emp.applyHousingLevy !== false && String(emp.applyHousingLevy || 'yes').toLowerCase() !== 'no';
+      const nssf = nssfEnabled ? calculateKenyaNssf(grossPay) : 0;
       const nhif = 0;
-      const applyShif = String(emp.applyShif || emp.shifEnabled || '').toLowerCase() === 'yes' || emp.applyShif === true;
-      const shif = applyShif ? Math.round(grossPay * 0.0275) : 0; // SHIF 2.75% optional
-      const ahl = 0; // Housing levy not auto — add as custom deduction if required
-      // Unlimited HR custom deductions (loan, sacco, tax adjustments, SHIF manual, etc.)
+      const shif = shifEnabled ? calculateKenyaShif(grossPay) : 0;
+      const ahl = ahlEnabled ? calculateKenyaHousingLevy(grossPay) : 0;
       const customList = (Array.isArray(emp.customDeductions) ? emp.customDeductions : []).filter(cd => cd && cd.active !== false);
       const resolvedCustom = customList.map(cd => {
         const method = clean(cd.method) || 'Fixed';
         const amount = method === 'Percent'
           ? Math.round(grossPay * (num(cd.percent) / 100))
           : Math.round(num(cd.amount));
-        return { ...cd, resolvedAmount: amount };
+        const taxExempt = !!(cd.taxExempt || /exempt|relief|pension|nssf|shif|housing/i.test(`${cd.label || ''} ${cd.type || ''}`));
+        return { ...cd, resolvedAmount: amount, taxExempt };
       });
       const customDeductionTotal = Math.round(resolvedCustom.reduce((s, cd) => s + num(cd.resolvedAmount), 0));
-      const taxExemptCustom = Math.round(resolvedCustom.filter(cd => cd.taxExempt || /exempt|relief|pension/i.test(`${cd.label || ''} ${cd.type || ''}`)).reduce((s, cd) => s + num(cd.resolvedAmount), 0));
-      // PAYE on taxable pay after optional SHIF + tax-exempt customs (Kenya bands + 2,400 relief)
-      const taxableIncome = Math.max(0, grossPay - shif - taxExemptCustom);
-      let paye = calculateKenyaPaye(taxableIncome);
+      const taxExemptCustom = Math.round(resolvedCustom.filter(cd => cd.taxExempt).reduce((s, cd) => s + num(cd.resolvedAmount), 0));
+      // PAYE on balance after exempt deductions; personal relief 2,400
+      const taxableIncome = Math.max(0, grossPay - nssf - shif - ahl - taxExemptCustom);
+      let paye = calculateKenyaPaye(taxableIncome).paye;
       // HR can override PAYE with a custom deduction labeled PAYE Override
       const payeOverride = customList.find(cd => /paye\s*override/i.test(cd.label || ''));
       if (payeOverride) paye = Math.max(0, Math.round(num(payeOverride.amount)));
@@ -11658,7 +11660,7 @@ territory: geo,
       const sacco = num(emp.saccoDeduction);
       const otherDeductions = num(emp.otherDeductions);
       // custom total already includes all HR lines — do not double-count override amount separately beyond list
-      const totalDeductions = paye + shif + loanDeduction + sacco + otherDeductions + lateDeduction + customDeductionTotal;
+      const totalDeductions = paye + nssf + shif + ahl + loanDeduction + sacco + otherDeductions + lateDeduction + customDeductionTotal;
       const netPay = Math.max(0, grossPay - totalDeductions);
       return {
         employeeId: emp.id,
@@ -11956,9 +11958,23 @@ territory: geo,
     if (id) {
       const emp = d.employees.find(e => e.id === id);
       if (!emp) throw new Error('Employee not found');
+      // Immutable history: past snapshot is frozen; edits only affect current/future
+      d.employeeHistory = Array.isArray(d.employeeHistory) ? d.employeeHistory : [];
+      d.employeeHistory.unshift({
+        id: gid(),
+        employeeId: emp.id,
+        employeeNo: emp.employeeNo,
+        snapshot: JSON.parse(JSON.stringify(emp)),
+        changedBy: u.name,
+        changedAt: new Date().toISOString(),
+        reason: clean(form.changeReason) || 'Profile update'
+      });
+      if (d.employeeHistory.length > 5000) d.employeeHistory = d.employeeHistory.slice(0, 5000);
       Object.assign(emp, employeeRecord(form), { updatedAt: new Date().toISOString() });
-      pushHrTimeline(emp.id, 'Employee Updated', `Profile updated for ${emp.name}`, u);
+      // Never rewrite locked payroll rows for this employee
+      pushHrTimeline(emp.id, 'Employee Updated', `Profile updated for ${emp.name} (past records unchanged)`, u);
       log(u, `Update employee ${emp.name}`, 'HR');
+      try { if (typeof saveState === 'function') Promise.resolve(saveState()).catch(() => {}); } catch {}
       return { success: true, employee: emp };
     }
     const emp = {
@@ -12195,118 +12211,79 @@ territory: geo,
     return { success: true };
   },
   postPayrollToFinance(user, options = {}) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.HR);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.DEV, ROLES.EXECUTIVE);
     const d = data();
     ensureHrData();
     const period = clean(options.period) || new Date().toISOString().slice(0, 7);
+    // Prevent double-post of same period (immutable run)
+    d.payrollRuns = Array.isArray(d.payrollRuns) ? d.payrollRuns : [];
+    d.payslips = Array.isArray(d.payslips) ? d.payslips : [];
+    d.payrollRecords = Array.isArray(d.payrollRecords) ? d.payrollRecords : [];
+    if (d.payrollRuns.some(r => r.period === period && r.status === 'Posted')) {
+      throw new Error(`Payroll for ${period} is already posted. Past runs are locked.`);
+    }
     const employees = (d.employees || []).filter(e => e.status === 'Active');
-    let totalNetPay = 0, totalGrossPay = 0, totalDeductions = 0;
+    let totalNetPay = 0, totalGrossPay = 0, totalDeductions = 0, totalPaye = 0, totalNssf = 0, totalShif = 0, totalAhl = 0;
     const rows = [];
     for (const emp of employees) {
       const empAttendance = (d.attendance || []).filter(a => a.employeeId === emp.id && dateOnly(a.date).slice(0, 7) === period);
-      const hours = empAttendance.reduce((s, a) => s + num(a.hoursWorked), 0);
-      const hourlyRate = num(emp.hourlyRate) > 0 ? num(emp.hourlyRate) : num(emp.salary) / 22 / Math.max(1, num(emp.expectedHoursPerDay || 8));
-      const payType = clean(emp.payType) || 'Salary';
-      const basePay = payType === 'Hourly' ? Math.round(hours * hourlyRate) : num(emp.salary);
-      const allowances = num(emp.houseAllowance) + num(emp.transportAllowance) + num(emp.medicalAllowance) + num(emp.communicationAllowance) + num(emp.riskAllowance) + num(emp.mealAllowance) + num(emp.responsibilityAllowance);
-      const grossPay = Math.round(basePay + allowances);
-      const customDedTotal = (Array.isArray(emp.customDeductions) ? emp.customDeductions : []).reduce((s, cd) => s + num(cd.amount || 0), 0);
-      const statDeductions = Math.round(grossPay * 0.06) + Math.round(grossPay * 0.0275) + Math.round(grossPay * 0.015) + num(emp.loanDeduction) + num(emp.saccoDeduction) + num(emp.otherDeductions) + customDedTotal;
-      const netPay = Math.max(0, grossPay - statDeductions);
-      totalGrossPay += grossPay;
-      totalDeductions += statDeductions;
-      totalNetPay += netPay;
-      rows.push({ employeeNo: emp.employeeNo, name: emp.name, department: emp.department, grossPay, deductions: statDeductions, netPay });
+      const hours = empAttendance.reduce((s, a) => s + num(a.hoursWorked || a.hours || (a.status === 'Present' ? 8 : 0)), 0);
+      const lateHours = empAttendance.reduce((s, a) => s + num(a.lateHours), 0);
+      const expectedHoursPeriod = 22 * Math.max(1, num(emp.expectedHoursPerDay || 8));
+      const slip = computeKenyaPayslip(emp, hours || expectedHoursPeriod, expectedHoursPeriod, lateHours);
+      totalGrossPay += slip.grossPay;
+      totalDeductions += slip.deductions;
+      totalNetPay += slip.netPay;
+      totalPaye += slip.paye;
+      totalNssf += slip.nssf;
+      totalShif += slip.shif;
+      totalAhl += slip.ahl;
+      const payslip = {
+        id: gid(),
+        locked: true,
+        period,
+        employeeId: emp.id,
+        employeeNo: emp.employeeNo,
+        name: emp.name,
+        department: emp.department,
+        position: emp.position,
+        ...slip,
+        status: 'Posted',
+        postedAt: new Date().toISOString(),
+        postedBy: u.name
+      };
+      rows.push(payslip);
+      d.payslips.unshift(payslip);
+      d.payrollRecords.unshift({ ...payslip });
     }
+    const run = {
+      id: gid(), period, status: 'Posted',
+      employeeCount: rows.length,
+      totalGrossPay, totalDeductions, totalNetPay, totalPaye, totalNssf, totalShif, totalAhl,
+      postedBy: u.name, postedAt: new Date().toISOString()
+    };
+    d.payrollRuns.unshift(run);
+    d.payroll = rows;
+    d.payrollPreview = rows;
     const journalDate = today();
-    postFinanceJournal(u, { date: journalDate, sourceModule: 'Payroll', sourceId: `PAYROLL-${period}`, reference: `Payroll ${period}`, description: `Payroll gross salaries ${period}`, debitAccountName: 'Salaries Expense', creditAccountName: 'Cash on Hand', amount: totalGrossPay });
-    postFinanceJournal(u, { date: journalDate, sourceModule: 'Payroll', sourceId: `PAYROLL-${period}`, reference: `Payroll deductions ${period}`, description: `Payroll deductions ${period}`, debitAccountName: 'Cash on Hand', creditAccountName: 'Tax Payable', amount: totalDeductions });
-    d.payrollHistory ||= [];
-    d.payrollHistory.unshift({ id: gid(), period, postedBy: u.name, postedAt: new Date().toISOString(), totalGrossPay, totalDeductions, totalNetPay, employeeCount: employees.length, rows });
-    log(u, `Post payroll to finance for ${period}`, 'HR', `${totalNetPay} net pay, ${employees.length} employees`);
-    return { success: true, period, totalGrossPay, totalDeductions, totalNetPay, employeeCount: employees.length, rows };
+    try {
+      postFinanceJournal(u, { date: journalDate, sourceModule: 'Payroll', sourceId: run.id, reference: `Payroll ${period}`, description: `Payroll gross ${period}`, debitAccountName: 'Salaries Expense', creditAccountName: 'Payroll Payable', amount: totalGrossPay });
+      postFinanceJournal(u, { date: journalDate, sourceModule: 'Payroll', sourceId: run.id, reference: `PAYE ${period}`, description: `PAYE ${period}`, debitAccountName: 'Payroll Payable', creditAccountName: 'Tax Payable', amount: totalPaye });
+      postFinanceJournal(u, { date: journalDate, sourceModule: 'Payroll', sourceId: run.id, reference: `NSSF ${period}`, description: `NSSF ${period}`, debitAccountName: 'Payroll Payable', creditAccountName: 'NSSF Payable', amount: totalNssf });
+      postFinanceJournal(u, { date: journalDate, sourceModule: 'Payroll', sourceId: run.id, reference: `SHIF ${period}`, description: `SHIF ${period}`, debitAccountName: 'Payroll Payable', creditAccountName: 'SHIF Payable', amount: totalShif });
+      postFinanceJournal(u, { date: journalDate, sourceModule: 'Payroll', sourceId: run.id, reference: `Housing Levy ${period}`, description: `AHL ${period}`, debitAccountName: 'Payroll Payable', creditAccountName: 'Housing Levy Payable', amount: totalAhl });
+    } catch (e) { /* journals best-effort */ }
+    pushManualNotification(d, {
+      category: 'payroll', priority: 'high',
+      title: `Payroll posted ${period}`,
+      message: `${rows.length} employees · Gross ${totalGrossPay} · Net ${totalNetPay} · PAYE ${totalPaye}. Ready in Accounts.`,
+      sourceModule: 'hr', sourceId: run.id, sourceLabel: period,
+      audienceRoles: [ROLES.ACCOUNTANT, ROLES.ADMIN, ROLES.DEV, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.HR]
+    });
+    log(u, `Post payroll ${period}`, 'HR', `${rows.length} employees`);
+    try { if (typeof saveState === 'function') Promise.resolve(saveState()).catch(() => {}); } catch {}
+    return { success: true, run, rows, totals: { totalGrossPay, totalDeductions, totalNetPay, totalPaye, totalNssf, totalShif, totalAhl } };
   },
-  recordAttendance(user, form = {}) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.DEV, ROLES.EXECUTIVE);
-    const d = data();
-    ensureHrData();
-    d.employees = Array.isArray(d.employees) ? d.employees : [];
-    d.attendance = Array.isArray(d.attendance) ? d.attendance : [];
-    const empKey = clean(form.employeeId || form.employeeName || form.name);
-    assertRequired(empKey, 'Employee');
-    const emp = d.employees.find(e => e.id === empKey || e.employeeNo === empKey || String(e.name || '').toLowerCase() === String(empKey).toLowerCase());
-    if (!emp) throw new Error('Employee not found — pick a name from the list or add the employee in Directory first');
-    const date = dateOnly(form.date);
-    const checkIn = clean(form.checkIn);
-    const checkOut = clean(form.checkOut);
-    let hoursWorked = 0;
-    if (checkIn && checkOut) {
-      const [ih, im] = checkIn.split(':').map(Number);
-      const [oh, om] = checkOut.split(':').map(Number);
-      const mins = (oh * 60 + om) - (ih * 60 + im) - num(form.breakMinutes);
-      hoursWorked = Math.max(0, Math.round((mins / 60) * 10) / 10);
-    }
-    const existing = d.attendance.findIndex(a => (a.employeeId === emp.id || a.employeeName === emp.name) && a.date === date);
-    const record = { id: existing >= 0 ? d.attendance[existing].id : gid(), employeeId: emp.id, employeeName: emp.name, department: emp.department, date, checkIn, checkOut, breakMinutes: num(form.breakMinutes), shiftType: clean(form.shiftType) || 'Day Shift', workLocation: clean(form.workLocation) || emp.location || '', hoursWorked, status: clean(form.status) || (checkIn ? 'Present' : 'Absent'), note: clean(form.note) };
-    if (existing >= 0) d.attendance[existing] = record; else d.attendance.unshift(record);
-    log(u, `Record attendance ${emp.name}`, 'HR', `${record.status} · ${hoursWorked}h`);
-    return { success: true, record };
-  },
-  saveCandidate(user, form = {}) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.DEV, ROLES.EXECUTIVE);
-    const d = data();
-    ensureHrData();
-    assertRequired(form.name, 'Candidate name');
-    const id = clean(form.id);
-    if (id) {
-      const c = d.candidates.find(x => x.id === id);
-      if (!c) throw new Error('Candidate not found');
-      Object.assign(c, candidateRecord(form));
-      log(u, `Update candidate ${c.name}`, 'HR');
-      return { success: true, candidate: c };
-    }
-    const c = { id: gid(), appliedAt: new Date().toISOString(), ...candidateRecord(form) };
-    d.candidates.unshift(c);
-    log(u, `Add candidate ${c.name}`, 'HR');
-    return { success: true, candidate: c };
-  },
-  moveCandidate(user, id, stage) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.DEV, ROLES.EXECUTIVE);
-    const d = data();
-    ensureHrData();
-    d.candidates = Array.isArray(d.candidates) ? d.candidates : [];
-    const c = d.candidates.find(x => x.id === id);
-    if (!c) throw new Error('Candidate not found');
-    if (!CANDIDATE_STAGES.includes(stage)) throw new Error('Invalid stage');
-    c.stage = stage;
-    if (stage === 'Hired') {
-      const emp = { id: gid(), employeeNo: `EMP-${String((d.employees || []).length + 1).padStart(3, '0')}`, name: c.name, email: c.email, phone: c.phone, department: c.department || 'Sales', position: c.position || 'Officer', employmentType: 'Full-time', joinDate: today(), status: 'Active', salary: num(c.expectedSalary) || 60000, hourlyRate: 0, payType: 'Salary', manager: '', address: '', nationalId: '', kraPin: '', taxCategory: 'Resident', bankName: '', bankBranch: '', bankAccount: '', bankAccountName: '', mpesaNumber: '', paymentMethod: 'Bank Transfer', houseAllowance: 0, transportAllowance: 0, medicalAllowance: 0, communicationAllowance: 0, riskAllowance: 0, mealAllowance: 0, responsibilityAllowance: 0, loanDeduction: 0, saccoDeduction: 0, otherDeductions: 0, customDeductions: [], emergencyContactName: '', emergencyContactPhone: '', emergencyContactRelation: '', nextOfKinName: '', nextOfKinPhone: '', nextOfKinRelation: '', leaveBalanceAnnual: 21, leaveBalanceSick: 10, leaveBalanceCasual: 5 };
-      d.employees.unshift(emp);
-    }
-    log(u, `Move candidate ${c.name} → ${stage}`, 'HR');
-    return { success: true, candidate: c };
-  },
-  saveReview(user, form = {}) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.DEV, ROLES.EXECUTIVE);
-    const d = data();
-    ensureHrData();
-    assertRequired(form.employeeId, 'Employee');
-    const emp = d.employees.find(e => e.id === form.employeeId);
-    if (!emp) throw new Error('Employee not found');
-    const id = clean(form.id);
-    if (id) {
-      const r = d.reviews.find(x => x.id === id);
-      if (!r) throw new Error('Review not found');
-      Object.assign(r, reviewRecord(form, emp));
-      log(u, `Update review ${emp.name}`, 'HR');
-      return { success: true, review: r };
-    }
-    const r = { id: gid(), ...reviewRecord(form, emp) };
-    d.reviews.unshift(r);
-    log(u, `Add review ${emp.name}`, 'HR');
-    return { success: true, review: r };
-  },
-
   sendPayrollEmails(user, options = {}) {
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.HR);
     const d = data();
