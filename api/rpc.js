@@ -4387,7 +4387,11 @@ function expectedHoursInRange(startDate, endDate) {
   return total;
 }
 
-/** Kenya monthly PAYE (resident) bands + personal relief 2,400. No NSSF relief (NSSF removed from system). */
+/**
+ * Kenya employment tax (2026 monthly, resident).
+ * PAYE bands: 10% ≤24k | 25% 24,001–32,333 | 30% 32,334–500k | 32.5% 500,001–800k | 35% above 800k
+ * Personal relief KES 2,400 (tax credit). Pre-tax: NSSF, SHIF, Housing Levy.
+ */
 function calculateKenyaPaye(taxableIncome) {
   const taxable = Math.max(0, num(taxableIncome));
   const bands = [
@@ -4406,8 +4410,90 @@ function calculateKenyaPaye(taxableIncome) {
     prev = band.upTo;
   }
   const PERSONAL_RELIEF = 2400;
-  return Math.max(0, Math.round(tax - PERSONAL_RELIEF));
+  // Return number for callers; also attach detail for advanced use
+  const paye = Math.max(0, Math.round(tax - PERSONAL_RELIEF));
+  return paye;
 }
+
+function calculateKenyaNssf(grossPay) {
+  const g = Math.max(0, num(grossPay));
+  const lel = 9000;
+  const uel = 108000;
+  const tier1 = Math.round(Math.min(g, lel) * 0.06);
+  const tier2 = Math.round(Math.max(0, Math.min(g, uel) - lel) * 0.06);
+  return Math.min(6480, tier1 + tier2);
+}
+
+function calculateKenyaShif(grossPay) {
+  const g = Math.max(0, num(grossPay));
+  return Math.max(300, Math.round(g * 0.0275));
+}
+
+function calculateKenyaHousingLevy(grossPay) {
+  return Math.round(Math.max(0, num(grossPay)) * 0.015);
+}
+
+function computeKenyaPayslip(emp, hours, expectedHoursPeriod, lateHours = 0) {
+  const payType = clean(emp.payType) || 'Salary';
+  const hourlyRate = num(emp.hourlyRate) > 0
+    ? num(emp.hourlyRate)
+    : num(emp.salary) / 22 / Math.max(1, num(emp.expectedHoursPerDay || 8));
+  const overtime = Math.max(0, num(hours) - num(expectedHoursPeriod));
+  const overtimePay = Math.round(overtime * hourlyRate * 1.5);
+  const lateDeduction = Math.round(num(lateHours) * hourlyRate);
+  const houseAllowance = num(emp.houseAllowance);
+  const transportAllowance = num(emp.transportAllowance);
+  const medicalAllowance = num(emp.medicalAllowance);
+  const communicationAllowance = num(emp.communicationAllowance);
+  const riskAllowance = num(emp.riskAllowance);
+  const mealAllowance = num(emp.mealAllowance);
+  const responsibilityAllowance = num(emp.responsibilityAllowance);
+  const totalAllowances = houseAllowance + transportAllowance + medicalAllowance + communicationAllowance + riskAllowance + mealAllowance + responsibilityAllowance;
+  const attendanceFactor = expectedHoursPeriod > 0 ? Math.min(1.25, num(hours) / expectedHoursPeriod) : 1;
+  const basePay = payType === 'Hourly'
+    ? Math.round(num(hours) * hourlyRate)
+    : Math.round(num(emp.salary) * (Number.isFinite(attendanceFactor) ? attendanceFactor : 1));
+  const grossPay = Math.max(0, Math.round(basePay + totalAllowances + overtimePay));
+  const nssfEnabled = emp.applyNssf !== false && String(emp.applyNssf || 'yes').toLowerCase() !== 'no';
+  const shifEnabled = emp.applyShif !== false && String(emp.applyShif || 'yes').toLowerCase() !== 'no';
+  const ahlEnabled = emp.applyHousingLevy !== false && String(emp.applyHousingLevy || 'yes').toLowerCase() !== 'no';
+  const nssf = nssfEnabled ? calculateKenyaNssf(grossPay) : 0;
+  const shif = shifEnabled ? calculateKenyaShif(grossPay) : 0;
+  const ahl = ahlEnabled ? calculateKenyaHousingLevy(grossPay) : 0;
+  const customList = (Array.isArray(emp.customDeductions) ? emp.customDeductions : []).filter(cd => cd && cd.active !== false);
+  const resolvedCustom = customList.map(cd => {
+    const method = clean(cd.method) || 'Fixed';
+    const amount = method === 'Percent' ? Math.round(grossPay * (num(cd.percent) / 100)) : Math.round(num(cd.amount));
+    const taxExempt = !!(cd.taxExempt || /exempt|relief|pension|nssf|shif|housing/i.test(`${cd.label || ''} ${cd.type || ''}`));
+    return { ...cd, resolvedAmount: amount, taxExempt };
+  });
+  const taxExemptCustom = Math.round(resolvedCustom.filter(cd => cd.taxExempt).reduce((s, cd) => s + num(cd.resolvedAmount), 0));
+  const customDeductionTotal = Math.round(resolvedCustom.reduce((s, cd) => s + num(cd.resolvedAmount), 0));
+  const taxableIncome = Math.max(0, grossPay - nssf - shif - ahl - taxExemptCustom);
+  const paye = calculateKenyaPaye(taxableIncome);
+  const loanDeduction = num(emp.loanDeduction);
+  const sacco = num(emp.saccoDeduction);
+  const otherDeductions = num(emp.otherDeductions);
+  const totalDeductions = paye + nssf + shif + ahl + loanDeduction + sacco + otherDeductions + lateDeduction + customDeductionTotal;
+  const netPay = Math.max(0, grossPay - totalDeductions);
+  return {
+    basePay, totalAllowances, overtimePay, grossPay, nssf, shif, ahl, nhif: 0,
+    taxableIncome, paye, personalRelief: 2400, loanDeduction, sacco, otherDeductions, lateDeduction,
+    customDeductions: resolvedCustom.map(cd => ({
+      id: cd.id, label: cd.label, method: cd.method || 'Fixed', amount: cd.resolvedAmount,
+      percent: cd.percent, type: cd.type, taxExempt: !!cd.taxExempt
+    })),
+    customDeductionTotal, taxExemptCustom, deductions: totalDeductions, netPay,
+    hourlyRate: Math.round(hourlyRate * 100) / 100,
+    hours: Math.round(num(hours) * 10) / 10,
+    expectedHours: Math.round(num(expectedHoursPeriod) * 10) / 10,
+    overtime: Math.round(overtime * 10) / 10, payType,
+    houseAllowance, transportAllowance, medicalAllowance, communicationAllowance,
+    riskAllowance, mealAllowance, responsibilityAllowance,
+    basicSalary: payType === 'Hourly' ? 0 : num(emp.salary)
+  };
+}
+
 
 function pushHrTimeline(employeeId, action, description, user) {
   if (!db) return;
@@ -11520,6 +11606,10 @@ territory: geo,
 
   // ─────────────────────────── HR SUITE ───────────────────────────
   getHrData(user, filters = {}) {
+    if (typeof calculateKenyaNssf !== 'function' || typeof calculateKenyaShif !== 'function') {
+      throw new Error('Payroll tax engine missing — contact developer');
+    }
+
     const u = reqRole(user);
     const d = data();
     ensureHrData();
@@ -11652,7 +11742,7 @@ territory: geo,
       const taxExemptCustom = Math.round(resolvedCustom.filter(cd => cd.taxExempt).reduce((s, cd) => s + num(cd.resolvedAmount), 0));
       // PAYE on balance after exempt deductions; personal relief 2,400
       const taxableIncome = Math.max(0, grossPay - nssf - shif - ahl - taxExemptCustom);
-      let paye = calculateKenyaPaye(taxableIncome).paye;
+      let paye = calculateKenyaPaye(taxableIncome);
       // HR can override PAYE with a custom deduction labeled PAYE Override
       const payeOverride = customList.find(cd => /paye\s*override/i.test(cd.label || ''));
       if (payeOverride) paye = Math.max(0, Math.round(num(payeOverride.amount)));
