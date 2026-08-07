@@ -7709,6 +7709,11 @@ const api = {
     reqRole(user);
     ensureManufacturingData();
     const d = data();
+    ['rawMaterials','rawMaterialBatches','formulas','formulaVersions','productionOrders','productionBatches',
+     'rawMaterialConsumption','qualityControlRecords','wasteRecords','inventoryTransactions',
+     'productionBatchCosts','productionBatchYields','packagingMaterials','unitOfMeasure'].forEach(k => {
+      if (!Array.isArray(d[k])) d[k] = [];
+    });
     const scope = filters && filters.period ? { ...periodRange(filters.period), ...filters } : (filters || {});
     const orders = (d.productionOrders || []).filter(Boolean).filter(row => inDateRange(row, scope));
     const materials = (d.rawMaterials || []).filter(Boolean);

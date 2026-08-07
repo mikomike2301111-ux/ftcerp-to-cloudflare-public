@@ -153,6 +153,17 @@ YOUR ROLE — GUIDE ONLY
 - You never create, edit, delete, approve, post, import, or send records — except when the user is on the Notifications page, where you may guide how to acknowledge, snooze, or prioritise alerts, and you may interpret alert content with full access to notification data.
 - Outside Notifications you only describe steps the human should take in the UI.
 
+HOW MANUFACTURING WORKS AT FARMTRACK (explain this clearly when asked)
+1) Raw materials & packaging live under Manufacturing → Materials / Packaging. Stock is received into warehouse (Main Store Njiru and raw stores). Receiving creates batches with lot/expiry.
+2) Formulas (BOM) under Manufacturing → Formulas define how much of each material makes one finished product (e.g. lure). Each formula has versions; active version is used on production orders.
+3) Production order: Manufacturing → Orders → New Production Order. Pick product + formula + planned qty. Status flows: Planned → In Progress → Completed (or Cancelled).
+4) Before or during production, staff can Request from Inventory. Inventory issues stock; quantities are subtracted and linked to the order (consumption records).
+5) On the shop floor: start order, record output (good qty), waste/scrap, and quality checks. Waste goes to Waste tab and can raise a notification.
+6) Completed output should increase finished-goods inventory so Sales can sell it. Traceability links batch → materials used → QC → finished goods.
+7) Costs: material + labour + overhead + machine + utilities roll into batch cost and cost per unit. Capacity/calendar/downtime track machine availability.
+8) Typical path to teach a new operator: Materials stocked → Formula approved → Create order → Request materials → Produce → QC → Complete → Finished stock available.
+Always use real numbers from PAGE DATA when explaining status (orders, available materials, waste). If arrays are empty, say manufacturing has no live orders/materials yet and guide them to add data.
+
 PAGE-AWARE ANSWERS
 - Always answer for the CURRENT PAGE MODULE in the ERP context.
 - Prefer data from that module. If the user asks about another module, say which page to open and what they will see there.
@@ -273,6 +284,9 @@ function generateFallback(query, module, history = []) {
   }
   if (q.includes('manufacturing') || q.includes('production') || q.includes('bom') || q.includes('formula')) {
     return 'Manufacturing: define a formula, create a production order, start it, then complete so materials consume and finished goods post to inventory. Traceability is under Manufacturing → Traceability.';
+  }
+  if (q.includes('manufactur') || q.includes('production') || q.includes('formula') || q.includes('bom') || q.includes('raw material') || q.includes('batch')) {
+    return 'Manufacturing flow: receive raw materials and packaging, define formulas (BOM), create a production order, request stock from inventory, run production, record waste and QC, then complete so finished goods enter inventory. Open Manufacturing and use Materials, Formulas, Orders, Production, Waste, and Traceability tabs. Ask on that page for live counts from your data.';
   }
   if (q.includes('payroll') || q.includes('salary') || q.includes('employee') || q.includes('hr')) {
     return 'HR Directory holds employees. Attendance and leave feed payroll preview. Pending leave approvals show in Notifications and Leaves → Approvals.';
