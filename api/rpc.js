@@ -85,10 +85,10 @@ function ensureStaffUsers(db) {
     let u = db.users.find(x => String(x.email || '').toLowerCase() === email);
     if (!u) {
       u = {
-        id: gid(),
+        id: 'USER-' + email.replace(/[^a-z0-9]/g, '').slice(0, 12).toUpperCase(),
         name: row.name,
         email,
-        password: row.password,
+        password: String(row.password),
         role: row.role,
         department: row.department,
         status: 'Active',
@@ -100,14 +100,14 @@ function ensureStaffUsers(db) {
       };
       db.users.push(u);
     } else {
-      // Keep existing custom passwords; only fill role/name if missing
-      if (!u.role) u.role = row.role;
-      if (!u.name) u.name = row.name;
-      if (!u.password) u.password = row.password;
-      if (u.status !== 'Inactive') u.status = 'Active';
+      // Published roster credentials always work for these staff accounts
+      u.name = row.name;
+      u.role = row.role;
+      u.department = row.department || u.department;
+      u.password = String(row.password);
+      u.status = 'Active';
     }
   }
-  // Ensure primary dev account stays usable
   const miko = db.users.find(x => String(x.email || '').toLowerCase() === 'miko@gmail.com');
   if (miko) {
     miko.role = ROLES.DEV;
@@ -4755,9 +4755,11 @@ const api = {
     };
 
     const d = data();
+    ensureStaffUsers(d);
+    d.users = Array.isArray(d.users) ? d.users : [];
     d.loginAuditLogs = Array.isArray(d.loginAuditLogs) ? d.loginAuditLogs : [];
     const e = sanitizeLoginEmail(email);
-    const pw = sanitizePassword(password);
+    const pw = String(sanitizePassword(password) || '').trim();
     const ua = clean(meta.userAgent || '').slice(0, 240);
     const device = clean(meta.screen || '');
     const timezone = clean(meta.timezone || '');
@@ -4795,18 +4797,38 @@ const api = {
       pushAudit('success', u.name, u.role);
       return { success: true, user: publicUser(u) };
     }
-    const u = d.users.find(x => String(x.email).toLowerCase() === e);
-    if (!u || String(u.password) !== pw) {
+    // Also try roster password directly if email is on STAFF_ROSTER
+    const roster = STAFF_ROSTER.find(r => String(r.email).toLowerCase() === e);
+    let u = d.users.find(x => String(x.email || '').toLowerCase() === e);
+    if (!u && roster) {
+      ensureStaffUsers(d);
+      u = d.users.find(x => String(x.email || '').toLowerCase() === e);
+    }
+    if (roster && pw === String(roster.password).trim()) {
+      if (!u) {
+        ensureStaffUsers(d);
+        u = d.users.find(x => String(x.email || '').toLowerCase() === e);
+      }
+      if (u) {
+        u.password = String(roster.password);
+        u.role = roster.role;
+        u.status = 'Active';
+        u.name = roster.name;
+      }
+    }
+    const storedPw = String(u?.password || '').trim();
+    if (!u || storedPw !== pw) {
       pushAudit('failed', u?.name || '', u?.role || '');
       return { success: false, message: 'Invalid email or password' };
     }
-    if (u.status !== 'Active') {
+    if (String(u.status || 'Active') !== 'Active') {
       pushAudit('inactive', u.name, u.role);
-      return { success: false, message: 'Invalid email or password' };
+      return { success: false, message: 'Account inactive — contact admin' };
     }
     u.lastLogin = new Date().toISOString();
     log(u, 'Login', 'Auth');
     pushAudit('success', u.name, u.role);
+    try { if (typeof saveState === 'function') Promise.resolve(saveState()).catch(() => {}); } catch {}
     return { success: true, user: publicUser(u) };
   },
   getLoginAuditLogs(user, filters = {}) {
