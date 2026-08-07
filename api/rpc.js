@@ -164,7 +164,7 @@ const STAFF_ROSTER = [
   { name: 'Accounts Officer', email: 'accounts@farmtrack.co.ke', password: 'Acc2026!', role: ROLES.ACCOUNTANT, department: 'Finance' },
   { name: 'Reception', email: 'reception@farmtrack.co.ke', password: 'Rec2026!', role: ROLES.RECEPTION, department: 'Administration' },
   { name: 'Edna', email: 'edna@farmtrack.co.ke', password: 'SalesEdna1!', role: ROLES.SALES, department: 'Sales' },
-  { name: 'Joseph', email: 'joseph@farmtrack.co.ke', password: 'SalesJoe1!', role: ROLES.SALES, department: 'Sales' },
+  { name: 'Joseph', email: 'joseph@farmtrack.co.ke', password: 'Pass2026', role: ROLES.SALES, department: 'Sales' },
   { name: 'Njoroge', email: 'njoroge@farmtrack.co.ke', password: 'SalesNjo1!', role: ROLES.SALES, department: 'Sales' },
   { name: 'Purity', email: 'purity@farmtrack.co.ke', password: 'SalesPur1!', role: ROLES.SALES, department: 'Sales' },
   { name: 'Manufacturing Lead', email: 'mfg1@farmtrack.co.ke', password: 'Mfg2026a!', role: ROLES.PRODUCTION, department: 'Manufacturing' },
