@@ -44,7 +44,8 @@ const PAGE_ACCESS = {
   hr: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.HR],
   leaves: ['*'],
   requisitions: ['*'],
-  settings: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.HR, ROLES.ACCOUNTANT]
+  settings: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.HR, ROLES.ACCOUNTANT],
+  'admin-ops': [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE]
 };
 
 function roleCanAccessPage(role, pageId) {
@@ -158,7 +159,7 @@ function ensureCrmPipelineLead(d, customer, { salesperson, stage, notes, product
 
 const STAFF_ROSTER = [
   { name: 'Miko Admin', email: 'miko@gmail.com', password: 'MM@29315122', role: ROLES.DEV, department: 'Executive' },
-  { name: 'Boss Executive', email: 'boss@farmtrack.co.ke', password: 'Boss2026!', role: ROLES.EXECUTIVE, department: 'Executive' },
+  { name: 'Samuel', email: 'farmtrackbiosciencesltd@gmail.com', password: 'Boss2026!', role: ROLES.EXECUTIVE, department: 'Executive' },
   { name: 'Office Admin', email: 'admin@farmtrack.co.ke', password: 'Admin2026!', role: ROLES.ADMIN, department: 'Administration' },
   { name: 'HR Officer', email: 'hr@farmtrack.co.ke', password: 'Hr2026!', role: ROLES.HR, department: 'HR' },
   { name: 'Accounts Officer', email: 'accounts@farmtrack.co.ke', password: 'Acc2026!', role: ROLES.ACCOUNTANT, department: 'Finance' },
@@ -167,10 +168,11 @@ const STAFF_ROSTER = [
   { name: 'Joseph', email: 'joseph@farmtrack.co.ke', password: 'Pass2026', role: ROLES.SALES, department: 'Sales' },
   { name: 'Njoroge', email: 'njoroge@farmtrack.co.ke', password: 'SalesNjo1!', role: ROLES.SALES, department: 'Sales' },
   { name: 'Purity', email: 'purity@farmtrack.co.ke', password: 'SalesPur1!', role: ROLES.SALES, department: 'Sales' },
-  { name: 'Manufacturing Lead', email: 'mfg1@farmtrack.co.ke', password: 'Mfg2026a!', role: ROLES.PRODUCTION, department: 'Manufacturing' },
-  { name: 'Manufacturing Tech', email: 'mfg2@farmtrack.co.ke', password: 'Mfg2026b!', role: ROLES.PRODUCTION, department: 'Manufacturing' },
-  { name: 'Security Casual', email: 'security@farmtrack.co.ke', password: 'Casual1!', role: ROLES.CASUAL, department: 'Operations' },
-  { name: 'Casual Staff 2', email: 'casual2@farmtrack.co.ke', password: 'Casual2!', role: ROLES.CASUAL, department: 'Operations' }
+  { name: 'Moses', email: 'moses@farmtrack.co.ke', password: 'Moses2026!', role: ROLES.PRODUCTION, department: 'Bacteriology' },
+  { name: 'EPF Fungal', email: 'epf@farmtrack.co.ke', password: 'Epf2026!', role: ROLES.PRODUCTION, department: 'Fungal' },
+  { name: 'Alex', email: 'alex@farmtrack.co.ke', password: 'Alex2026!', role: ROLES.PRODUCTION, department: 'R&D' },
+  { name: 'Masharia', email: 'masharia@farmtrack.co.ke', password: 'Mash2026!', role: ROLES.CASUAL, department: 'Operations' },
+  { name: 'KK', email: 'kk@farmtrack.co.ke', password: 'Kk2026!', role: ROLES.CASUAL, department: 'Operations' }
 ];
 
 function ensureStaffUsers(db) {
@@ -6753,6 +6755,183 @@ const api = {
     log(u, `Import ${moduleName} From Google Sheets`, 'Integrations', `${upserted} rows`);
     return { success: errors.length === 0, module: moduleName, imported: upserted, errors, log: logEntry };
   },
+
+  getAdminOpsWorkspaceData(user) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.DEV, ROLES.EXECUTIVE);
+    const d = data();
+    d.meetings = Array.isArray(d.meetings) ? d.meetings : [];
+    d.massEmails = Array.isArray(d.massEmails) ? d.massEmails : [];
+    d.suppliers = Array.isArray(d.suppliers) ? d.suppliers : [];
+    d.requisitions = Array.isArray(d.requisitions) ? d.requisitions : [];
+    d.purchaseOrders = Array.isArray(d.purchaseOrders) ? d.purchaseOrders : [];
+    d.quotations = Array.isArray(d.quotations) ? d.quotations : [];
+    const pendingReq = d.requisitions.filter(r => ['Pending', 'Submitted', 'Open'].includes(String(r.status || 'Pending')));
+    return {
+      overview: {
+        meetingsUpcoming: d.meetings.filter(m => String(m.status) !== 'Done' && String(m.status) !== 'Cancelled').length,
+        massEmailsSent: d.massEmails.length,
+        pendingRequisitions: pendingReq.length,
+        suppliers: d.suppliers.length,
+        openPOs: d.purchaseOrders.filter(p => !['Received', 'Closed', 'Cancelled'].includes(String(p.status))).length,
+        openQuotes: d.quotations.filter(q => String(q.status) !== 'Accepted' && String(q.status) !== 'Rejected').length
+      },
+      meetings: d.meetings.slice(0, 50),
+      massEmails: d.massEmails.slice(0, 30),
+      requisitions: pendingReq.slice(0, 40),
+      suppliers: d.suppliers.slice(0, 50),
+      purchaseOrders: d.purchaseOrders.slice(0, 40),
+      quotations: d.quotations.slice(0, 40),
+      staff: (d.users || []).filter(x => x.status === 'Active').map(x => ({ id: x.id, name: x.name, email: x.email, role: x.role, department: x.department }))
+    };
+  },
+  scheduleMeeting(user, form = {}) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.DEV, ROLES.EXECUTIVE, ROLES.MANAGER);
+    const d = data();
+    d.meetings = Array.isArray(d.meetings) ? d.meetings : [];
+    const title = clean(form.title);
+    const when = clean(form.when || form.date);
+    if (!title || !when) throw new Error('Meeting title and date/time are required');
+    const row = {
+      id: gid(),
+      title,
+      when,
+      location: clean(form.location) || 'Office',
+      attendees: Array.isArray(form.attendees) ? form.attendees.map(clean).filter(Boolean) : String(form.attendees || '').split(',').map(clean).filter(Boolean),
+      agenda: clean(form.agenda),
+      logistics: clean(form.logistics),
+      alertMinutes: num(form.alertMinutes || 30),
+      status: clean(form.status) || 'Scheduled',
+      createdBy: u.name,
+      createdAt: new Date().toISOString()
+    };
+    d.meetings.unshift(row);
+    pushManualNotification(d, {
+      category: 'admin', priority: 'normal',
+      title: `Meeting: ${title}`,
+      message: `${when} · ${row.location} · ${row.attendees.slice(0, 5).join(', ')}`,
+      sourceModule: 'admin-ops', sourceId: row.id, sourceLabel: title,
+      audienceRoles: [ROLES.ADMIN, ROLES.DEV, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.HR]
+    });
+    log(u, 'Schedule meeting', 'Admin', title);
+    try { if (typeof saveState === 'function') Promise.resolve(saveState()).catch(() => {}); } catch {}
+    return { success: true, meeting: row };
+  },
+  sendMassEmail(user, form = {}) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.DEV, ROLES.EXECUTIVE);
+    const d = data();
+    d.massEmails = Array.isArray(d.massEmails) ? d.massEmails : [];
+    const subject = clean(form.subject);
+    const body = clean(form.body);
+    if (!subject || !body) throw new Error('Subject and message are required');
+    const audience = clean(form.audience) || 'All staff';
+    const recipients = (d.users || []).filter(x => x.status === 'Active' && x.email).map(x => x.email);
+    const row = {
+      id: gid(),
+      subject,
+      body,
+      audience,
+      recipientCount: recipients.length,
+      recipients: recipients.slice(0, 200),
+      status: 'Recorded',
+      sentBy: u.name,
+      createdAt: new Date().toISOString()
+    };
+    d.massEmails.unshift(row);
+    pushManualNotification(d, {
+      category: 'admin', priority: 'high',
+      title: `Company email: ${subject}`,
+      message: body.slice(0, 160),
+      sourceModule: 'admin-ops', sourceId: row.id, sourceLabel: subject,
+      audienceRoles: [ROLES.ADMIN, ROLES.DEV, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.HR, ROLES.SALES, ROLES.PRODUCTION, ROLES.ACCOUNTANT, ROLES.RECEPTION]
+    });
+    log(u, 'Mass email', 'Admin', subject);
+    try { if (typeof saveState === 'function') Promise.resolve(saveState()).catch(() => {}); } catch {}
+    return { success: true, record: row, note: 'Message recorded and staff alerted in ERP. Connect Resend for mailbox delivery if needed.' };
+  },
+  saveSupplier(user, form = {}) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.DEV, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.PROCUREMENT, ROLES.ACCOUNTANT);
+    const d = data();
+    d.suppliers = Array.isArray(d.suppliers) ? d.suppliers : [];
+    const name = clean(form.name);
+    if (!name) throw new Error('Supplier name is required');
+    let row = d.suppliers.find(s => s.id === form.id || String(s.name).toLowerCase() === name.toLowerCase());
+    if (!row) {
+      row = { id: gid(), name, createdAt: new Date().toISOString() };
+      d.suppliers.unshift(row);
+    }
+    Object.assign(row, {
+      name,
+      contactPerson: clean(form.contactPerson),
+      phone: clean(form.phone),
+      whatsapp: clean(form.whatsapp || form.phone),
+      email: clean(form.email),
+      address: clean(form.address),
+      category: clean(form.category) || 'General',
+      paymentTerms: clean(form.paymentTerms),
+      notes: clean(form.notes),
+      status: clean(form.status) || 'Active',
+      updatedAt: new Date().toISOString()
+    });
+    log(u, 'Save supplier', 'Procurement', name);
+    try { if (typeof saveState === 'function') Promise.resolve(saveState()).catch(() => {}); } catch {}
+    return { success: true, supplier: row };
+  },
+  sendProcurementMessage(user, form = {}) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.DEV, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.PROCUREMENT);
+    const d = data();
+    d.procurementOutbox = Array.isArray(d.procurementOutbox) ? d.procurementOutbox : [];
+    const type = clean(form.type) || 'quotation'; // quotation | purchase_order
+    const supplierName = clean(form.supplierName);
+    const channel = clean(form.channel) || 'email'; // email | whatsapp
+    if (!supplierName) throw new Error('Supplier is required');
+    const supplier = (d.suppliers || []).find(s => String(s.name).toLowerCase() === supplierName.toLowerCase() || s.id === form.supplierId);
+    const toEmail = clean(form.toEmail) || supplier?.email || '';
+    const toWhatsapp = clean(form.toWhatsapp) || supplier?.whatsapp || supplier?.phone || '';
+    if (channel === 'email' && !toEmail) throw new Error('Supplier email is required for email channel');
+    if (channel === 'whatsapp' && !toWhatsapp) throw new Error('Supplier WhatsApp/phone is required');
+    const subject = clean(form.subject) || (type === 'purchase_order' ? 'Purchase Order' : 'Request for Quotation');
+    const body = clean(form.body);
+    if (!body) throw new Error('Message body is required');
+    const row = {
+      id: gid(), type, channel, supplierName: supplier?.name || supplierName,
+      supplierId: supplier?.id || '', toEmail, toWhatsapp, subject, body,
+      status: 'Queued', createdBy: u.name, createdAt: new Date().toISOString()
+    };
+    d.procurementOutbox.unshift(row);
+    if (type === 'purchase_order') {
+      d.purchaseOrders = Array.isArray(d.purchaseOrders) ? d.purchaseOrders : [];
+      d.purchaseOrders.unshift({
+        id: gid(), poNo: 'PO-' + Date.now().toString(36).toUpperCase(),
+        supplierName: row.supplierName, status: 'Sent', channel, total: num(form.total),
+        notes: body.slice(0, 200), createdAt: row.createdAt, createdBy: u.name
+      });
+    } else {
+      d.quotations = Array.isArray(d.quotations) ? d.quotations : [];
+      d.quotations.unshift({
+        id: gid(), quoteNo: 'RFQ-' + Date.now().toString(36).toUpperCase(),
+        supplierName: row.supplierName, status: 'Sent', channel,
+        notes: body.slice(0, 200), createdAt: row.createdAt, createdBy: u.name
+      });
+    }
+    log(u, `Send ${type} via ${channel}`, 'Procurement', row.supplierName);
+    try { if (typeof saveState === 'function') Promise.resolve(saveState()).catch(() => {}); } catch {}
+    return { success: true, outbox: row };
+  },
+  adminResolveRequisition(user, id, decision = 'Approved', note = '') {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.DEV, ROLES.EXECUTIVE, ROLES.MANAGER);
+    const d = data();
+    d.requisitions = Array.isArray(d.requisitions) ? d.requisitions : [];
+    const row = d.requisitions.find(r => r.id === id);
+    if (!row) throw new Error('Requisition not found');
+    row.status = decision === 'Rejected' ? 'Rejected' : 'Approved';
+    row.adminNote = clean(note);
+    row.resolvedBy = u.name;
+    row.resolvedAt = new Date().toISOString();
+    log(u, `Requisition ${row.status}`, 'Admin', row.reqNo || row.id);
+    try { if (typeof saveState === 'function') Promise.resolve(saveState()).catch(() => {}); } catch {}
+    return { success: true, requisition: row };
+  },
+
   getSettingsWorkspaceData(user) {
     const _d0 = data(); ensureStaffUsers(_d0);
 

@@ -459,6 +459,7 @@ const nav = [
   { id: 'hr', label: 'HR', icon: UserCog },
   { id: 'leaves', label: 'Leaves', icon: CalendarClock },
   { id: 'requisitions', label: 'Requisitions', icon: ClipboardCheck },
+  { id: 'admin-ops', label: 'Admin Office', icon: ShieldCheck },
   { id: 'settings', label: 'Settings', icon: Settings }
 ];
 const routeAliases = { crm: 'customers', purchases: 'purchasing', manufacturing: 'production', emails: 'email-admin', leave: 'leaves' };
@@ -643,6 +644,224 @@ function timeAgo(iso) {
   return `${days}d ago`;
 }
 
+
+function AdminOpsWorkspace({ user, setPage }) {
+  const tabs = ['overview', 'meetings', 'mass-email', 'requisitions', 'suppliers', 'procurement'];
+  const [view, setView] = useState('overview');
+  const [refreshKey, setRefreshKey] = useState(0);
+  const { loading, data, error } = useServer(user, 'getAdminOpsWorkspaceData', [], [refreshKey]);
+  const [meetingForm, setMeetingForm] = useState({ title: '', when: '', location: 'Board room', attendees: '', agenda: '', logistics: '', alertMinutes: 30 });
+  const [emailForm, setEmailForm] = useState({ subject: '', body: '', audience: 'All staff' });
+  const [supplierForm, setSupplierForm] = useState({ name: '', contactPerson: '', phone: '', whatsapp: '', email: '', address: '', category: 'General', paymentTerms: '', notes: '' });
+  const [procForm, setProcForm] = useState({ type: 'quotation', channel: 'email', supplierName: '', toEmail: '', toWhatsapp: '', subject: '', body: '', total: '' });
+  const [busy, setBusy] = useState(false);
+  if (loading && !data) return <LoadingState label="Loading Admin Office…" />;
+  if (error && !data) return <ErrorState title="Admin Office" error={error} />;
+  const ov = data?.overview || {};
+  const staff = data?.staff || [];
+  return (
+    <div className="page-stack">
+      <section className="command-hero accounts-hero">
+        <div>
+          <span>ADMIN OFFICE</span>
+          <h1>Company control desk</h1>
+          <p>Meetings, mass alerts, requisitions, suppliers and procurement messages. Visible to Admin, Executive and Developer.</p>
+        </div>
+        <div className="command-hero-stats">
+          <article><span>Meetings</span><strong>{ov.meetingsUpcoming || 0}</strong></article>
+          <article><span>Pending reqs</span><strong>{ov.pendingRequisitions || 0}</strong></article>
+          <article><span>Suppliers</span><strong>{ov.suppliers || 0}</strong></article>
+          <article><span>Open POs</span><strong>{ov.openPOs || 0}</strong></article>
+        </div>
+      </section>
+      <div className="tabs-row">
+        {tabs.map(t => (
+          <button key={t} type="button" className={view === t ? 'active' : ''} onClick={() => setView(t)}>{t.replace('-', ' ')}</button>
+        ))}
+      </div>
+
+      {view === 'overview' && (
+        <div className="dashboard-grid">
+          <Panel className="span-6" title="Upcoming meetings">
+            <SimpleTable rows={data?.meetings || []} columns={['title', 'when', 'location', 'status', 'createdBy']} pageSize={10} />
+          </Panel>
+          <Panel className="span-6" title="Pending requisitions">
+            <SimpleTable rows={data?.requisitions || []} columns={['reqNo', 'module', 'requestedBy', 'status', 'priority']} pageSize={10} />
+          </Panel>
+          <Panel className="span-12" title="Active staff directory">
+            <SimpleTable rows={staff} columns={['name', 'email', 'role', 'department']} pageSize={25} />
+          </Panel>
+        </div>
+      )}
+
+      {view === 'meetings' && (
+        <div className="dashboard-grid">
+          <Panel className="span-5" title="Schedule meeting">
+            <form className="settings-form-grid" onSubmit={async e => {
+              e.preventDefault(); setBusy(true);
+              try {
+                await rpc('scheduleMeeting', [user, { ...meetingForm, attendees: meetingForm.attendees }]);
+                setMeetingForm({ title: '', when: '', location: 'Board room', attendees: '', agenda: '', logistics: '', alertMinutes: 30 });
+                setRefreshKey(x => x + 1);
+              } catch (err) { alert(err.message); }
+              finally { setBusy(false); }
+            }}>
+              <label>Title<input value={meetingForm.title} onChange={e => setMeetingForm({ ...meetingForm, title: e.target.value })} required /></label>
+              <label>Date & time<input type="datetime-local" value={meetingForm.when} onChange={e => setMeetingForm({ ...meetingForm, when: e.target.value })} required /></label>
+              <label>Location<input value={meetingForm.location} onChange={e => setMeetingForm({ ...meetingForm, location: e.target.value })} /></label>
+              <label>Attendees<input value={meetingForm.attendees} onChange={e => setMeetingForm({ ...meetingForm, attendees: e.target.value })} placeholder="Comma-separated names" /></label>
+              <label>Agenda<textarea rows={3} value={meetingForm.agenda} onChange={e => setMeetingForm({ ...meetingForm, agenda: e.target.value })} /></label>
+              <label>Logistics<textarea rows={2} value={meetingForm.logistics} onChange={e => setMeetingForm({ ...meetingForm, logistics: e.target.value })} placeholder="Room, tea, projector…" /></label>
+              <label>Alert (minutes before)<input type="number" value={meetingForm.alertMinutes} onChange={e => setMeetingForm({ ...meetingForm, alertMinutes: e.target.value })} /></label>
+              <button type="submit" className="primary-action" disabled={busy}>{busy ? 'Saving…' : 'Schedule & alert'}</button>
+            </form>
+          </Panel>
+          <Panel className="span-7" title="Meeting log">
+            <SimpleTable rows={data?.meetings || []} columns={['title', 'when', 'location', 'logistics', 'status', 'createdBy']} pageSize={25} />
+          </Panel>
+        </div>
+      )}
+
+      {view === 'mass-email' && (
+        <div className="dashboard-grid">
+          <Panel className="span-5" title="Mass email / company alert">
+            <form className="settings-form-grid" onSubmit={async e => {
+              e.preventDefault(); setBusy(true);
+              try {
+                const res = await rpc('sendMassEmail', [user, emailForm]);
+                alert(res?.note || 'Recorded');
+                setEmailForm({ subject: '', body: '', audience: 'All staff' });
+                setRefreshKey(x => x + 1);
+              } catch (err) { alert(err.message); }
+              finally { setBusy(false); }
+            }}>
+              <label>Audience
+                <select value={emailForm.audience} onChange={e => setEmailForm({ ...emailForm, audience: e.target.value })}>
+                  <option>All staff</option>
+                  <option>Managers</option>
+                  <option>Sales</option>
+                  <option>Production</option>
+                </select>
+              </label>
+              <label>Subject<input value={emailForm.subject} onChange={e => setEmailForm({ ...emailForm, subject: e.target.value })} required /></label>
+              <label>Message<textarea rows={6} value={emailForm.body} onChange={e => setEmailForm({ ...emailForm, body: e.target.value })} required /></label>
+              <button type="submit" className="primary-action" disabled={busy}>{busy ? 'Sending…' : 'Send & record'}</button>
+            </form>
+          </Panel>
+          <Panel className="span-7" title="Mass email history">
+            <SimpleTable rows={data?.massEmails || []} columns={['subject', 'audience', 'recipientCount', 'sentBy', 'createdAt', 'status']} pageSize={25} />
+          </Panel>
+        </div>
+      )}
+
+      {view === 'requisitions' && (
+        <Panel title="Requisitions for Admin action">
+          <p style={{ color: '#667085', fontSize: 13, marginTop: 0 }}>Approve or reject company requisitions here.</p>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Ref</th><th>Module</th><th>By</th><th>Priority</th><th>Status</th><th>Action</th></tr></thead>
+              <tbody>
+                {(data?.requisitions || []).map(r => (
+                  <tr key={r.id}>
+                    <td>{r.reqNo || r.id}</td>
+                    <td>{r.module || '—'}</td>
+                    <td>{r.requestedBy || r.createdBy || '—'}</td>
+                    <td>{r.priority || 'Normal'}</td>
+                    <td>{r.status}</td>
+                    <td style={{ display: 'flex', gap: 6 }}>
+                      <button type="button" className="mini-action" onClick={async () => { try { await rpc('adminResolveRequisition', [user, r.id, 'Approved', '']); setRefreshKey(x => x + 1); } catch (e) { alert(e.message); } }}>Approve</button>
+                      <button type="button" className="mini-action" onClick={async () => { try { await rpc('adminResolveRequisition', [user, r.id, 'Rejected', '']); setRefreshKey(x => x + 1); } catch (e) { alert(e.message); } }}>Reject</button>
+                    </td>
+                  </tr>
+                ))}
+                {!(data?.requisitions || []).length && <tr><td colSpan={6}><div className="empty-state">No pending requisitions</div></td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+      )}
+
+      {view === 'suppliers' && (
+        <div className="dashboard-grid">
+          <Panel className="span-5" title="Supplier database">
+            <form className="settings-form-grid" onSubmit={async e => {
+              e.preventDefault(); setBusy(true);
+              try {
+                await rpc('saveSupplier', [user, supplierForm]);
+                setSupplierForm({ name: '', contactPerson: '', phone: '', whatsapp: '', email: '', address: '', category: 'General', paymentTerms: '', notes: '' });
+                setRefreshKey(x => x + 1);
+              } catch (err) { alert(err.message); }
+              finally { setBusy(false); }
+            }}>
+              <label>Supplier name<input value={supplierForm.name} onChange={e => setSupplierForm({ ...supplierForm, name: e.target.value })} required /></label>
+              <label>Contact person<input value={supplierForm.contactPerson} onChange={e => setSupplierForm({ ...supplierForm, contactPerson: e.target.value })} /></label>
+              <label>Phone<input value={supplierForm.phone} onChange={e => setSupplierForm({ ...supplierForm, phone: e.target.value })} /></label>
+              <label>WhatsApp<input value={supplierForm.whatsapp} onChange={e => setSupplierForm({ ...supplierForm, whatsapp: e.target.value })} /></label>
+              <label>Email<input type="email" value={supplierForm.email} onChange={e => setSupplierForm({ ...supplierForm, email: e.target.value })} /></label>
+              <label>Address<input value={supplierForm.address} onChange={e => setSupplierForm({ ...supplierForm, address: e.target.value })} /></label>
+              <label>Category<input value={supplierForm.category} onChange={e => setSupplierForm({ ...supplierForm, category: e.target.value })} /></label>
+              <label>Payment terms<input value={supplierForm.paymentTerms} onChange={e => setSupplierForm({ ...supplierForm, paymentTerms: e.target.value })} /></label>
+              <label>Notes<textarea rows={2} value={supplierForm.notes} onChange={e => setSupplierForm({ ...supplierForm, notes: e.target.value })} /></label>
+              <button type="submit" className="primary-action" disabled={busy}>{busy ? 'Saving…' : 'Save supplier'}</button>
+            </form>
+          </Panel>
+          <Panel className="span-7" title="Suppliers">
+            <SimpleTable rows={data?.suppliers || []} columns={['name', 'contactPerson', 'phone', 'whatsapp', 'email', 'category', 'status']} pageSize={25} />
+          </Panel>
+        </div>
+      )}
+
+      {view === 'procurement' && (
+        <div className="dashboard-grid">
+          <Panel className="span-5" title="Send quotation / PO">
+            <form className="settings-form-grid" onSubmit={async e => {
+              e.preventDefault(); setBusy(true);
+              try {
+                await rpc('sendProcurementMessage', [user, procForm]);
+                alert('Message recorded. Email/WhatsApp channel logged for supplier.');
+                setProcForm({ type: 'quotation', channel: 'email', supplierName: '', toEmail: '', toWhatsapp: '', subject: '', body: '', total: '' });
+                setRefreshKey(x => x + 1);
+              } catch (err) { alert(err.message); }
+              finally { setBusy(false); }
+            }}>
+              <label>Type
+                <select value={procForm.type} onChange={e => setProcForm({ ...procForm, type: e.target.value })}>
+                  <option value="quotation">Quotation (RFQ)</option>
+                  <option value="purchase_order">Purchase order</option>
+                </select>
+              </label>
+              <label>Channel
+                <select value={procForm.channel} onChange={e => setProcForm({ ...procForm, channel: e.target.value })}>
+                  <option value="email">Email</option>
+                  <option value="whatsapp">WhatsApp</option>
+                </select>
+              </label>
+              <label>Supplier
+                <input list="admin-supplier-list" value={procForm.supplierName} onChange={e => {
+                  const name = e.target.value;
+                  const s = (data?.suppliers || []).find(x => x.name === name);
+                  setProcForm({ ...procForm, supplierName: name, toEmail: s?.email || procForm.toEmail, toWhatsapp: s?.whatsapp || s?.phone || procForm.toWhatsapp });
+                }} required />
+                <datalist id="admin-supplier-list">{(data?.suppliers || []).map(s => <option key={s.id || s.name} value={s.name} />)}</datalist>
+              </label>
+              <label>Email<input value={procForm.toEmail} onChange={e => setProcForm({ ...procForm, toEmail: e.target.value })} /></label>
+              <label>WhatsApp<input value={procForm.toWhatsapp} onChange={e => setProcForm({ ...procForm, toWhatsapp: e.target.value })} /></label>
+              <label>Subject<input value={procForm.subject} onChange={e => setProcForm({ ...procForm, subject: e.target.value })} /></label>
+              <label>Message / items<textarea rows={5} value={procForm.body} onChange={e => setProcForm({ ...procForm, body: e.target.value })} required /></label>
+              <label>Total (PO)<input type="number" value={procForm.total} onChange={e => setProcForm({ ...procForm, total: e.target.value })} /></label>
+              <button type="submit" className="primary-action" disabled={busy}>{busy ? 'Sending…' : 'Send & log'}</button>
+            </form>
+          </Panel>
+          <Panel className="span-7" title="Quotations & purchase orders">
+            <SimpleTable rows={[...(data?.quotations || []), ...(data?.purchaseOrders || [])]} columns={['quoteNo', 'poNo', 'supplierName', 'status', 'channel', 'createdBy', 'createdAt']} pageSize={25} />
+          </Panel>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function App() {
   const [user, setUser] = useState(() => {
     const raw = localStorage.getItem('farmtrack-user');
@@ -749,7 +968,8 @@ function App() {
           {page === 'hr' && <HRWorkspace user={user} setPage={setPage} globalPeriod={globalPeriod} />}
           {page === 'leaves' && <LeaveWorkspace user={user} setPage={setPage} globalPeriod={globalPeriod} />}
           {page === 'requisitions' && <RequisitionsPage user={user} setPage={setPage} />}
-{page === 'settings' && <SettingsPage user={user} />}
+{page === 'admin-ops' && <AdminOpsWorkspace user={user} setPage={setPage} />}
+          {page === 'settings' && <SettingsPage user={user} />}
            {page === '__404__' && <ErrorState title="Page Not Found" error="The page you are looking for does not exist." statusCode={404} />}
          </div>
       </main>
