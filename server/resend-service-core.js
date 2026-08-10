@@ -189,7 +189,7 @@ async function sendRawEmail({ to, subject, html, text, replyTo, cc, bcc, from, a
 /**
  * Complete email shell template with tracking pixel and link wrapping
  */
-function emailShell({ title, subtitle, bodyHtml, actionLabel, actionUrl, actions = [], footerNote, trackingPixelUrl, trackingId, category, recipientName = 'Team', senderName = 'FarmTrack ERP', senderRole = 'ERP Notification', senderPhone = '+254 700 000 000', senderEmail = 'erpintergration@gmail.com', profileImageUrl = 'https://i.postimg.cc/CM9BdKbH/logo-ftc.png' }) {
+function emailShell({ title, subtitle, bodyHtml, actionLabel, actionUrl, actions = [], footerNote, trackingPixelUrl, trackingId, category, recipientName = 'Team', senderName = 'FarmTrack ERP', senderRole = 'ERP Notification', senderPhone = '+254 700 000 000', senderEmail = 'erpintergration@gmail.com', profileImageUrl = 'https://erpftc.vercel.app/logo-ftc.webp' }) {
   const wrappedActionUrl = actionUrl && trackingId
     ? PLATFORM_URL + '/api/email-track/click?tracking_id=' + trackingId + '&redirect=' + encodeURIComponent(actionUrl)
     : actionUrl;
@@ -201,7 +201,7 @@ function emailShell({ title, subtitle, bodyHtml, actionLabel, actionUrl, actions
   })).filter(action => action.label && action.url);
   const trackingPixel = trackingPixelUrl ? '<img src="' + trackingPixelUrl + '" alt="" width="1" height="1" style="display:none;" />' : '';
   const c = category || 'ERP Notification';
-  const logoUrl = 'https://i.postimg.cc/CM9BdKbH/logo-ftc.png';
+  const logoUrl = 'https://erpftc.vercel.app/logo-ftc.webp';
   const actionButtons = wrappedActions.length
     ? '<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:24px 0 8px;"><tr>' + wrappedActions.map(action => {
         const bg = action.tone === 'danger' ? '#dc2626' : action.tone === 'light' ? '#ffffff' : '#078236';

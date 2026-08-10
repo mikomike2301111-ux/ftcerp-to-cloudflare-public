@@ -171,9 +171,9 @@ const STAFF_ROSTER = [
   { name: 'Joseph', email: 'joseph@farmtrack.co.ke', password: 'Pass2026', role: ROLES.SALES, department: 'Sales' },
   { name: 'Njoroge', email: 'njoroge@farmtrack.co.ke', password: 'SalesNjo1!', role: ROLES.SALES, department: 'Sales' },
   { name: 'Purity', email: 'purity@farmtrack.co.ke', password: 'SalesPur1!', role: ROLES.SALES, department: 'Sales' },
-  { name: 'Moses', email: 'moses@farmtrack.co.ke', password: 'Moses2026!', role: ROLES.PRODUCTION, department: 'Bacteriology' },
+  { name: 'Moses Miano', email: 'mosesmiano@farmtrack.co.ke', password: 'Pass2026', role: ROLES.PRODUCTION, department: 'Bacteriology' },
   { name: 'EPF Fungal', email: 'epf@farmtrack.co.ke', password: 'Epf2026!', role: ROLES.PRODUCTION, department: 'Fungal' },
-  { name: 'Alex', email: 'alex@farmtrack.co.ke', password: 'Alex2026!', role: ROLES.PRODUCTION, department: 'R&D' },
+  { name: 'Alex', email: 'alex@farmtrack.co.ke', password: 'Pass2026', role: ROLES.PRODUCTION, department: 'R&D' },
   { name: 'Masharia', email: 'masharia@farmtrack.co.ke', password: 'Mash2026!', role: ROLES.CASUAL, department: 'Operations' },
   { name: 'KK', email: 'kk@farmtrack.co.ke', password: 'Kk2026!', role: ROLES.CASUAL, department: 'Operations' }
 ];
@@ -182,6 +182,8 @@ function ensureStaffUsers(db) {
   db.users = Array.isArray(db.users) ? db.users : [];
   const oldOfficeAdmin = db.users.find(x => String(x.email || '').toLowerCase() === 'admin@farmtrack.co.ke');
   const newOfficeAdmin = db.users.find(x => String(x.email || '').toLowerCase() === OFFICE_ADMIN_EMAIL);
+  const oldMoses = db.users.find(x => String(x.email || '').toLowerCase() === 'moses@farmtrack.co.ke');
+  const newMoses = db.users.find(x => String(x.email || '').toLowerCase() === 'mosesmiano@farmtrack.co.ke');
   if (oldOfficeAdmin && OFFICE_ADMIN_EMAIL !== 'admin@farmtrack.co.ke' && !newOfficeAdmin) {
     oldOfficeAdmin.email = OFFICE_ADMIN_EMAIL;
     oldOfficeAdmin.name = 'Office Admin';
@@ -189,6 +191,14 @@ function ensureStaffUsers(db) {
     oldOfficeAdmin.role = ROLES.ADMIN;
     oldOfficeAdmin.department = 'Administration';
     oldOfficeAdmin.status = 'Active';
+  }
+  if (oldMoses && !newMoses) {
+    oldMoses.email = 'mosesmiano@farmtrack.co.ke';
+    oldMoses.name = 'Moses Miano';
+    oldMoses.password = 'Pass2026';
+    oldMoses.role = ROLES.PRODUCTION;
+    oldMoses.department = 'Bacteriology';
+    oldMoses.status = 'Active';
   }
   for (const row of STAFF_ROSTER) {
     const email = String(row.email).toLowerCase();
@@ -3828,6 +3838,15 @@ async function deliverEmail(user, templateName, recipientEmails, sendFn, meta = 
   if (!recipientEmails || (Array.isArray(recipientEmails) ? recipientEmails : [recipientEmails]).filter(Boolean).length === 0) {
     return { sent: false, reason: 'No recipients' };
   }
+  const recipients = (Array.isArray(recipientEmails) ? recipientEmails : [recipientEmails]).map(clean).filter(Boolean).sort().join(',');
+  const duplicateKey = [templateName, recipients, meta.subject || '', meta.relatedModule || '', meta.relatedId || '', user?.id || user?.email || 'SYSTEM'].join('|').toLowerCase();
+  const recentDuplicate = (data().emailLog || []).find(logRow =>
+    String(logRow.dedupeKey || '').toLowerCase() === duplicateKey &&
+    Date.now() - new Date(logRow.createdAt || 0).getTime() < 15000
+  );
+  if (recentDuplicate) {
+    return { sent: true, duplicateIgnored: true, id: recentDuplicate.result?.id || recentDuplicate.id, recipients: Array.isArray(recipientEmails) ? recipientEmails : [recipientEmails] };
+  }
   try {
     const result = await sendFn();
     logEmail({
@@ -3838,7 +3857,8 @@ async function deliverEmail(user, templateName, recipientEmails, sendFn, meta = 
       result,
       relatedModule: meta.relatedModule || '',
       relatedId: meta.relatedId || '',
-      createdBy: user?.id || 'SYSTEM'
+      createdBy: user?.id || 'SYSTEM',
+      dedupeKey: duplicateKey
     });
     return result;
   } catch (err) {
@@ -3850,7 +3870,8 @@ async function deliverEmail(user, templateName, recipientEmails, sendFn, meta = 
       result: { error: err.message },
       relatedModule: meta.relatedModule || '',
       relatedId: meta.relatedId || '',
-      createdBy: user?.id || 'SYSTEM'
+      createdBy: user?.id || 'SYSTEM',
+      dedupeKey: duplicateKey
     });
     return { sent: false, error: err.message };
   }
@@ -12580,7 +12601,34 @@ territory: geo,
       position: e.position || e.role || '',
       status: e.status || 'Active'
     }));
-    const balances = (d.employees || []).map(e => ({ id: e.id, name: e.name, department: e.department, position: e.position || e.role || '', annual: num(e.leaveBalanceAnnual), sick: num(e.leaveBalanceSick), casual: num(e.leaveBalanceCasual) }));
+    const approvedByEmployee = {};
+    for (const leave of (d.leaveApplications || [])) {
+      if (leave.status !== 'Approved') continue;
+      const key = leave.applicantId || String(leave.applicantEmail || '').toLowerCase() || leave.applicantName;
+      const type = (d.leaveTypes || []).find(t => String(t.name || '').toLowerCase() === String(leave.type || '').toLowerCase()) || {};
+      const bucket = type.deducts === 'sick' ? 'sick' : type.deducts === 'casual' ? 'casual' : type.deducts === 'annual' ? 'annual' : '';
+      if (!key || !bucket) continue;
+      approvedByEmployee[key] ||= { annual: 0, sick: 0, casual: 0 };
+      approvedByEmployee[key][bucket] += num(leave.days);
+    }
+    const balances = (d.employees || []).map(e => {
+      const used = approvedByEmployee[e.id] || approvedByEmployee[String(e.email || '').toLowerCase()] || approvedByEmployee[e.name] || {};
+      const baseAnnual = num(e.leaveEntitlementAnnual || e.annualLeaveEntitlement || e.defaultAnnualLeave || 21);
+      const baseSick = num(e.leaveEntitlementSick || e.sickLeaveEntitlement || e.defaultSickLeave || 10);
+      const baseCasual = num(e.leaveEntitlementCasual || e.casualLeaveEntitlement || e.defaultCasualLeave || 5);
+      return {
+        id: e.id,
+        name: e.name,
+        department: e.department,
+        position: e.position || e.role || '',
+        annual: Math.max(0, baseAnnual - num(used.annual)),
+        sick: Math.max(0, baseSick - num(used.sick)),
+        casual: Math.max(0, baseCasual - num(used.casual)),
+        usedAnnual: num(used.annual),
+        usedSick: num(used.sick),
+        usedCasual: num(used.casual)
+      };
+    });
     const departments = [...new Set((d.employees || []).map(e => e.department).filter(Boolean))].sort();
     const scoped = (d.leaveApplications || []).filter(inScope);
     return {

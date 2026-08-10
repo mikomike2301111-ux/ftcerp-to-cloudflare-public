@@ -10844,3 +10844,45 @@ svg.sparkline path {
   width: 100% !important;
 }
 .panel { overflow: hidden; }
+.topbar-mobile-fix-anchor { display: contents; }
+
+@media (max-width: 700px) {
+  .topbar {
+    align-items: flex-start !important;
+    row-gap: 8px !important;
+    min-height: auto !important;
+  }
+  .topbar-actions {
+    flex: 0 0 auto !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    justify-content: flex-end !important;
+  }
+  .topbar-period {
+    order: 3 !important;
+    width: 100% !important;
+    overflow-x: auto !important;
+    padding-bottom: 2px !important;
+  }
+  .topbar-period button,
+  .new-button,
+  .topbar-email-btn,
+  .notify,
+  .topbar-profile-btn {
+    min-height: 36px !important;
+  }
+  .sales-workspace .inline-actions,
+  .crm-workspace .inline-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  .sales-workspace .inline-actions button,
+  .crm-workspace .inline-actions button,
+  .sales-workspace .inline-actions a,
+  .crm-workspace .inline-actions a {
+    width: 100% !important;
+    margin-left: 0 !important;
+    justify-content: center !important;
+    white-space: normal !important;
+  }
+}

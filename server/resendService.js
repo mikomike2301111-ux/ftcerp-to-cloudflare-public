@@ -57,7 +57,7 @@ async function sendEmail({ to, subject, html, text, replyTo, cc, bcc, from } = {
 
 /* ─── Template helpers ─── */
 
-const FARMTRACK_LOGO_URL = process.env.COMPANY_LOGO_URL || 'https://i.postimg.cc/CM9BdKbH/logo-ftc.png';
+const FARMTRACK_LOGO_URL = process.env.COMPANY_LOGO_URL || 'https://erpftc.vercel.app/logo-ftc.webp';
 
 function emailShell({ title, subtitle, bodyHtml, actionLabel, actionUrl, footerNote }) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title></head><body style="margin:0;padding:0;background:#f4f6f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#101828;">
@@ -67,7 +67,7 @@ function emailShell({ title, subtitle, bodyHtml, actionLabel, actionUrl, footerN
         <tr><td style="background:#ffffff;padding:18px 28px;border-bottom:1px solid #eef0f3;">
           <table width="100%"><tr>
             <td>
-              <img src="${FARMTRACK_LOGO_URL}" alt="Farmtrack Biosciences" width="160" height="auto" style="display:block;max-width:160px;height:auto;border:0;" />
+              <span style="display:inline-block;background:#ffffff;border:1px solid #eef0f3;border-radius:12px;padding:8px 10px;"><img src="${FARMTRACK_LOGO_URL}" alt="Farmtrack Biosciences" width="160" height="auto" style="display:block;max-width:160px;height:auto;border:0;background:#ffffff;" /></span>
             </td>
             <td align="right" style="color:#667085;font-size:12px;line-height:1.4;">Farmtrack Biosciences<br/><span style="color:#98a2b3;">ERP notification</span></td>
           </tr></table>

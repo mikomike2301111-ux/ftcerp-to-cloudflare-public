@@ -1233,6 +1233,7 @@ function Topbar({ user, onMenu, onToggleSidebar, sidebarCollapsed, onNew, onLogo
   const [composeOpen, setComposeOpen] = useState(false);
   const [composeForm, setComposeForm] = useState({ to: '', cc: '', subject: '', body: '' });
   const [composeSending, setComposeSending] = useState(false);
+  const composeSendingRef = useRef(false);
   const [sheetsOpen, setSheetsOpen] = useState(false);
   const [sheetsBusy, setSheetsBusy] = useState(false);
   const [sheetsMsg, setSheetsMsg] = useState('');
@@ -1407,39 +1408,6 @@ function Topbar({ user, onMenu, onToggleSidebar, sidebarCollapsed, onNew, onLogo
         </div>
         <button className="new-button" type="button" onClick={onNew} title="Create new record"><Plus size={18} /> New</button>
         <button className="topbar-email-btn" type="button" onClick={() => setComposeOpen(true)} title="Compose Email"><Mail size={18} /></button>
-        {(['Developer','Administrator','Executive','Manager','Accountant','HR Officer'].includes(user?.role) || user?.canManageUsers) && (
-        <div className="sheets-dropdown-wrap">
-          <button
-            type="button"
-            className="sheets-btn spreadsheet-link"
-            onClick={e => { e.stopPropagation(); setSheetsOpen(v => !v); }}
-            title="Google Sheets — view / export only"
-          >
-            <FileText size={16} /> Sheets
-          </button>
-          {sheetsOpen && (
-            <div className="sheets-dropdown" onClick={e => e.stopPropagation()}>
-              <strong>Spreadsheet actions</strong>
-              <button type="button" onClick={() => { window.open(SHEETS_URL, '_blank', 'noopener,noreferrer'); setSheetsOpen(false); }}>
-                Open live Google Sheet
-              </button>
-              <button type="button" disabled={sheetsBusy} onClick={() => runSheetsExport(page)}>
-                {sheetsBusy ? 'Exporting…' : `Export ${page || 'page'} (${period})`}
-              </button>
-              <button type="button" disabled={sheetsBusy} onClick={() => runSheetsExport('sales')}>
-                Export sales
-              </button>
-              <button type="button" disabled={sheetsBusy} onClick={() => runSheetsExport('inventory')}>
-                Export inventory
-              </button>
-              <button type="button" onClick={() => { setSheetsOpen(false); setPage('settings'); }}>
-                Sheets settings
-              </button>
-              {sheetsMsg && <em className="sheets-msg">{sheetsMsg}</em>}
-            </div>
-          )}
-        </div>
-        )}
         <div className="topbar-profile-wrap">
           <button
             type="button"
@@ -1474,13 +1442,15 @@ function Topbar({ user, onMenu, onToggleSidebar, sidebarCollapsed, onNew, onLogo
         <div className="modal-backdrop" onClick={() => setComposeOpen(false)}>
           <form className="modal-card" onClick={e => e.stopPropagation()} onSubmit={async e => {
             e.preventDefault();
+            if (composeSendingRef.current) return;
+            composeSendingRef.current = true;
             setComposeSending(true);
             try {
               const res = await rpc('sendComposedEmail', [user, composeForm]);
               if (res.error) alert(res.error);
               else { alert('Email sent successfully'); setComposeOpen(false); setComposeForm({ to: '', cc: '', subject: '', body: '' }); }
             } catch (err) { alert(err.message); }
-            setComposeSending(false);
+            finally { composeSendingRef.current = false; setComposeSending(false); }
           }}>
             <header><h2>Compose Email</h2><button type="button" onClick={() => setComposeOpen(false)}><X size={18} /></button></header>
             <label>To<input type="email" value={composeForm.to} onChange={e => setComposeForm({ ...composeForm, to: e.target.value })} placeholder="recipient@email.com" required /></label>
@@ -2306,7 +2276,7 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
   });
   const [followBusy, setFollowBusy] = useState(false);
   const [receptionForm, setReceptionForm] = useState({
-    phone: '', reason: '', date: new Date().toISOString().slice(0, 10), time: new Date().toTimeString().slice(0, 5)
+    callerName: '', phone: '', reason: '', date: new Date().toISOString().slice(0, 10), time: new Date().toTimeString().slice(0, 5)
   });
   const [receptionBusy, setReceptionBusy] = useState(false);
   if (loading) return <Loading title="CRM" />;
@@ -2366,9 +2336,6 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
         <button type="button" className="primary-action" onClick={() => setView('calls')}><Phone size={16} /> Reception Calls</button>
         <button type="button" onClick={() => setView('followups')}><Calendar size={16} /> Follow-ups</button>
         <button onClick={() => setView('reports')}><FileText size={16} /> CRM Reports</button>
-        <button className="crm-sheet-action" onClick={() => exportCrmSheet('CRM', 'CRM Customers')} disabled={sheetExporting}><Upload size={16} /> {sheetExporting ? 'Syncing...' : 'CRM Sheets'}</button>
-        <button className="crm-sheet-action" onClick={() => exportCrmSheet('Calls', 'CRM Calls')} disabled={sheetExporting}><Phone size={16} /> Calls Sheet</button>
-        <a className="crm-sheet-link" href="https://docs.google.com/spreadsheets/d/1ZGX71pFHkJPNA17s5LRCFT_T58eskby9zpj8RPHveYA/edit?gid=976100262#gid=976100262" target="_blank" rel="noopener noreferrer"><FileText size={16} /> Open Sheet</a>
         <CreateRequisitionButton user={user} module="customers" />
       </div>
       {sheetMessage && <div className={`crm-sheet-message ${sheetMessage.toLowerCase().includes('failed') || sheetMessage.toLowerCase().includes('error') ? 'warn' : ''}`}>{sheetMessage}</div>}
@@ -2527,7 +2494,9 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                 const time = receptionForm.time || new Date().toTimeString().slice(0, 5);
                 await rpc('saveCall', [user, {
                   recordType: 'reception',
-                  customerName: receptionForm.phone,
+                  customerName: receptionForm.callerName || receptionForm.phone,
+                  callName: receptionForm.callerName || receptionForm.phone,
+                  name: receptionForm.callerName || receptionForm.phone,
                   phone: receptionForm.phone,
                   reason: receptionForm.reason,
                   comments: receptionForm.reason,
@@ -2539,13 +2508,14 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                   time,
                   datetime: `${date} ${time}`
                 }]);
-                setReceptionForm({ phone: '', reason: '', date: new Date().toISOString().slice(0, 10), time: new Date().toTimeString().slice(0, 5) });
+                setReceptionForm({ callerName: '', phone: '', reason: '', date: new Date().toISOString().slice(0, 10), time: new Date().toTimeString().slice(0, 5) });
                 setRefreshKey(x => x + 1);
               } catch (err) { alert(err.message); }
               finally { setReceptionBusy(false); }
             }}>
               <label>Date<input type="date" value={receptionForm.date} onChange={e => setReceptionForm({ ...receptionForm, date: e.target.value })} required /></label>
               <label>Time<input type="time" value={receptionForm.time} onChange={e => setReceptionForm({ ...receptionForm, time: e.target.value })} required /></label>
+              <label>Name of Call<input value={receptionForm.callerName} onChange={e => setReceptionForm({ ...receptionForm, callerName: e.target.value })} placeholder="Caller / customer name" /></label>
               <label>Number<input type="tel" inputMode="tel" value={receptionForm.phone} onChange={e => setReceptionForm({ ...receptionForm, phone: e.target.value })} placeholder="Caller phone number" required /></label>
               <label>Reason<textarea value={receptionForm.reason} onChange={e => setReceptionForm({ ...receptionForm, reason: e.target.value })} rows={3} placeholder="General enquiry, asking, direction, supplier, customer question..." required /></label>
               <button type="submit" className="primary-action" disabled={receptionBusy}>{receptionBusy ? 'Saving…' : 'Log call'}</button>
@@ -2781,12 +2751,12 @@ function CRMCallsList({ calls, onStageChange }) {
     <Panel className="span-12" title="Call Records" action={`${calls.length} calls`}>
       <div className="table-wrap">
         <table className="crm-calls-table">
-          <thead><tr><th>Customer</th><th>Phone</th><th>Stage</th><th>Notes</th><th>Assigned To</th><th>Quick Actions</th><th>Update Stage</th></tr></thead>
+          <thead><tr><th>Name of Call</th><th>Phone</th><th>Stage</th><th>Notes</th><th>Assigned To</th><th>Quick Actions</th><th>Update Stage</th></tr></thead>
           <tbody>
             {calls.length === 0 && <tr><td colSpan={7}><div className="empty-state">No call records. Click "Log Call" to add one.</div></td></tr>}
             {calls.map(c => (
               <tr key={c.id}>
-                <td><strong>{c.customerName}</strong></td>
+                <td><strong>{c.callName || c.name || c.customerName}</strong></td>
                 <td>{c.phone || '—'}</td>
                 <td><span className={stageClass(c.stage)}>{c.stage || '—'}</span></td>
                 <td className="call-notes">{c.notes || '—'}</td>
@@ -2837,13 +2807,13 @@ function CRMCallsListV2({ user, calls = [], onStageChange, onUpdated, compact = 
     <Panel className="span-12" title={compact ? 'Latest Calls' : 'Call Records'} action={`${calls.length} calls`}>
       <div className="table-wrap">
         <table className="crm-calls-table">
-          <thead><tr><th>Date</th><th>Customer</th><th>Phone</th><th>Stage</th><th>Notes / Comments</th><th>Follow-up</th><th>Assigned To</th><th>Quick Actions</th><th>Update Stage</th></tr></thead>
+          <thead><tr><th>Date</th><th>Name of Call</th><th>Phone</th><th>Stage</th><th>Notes / Comments</th><th>Follow-up</th><th>Assigned To</th><th>Quick Actions</th><th>Update Stage</th></tr></thead>
           <tbody>
             {calls.length === 0 && <tr><td colSpan={9}><div className="empty-state">No call records. Click "Log Call" to add one.</div></td></tr>}
             {shown.map(c => (
               <tr key={c.id}>
                 <td>{dateValue(c)}</td>
-                <td><strong>{c.customerName}</strong></td>
+                <td><strong>{c.callName || c.name || c.customerName}</strong></td>
                 <td>{c.phone || '-'}</td>
                 <td><span className={stageClass(c.stage)}>{c.stage || '-'}</span></td>
                 <td className="call-notes">{c.comments || c.feedback || c.notes || '-'}</td>
@@ -3032,14 +3002,14 @@ function CRMFollowUpBoard({ rows = [], onLogCall, onOpenCustomers }) {
     <>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Date</th><th>Customer</th><th>Phone</th><th>Stage</th><th></th></tr></thead>
+          <thead><tr><th>Date</th><th>Customer</th><th>Phone</th><th>Detail</th><th></th></tr></thead>
           <tbody>
             {rows.map(row => (
               <tr key={row.id} className="crm-followup-row" onClick={() => setSelected(row)}>
                 <td>{row.followUpDate || String(row.date || '').slice(0, 10)}</td>
                 <td><strong>{row.customerName || '—'}</strong></td>
                 <td>{row.phone || '—'}</td>
-                <td>{row.stage || '—'}</td>
+                <td>{row.comments || row.notes || row.nextStep || '—'}</td>
                 <td><button type="button" className="mini-action" onClick={e => { e.stopPropagation(); setSelected(row); }}>Open</button></td>
               </tr>
             ))}
@@ -3060,7 +3030,6 @@ function CRMFollowUpBoard({ rows = [], onLogCall, onOpenCustomers }) {
             <div className="modal-card-body overlay-scroll-body">
               <div className="settings-kv-grid">
                 <article><span>Follow-up date</span><strong>{selected.followUpDate || '—'}</strong></article>
-                <article><span>Stage</span><strong>{selected.stage || '—'}</strong></article>
                 <article><span>Phone</span><strong>{selected.phone || '—'}</strong></article>
                 <article><span>Notes</span><strong>{selected.notes || selected.nextStep || '—'}</strong></article>
                 <article><span>Comments</span><strong>{selected.comments || '—'}</strong></article>
@@ -3449,7 +3418,7 @@ function CRMInputModal({ user, type, customers, onClose, onSaved, preset }) {
     call: { customerId: '', customerName: '', phone: '', whatsapp: '', stage: 'To Be Called', notes: '', comments: '', followUpDate: '', assignedTo: user?.name || 'Mary Sales' }
   };
   const fields = {
-    customer: ['name', 'email', 'phone', 'city', 'type', 'salesOwner', 'creditLimit'],
+    customer: ['name', 'phone', 'city', 'type'],
     lead: ['name', 'email', 'phone', 'company', 'source', 'stage', 'value', 'assignedTo', 'notes', 'status'],
     call: ['customerId', 'customerName', 'phone', 'whatsapp', 'stage', 'notes', 'comments', 'followUpDate', 'assignedTo']
   };
@@ -7568,7 +7537,6 @@ function FinanceCustomerLedger({ data }) {
               </div>
               <div className="cl-row"><span className="cl-desc">Total Purchases (In)</span><span className="cl-amount">{currency(totalIn)}</span><span className="cl-running">{currency(totalIn)}</span></div>
               <div className="cl-row"><span className="cl-desc">Total Payments (Out)</span><span className="cl-amount">{currency(totalOut)}</span><span className="cl-running">{currency(totalIn - totalOut)}</span></div>
-              <div className="cl-row"><span className="cl-desc">Credit Limit</span><span className="cl-amount">{currency(cust.creditLimit)}</span><span className="cl-running">{currency(cust.creditLimit - balance)}</span></div>
               <div className="cl-balance">Balance: {currency(balance)}</div>
             </div>
           );
@@ -8848,7 +8816,6 @@ function CustomerStatementModal({ user, customers = [], onClose, onSaved }) {
                   <article><span>Closing balance</span><strong>{currency(statement.closingBalance)}</strong></article>
                   <article><span>Total invoiced</span><strong>{currency(statement.totalInvoiced)}</strong></article>
                   <article><span>Total paid</span><strong>{currency(statement.totalPaid)}</strong></article>
-                  <article><span>Sales owner</span><strong>{statement.salesOwner || '—'}</strong></article>
                 </div>
                 <div className="inline-actions" style={{ margin: '12px 0' }}>
                   <button className="primary-action" disabled={exporting} onClick={() => exportStatement('PDF')}><Download size={14} /> PDF</button>
@@ -10576,6 +10543,8 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
   const [editEmp, setEditEmp] = useState(null);
   const [paySlipEmp, setPaySlipEmp] = useState(null);
   const [deptModal, setDeptModal] = useState(null);
+  const [payrollSending, setPayrollSending] = useState(false);
+  const payrollSendingRef = useRef(false);
   const [attForm, setAttForm] = useState({ employeeId: '', date: new Date().toISOString().slice(0, 10), checkIn: '08:00', checkOut: '17:00', breakMinutes: 0, hoursWorked: '', shiftType: 'Day Shift', workLocation: 'Office', status: 'Auto', note: '' });
   const [dirLimit, setDirLimit] = useState(50);
   const [attLimit, setAttLimit] = useState(50);
@@ -10608,6 +10577,20 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
   };
   const handleMoveCandidate = async (id, stage) => {
     try { await rpc('moveCandidate', [user, id, stage]); setRefreshKey(k => k + 1); } catch (err) { alert(err.message); }
+  };
+  const sendPayrollEmailBatch = async (successMessage = 'Payslip emails sent to all employees.') => {
+    if (payrollSendingRef.current) return;
+    payrollSendingRef.current = true;
+    setPayrollSending(true);
+    try {
+      await rpc('sendPayrollEmails', [user, { period: globalPeriod }]);
+      alert(successMessage);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      payrollSendingRef.current = false;
+      setPayrollSending(false);
+    }
   };
   const handleRecordAttendance = async (e) => {
     e.preventDefault();
@@ -11014,12 +10997,7 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
           <Panel className="span-8" title="Payroll Preview" action={
             <div className="panel-action-row">
               <button className="panel-action-button" type="button" onClick={() => downloadRowsFile('hr-payroll-preview', data.payrollPreview || [], 'CSV')}><Download size={14} /> Export CSV</button>
-              <button className="panel-action-button" type="button" onClick={async () => {
-                try {
-                  await rpc('sendPayrollEmails', [user, { period: globalPeriod }]);
-                  alert('Payroll emails sent successfully to all employees.');
-                } catch (err) { alert(err.message); }
-              }}><Mail size={14} /> Email All</button>
+              <button className="panel-action-button" type="button" disabled={payrollSending} onClick={() => sendPayrollEmailBatch('Payroll emails sent successfully to all employees.')}><Mail size={14} /> {payrollSending ? 'Sending...' : 'Email All'}</button>
             </div>
           }>
             <div className="table-wrap">
@@ -11054,7 +11032,7 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
               <div className="hr-payroll-step-row">
                 <button className="panel-action-button" type="button" onClick={() => downloadRowsFile('hr-payroll-preview', data.payrollPreview || [], 'CSV')}><Download size={14} /> Export Payroll CSV</button>
                 <button className="panel-action-button" type="button" onClick={async () => { try { const file = await rpc('generateReportExport', [user, { module: 'Payroll', reportName: `Payroll ${data.period?.label || globalPeriod}`, rows: (data.payrollPreview || []).map(r => ({ Employee: r.name, Department: r.department, PayType: r.payType, Hours: r.hours, Overtime: r.overtime, LateHours: r.lateHours, GrossPay: r.grossPay, Deductions: r.deductions, NetPay: r.netPay })) }, 'PDF']); handleGeneratedFile(file, 'PDF'); } catch (err) { alert(err.message); } }}><FileText size={14} /> Export Payroll PDF</button>
-                <button className="panel-action-button" type="button" onClick={async () => { try { await rpc('sendPayrollEmails', [user, { period: globalPeriod }]); alert('Payslip emails sent to all employees.'); } catch (err) { alert(err.message); } }}><Mail size={14} /> Email Payslips</button>
+                <button className="panel-action-button" type="button" disabled={payrollSending} onClick={() => sendPayrollEmailBatch('Payslip emails sent to all employees.')}><Mail size={14} /> {payrollSending ? 'Sending...' : 'Email Payslips'}</button>
                 <button className="panel-action-button primary" type="button" style={{ background: '#22c55e', color: '#fff' }} onClick={async () => { try { const res = await rpc('postPayrollToFinance', [user, { period: data.currentMonth || new Date().toISOString().slice(0, 7) }]); alert(`Payroll posted: ${res.rows?.length || res.run?.employeeCount || 0} staff · Net ${currency(res.totals?.totalNetPay || res.totalNetPay || 0)} · Accounts notified.`); setRefreshKey(k => k + 1); } catch (err) { alert(err.message); } }}><Landmark size={14} /> Post to Finance</button>
               </div>
               <div className="hr-payroll-step-row">
@@ -11382,6 +11360,7 @@ function HRReports({ data, employees, payrollPreview, employeeMetrics, user, glo
 function HREmailCenter({ user, hrEmail, employees = [], emails = [], onSent }) {
   const [form, setForm] = useState({ to: '', subject: '', body: '', employeeId: '', template: '' });
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
   const templates = {
     welcome: { subject: 'Welcome to Farmtrack Biosciences', body: 'Welcome to the team. Please complete your onboarding checklist with HR.' },
     interview: { subject: 'Interview invitation', body: 'You are invited to an interview. Please confirm your availability.' },
@@ -11395,6 +11374,8 @@ function HREmailCenter({ user, hrEmail, employees = [], emails = [], onSent }) {
       <Panel className="span-5" title="Compose from HR" action={hrEmail}>
         <form className="settings-form-grid" onSubmit={async e => {
           e.preventDefault();
+          if (busyRef.current) return;
+          busyRef.current = true;
           setBusy(true);
           try {
             await rpc('sendHrEmail', [user, form]);
@@ -11402,7 +11383,7 @@ function HREmailCenter({ user, hrEmail, employees = [], emails = [], onSent }) {
             onSent?.();
             alert('HR email sent / logged.');
           } catch (err) { alert(err.message); }
-          finally { setBusy(false); }
+          finally { busyRef.current = false; setBusy(false); }
         }}>
           <label>Template
             <select value={form.template} onChange={e => {
@@ -12244,6 +12225,7 @@ function EmailWorkspace({ user, setPage }) {
   const [body, setBody] = useState('');
   const [from, setFrom] = useState('mikomike200@gmail.com');
   const [sending, setSending] = useState(false);
+  const sendingRef = useRef(false);
   const [sentResult, setSentResult] = useState(null);
   const [sentEmails, setSentEmails] = useState([]);
   const [drafts, setDrafts] = useState([]);
@@ -12301,9 +12283,11 @@ function EmailWorkspace({ user, setPage }) {
   };
 
   async function sendEmail() {
+    if (sendingRef.current) return;
     if (!to.trim()) return alert('Please enter a recipient email');
     if (!subject.trim()) return alert('Please enter a subject');
     if (!body.trim()) return alert('Please write an email message');
+    sendingRef.current = true;
     setSending(true);
     setSentResult(null);
     try {
@@ -12316,6 +12300,7 @@ function EmailWorkspace({ user, setPage }) {
     } catch (e) {
       setSentResult({ sent: false, error: e.message });
     } finally {
+      sendingRef.current = false;
       setSending(false);
     }
   }
