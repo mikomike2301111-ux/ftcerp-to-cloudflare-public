@@ -10366,13 +10366,12 @@ function SettingsUserModal({ user, meta, initial, onClose, onSaved }) {
           <label>Email<input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required /></label>
           <label>Phone<input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} /></label>
           <label>Role<select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>{meta.roles.map(x => <option key={x}>{x}</option>)}</select></label>
-          <label>Login password{!initial?.id ? ' *' : ''}<input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder={initial?.id ? 'Leave blank to keep current' : 'Set initial password'} autoComplete="new-password" required={!initial?.id} /></label>
-          <p style={{ gridColumn: '1 / -1', fontSize: 12, color: '#667085', margin: 0 }}>Users cannot change their own email or password. Only Administrator / Developer can create users and reset passwords.</p>
+          <label>Set login password{!initial?.id ? ' *' : ''}<input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder={initial?.id ? 'Type a new password or leave blank to keep current' : 'Set initial password'} autoComplete="new-password" required={!initial?.id} /></label>
+          <p style={{ gridColumn: '1 / -1', fontSize: 12, color: '#667085', margin: 0 }}>Administrator / Developer can set or reset any staff login password here. Existing users keep their current password if this field is blank.</p>
           <label>Department<select value={form.department} onChange={e => setForm({ ...form, department: e.target.value })}>{(meta.departments || []).map(x => <option key={x.id || x.name} value={x.name}>{x.name}</option>)}</select></label>
           <label>Warehouse<select value={form.warehouse} onChange={e => setForm({ ...form, warehouse: e.target.value })}>{['All', ...(meta.warehouses || []).map(x => x.name)].map(x => <option key={x}>{x}</option>)}</select></label>
           <label>County<input value={form.county} onChange={e => setForm({ ...form, county: e.target.value })} /></label>
           <label>Status<select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>{['Active', 'Inactive'].map(x => <option key={x}>{x}</option>)}</select></label>
-          <label>{initial?.id ? 'New password (optional)' : 'Password'}<input type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder={initial?.id ? 'Leave blank to keep' : ''} /></label>
         </div>
         <button className="primary-action" disabled={saving}>{saving ? 'Saving...' : initial?.id ? 'Save User' : 'Create User'}</button>
       </form>
@@ -11687,7 +11686,10 @@ function LeaveWorkspace({ user, setPage, globalPeriod = 'Month' }) {
   };
   const handleDecision = async (id, decision) => {
     try {
-      await rpc('decideLeave', [user, id, { decision, note: notes[id] || '' }]);
+      const result = await rpc('decideLeave', [user, id, { decision, note: notes[id] || '' }]);
+      if (result?.emailStatus) {
+        alert(`Leave ${decision.toLowerCase()}. Email: ${result.emailStatus}${result.emailRecipients?.length ? ` to ${result.emailRecipients.join(', ')}` : ''}${result.emailError ? ` (${result.emailError})` : ''}`);
+      }
       setNotes(prev => { const n = { ...prev }; delete n[id]; return n; });
       setDetailLeave(null);
       setRefreshKey(k => k + 1);
@@ -11716,6 +11718,49 @@ function LeaveWorkspace({ user, setPage, globalPeriod = 'Month' }) {
   ].filter(Boolean);
   const filteredMine = (data.myApplications || []).filter(l => statusFilter === 'All' || l.status === statusFilter);
   const historyRows = (data.allApplications || data.myApplications || []).filter(l => l.status !== 'Pending');
+  const leaveBuckets = [
+    ['annual', 'Annual'],
+    ['sick', 'Sick'],
+    ['casual', 'Casual'],
+    ['maternity', 'Maternity'],
+    ['paternity', 'Paternity'],
+    ['compassionate', 'Compassionate'],
+    ['unpaid', 'Unpaid']
+  ];
+  const balanceForType = (bal, leaveType = {}) => {
+    const name = String(leaveType.name || '').toLowerCase();
+    const key = leaveType.deducts === 'sick' ? 'sick'
+      : leaveType.deducts === 'casual' ? 'casual'
+      : leaveType.deducts === 'annual' ? 'annual'
+      : name.includes('maternity') ? 'maternity'
+      : name.includes('paternity') ? 'paternity'
+      : name.includes('compassionate') ? 'compassionate'
+      : name.includes('unpaid') ? 'unpaid'
+      : 'annual';
+    const entitlement = num(bal?.entitlement?.[key] ?? leaveType.defaultDays ?? 0);
+    const used = num(bal?.used?.[key] ?? bal?.[`used${key.charAt(0).toUpperCase()}${key.slice(1)}`] ?? 0);
+    const pendingDays = num(bal?.pending?.[key] ?? 0);
+    const remaining = key === 'unpaid' ? 'Unlimited' : Math.max(0, num(bal?.remaining?.[key] ?? bal?.[key] ?? (entitlement - used)));
+    return { key, label: leaveType.name || key, entitlement, used, pending: pendingDays, remaining };
+  };
+  const myBalance = (data.balances || []).find(b => b.name === user.name || b.id === user.id);
+  const LeaveBalanceCards = ({ bal = myBalance, compact = false }) => (
+    <div className="leave-apply-summary col">
+      {(data.leaveTypes || []).map(lt => {
+        const item = balanceForType(bal, lt);
+        const remainingNumber = item.remaining === 'Unlimited' ? 100 : num(item.remaining);
+        const pct = item.entitlement ? Math.min(100, Math.round((remainingNumber / item.entitlement) * 100)) : 100;
+        return (
+          <div key={lt.id || item.key || lt.name} className="leave-balance-chip">
+            <strong>{item.label}</strong>
+            <span>{item.remaining === 'Unlimited' ? 'Unlimited remaining' : `${item.remaining}d remaining`} · {item.used}d used{item.pending ? ` · ${item.pending}d pending` : ''}</span>
+            {!compact && <small>Entitlement: {item.entitlement || 'Open'}d</small>}
+            <div className="leave-progress"><div className="leave-progress-fill" style={{ width: `${pct}%`, background: pct < 25 ? '#d92d20' : pct < 50 ? '#f79009' : '#101828' }} /></div>
+          </div>
+        );
+      })}
+    </div>
+  );
   return (
     <section className="page-stack sales-workspace leave-workspace">
       <div className="sales-hero">
@@ -11743,21 +11788,7 @@ function LeaveWorkspace({ user, setPage, globalPeriod = 'Month' }) {
       {view === 'overview' && (
         <div className="dashboard-grid">
           <Panel className="span-4" title="Your balances" action="Entitlements">
-            <div className="leave-apply-summary col">
-              {(data.leaveTypes || []).map(lt => {
-                const bal = (data.balances || []).find(b => b.name === user.name);
-                const balance = lt.deducts === 'sick' ? (bal?.sick ?? 10) : lt.deducts === 'casual' ? (bal?.casual ?? 5) : (bal?.annual ?? 21);
-                const used = Math.max(0, (lt.defaultDays || 0) - balance);
-                const pct = lt.defaultDays ? Math.min(100, Math.round((used / lt.defaultDays) * 100)) : 0;
-                return (
-                  <div key={lt.id || lt.name} className="leave-balance-chip">
-                    <strong>{lt.name}</strong>
-                    <span>{balance}d remaining</span>
-                    <div className="leave-progress"><div className="leave-progress-fill" style={{ width: `${100 - pct}%`, background: pct > 80 ? '#f79009' : '#101828' }} /></div>
-                  </div>
-                );
-              })}
-            </div>
+            <LeaveBalanceCards />
             <button type="button" className="primary-action" style={{ marginTop: 12 }} onClick={() => setApplyModal(true)}>Apply for leave</button>
           </Panel>
           <Panel className="span-4" title="Team on leave" action={`${(data.onLeaveToday || []).length} today`}>
@@ -11814,21 +11845,7 @@ function LeaveWorkspace({ user, setPage, globalPeriod = 'Month' }) {
       {view === 'apply' && (
         <div className="dashboard-grid">
           <Panel className="span-4" title="Leave Balances" action="Your entitlements">
-            <div className="leave-apply-summary col">
-              {(data.leaveTypes || []).map(lt => {
-                const bal = (data.balances || []).find(b => b.name === user.name);
-                const balance = lt.deducts === 'sick' ? (bal?.sick ?? 10) : lt.deducts === 'casual' ? (bal?.casual ?? 5) : (bal?.annual ?? 21);
-                const used = Math.max(0, (lt.defaultDays || 0) - balance);
-                const pct = lt.defaultDays ? Math.min(100, Math.round((used / lt.defaultDays) * 100)) : 0;
-                return (
-                  <div key={lt.id || lt.name} className="leave-balance-chip">
-                    <strong>{lt.name}</strong>
-                    <span>{balance}d remaining</span>
-                    <div className="leave-progress"><div className="leave-progress-fill" style={{ width: `${100 - pct}%`, background: pct > 80 ? '#f79009' : '#101828' }} /></div>
-                  </div>
-                );
-              })}
-            </div>
+            <LeaveBalanceCards />
             <p className="leave-apply-hint">Submit a request below. Managers are notified and balances update only after approval.</p>
             <button type="button" className="primary-action" style={{ marginTop: 12 }} onClick={() => setApplyModal(true)}>Open leave form</button>
           </Panel>
@@ -11962,15 +11979,19 @@ function LeaveWorkspace({ user, setPage, globalPeriod = 'Month' }) {
         <Panel title="Leave Balances" action={`${(data.balances || []).length} employees`}>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Employee</th><th>Department</th><th>Annual</th><th>Sick</th><th>Casual</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Employee</th><th>Department</th><th>Annual</th><th>Sick</th><th>Casual</th><th>Maternity</th><th>Paternity</th><th>Compassionate</th><th>Pending</th><th>Actions</th></tr></thead>
               <tbody>
                 {(data.balances || []).map(b => (
                   <tr key={b.id}>
                     <td><strong>{b.name}</strong></td>
                     <td>{b.department}</td>
-                    <td>{b.annual}d</td>
-                    <td>{b.sick}d</td>
-                    <td>{b.casual}d</td>
+                    {leaveBuckets.slice(0, 6).map(([key]) => (
+                      <td key={key}>
+                        <strong>{b.remaining?.[key] ?? b[key] ?? 0}d</strong>
+                        <small style={{ display: 'block', color: '#667085' }}>{b.used?.[key] || 0} used</small>
+                      </td>
+                    ))}
+                    <td>{Object.values(b.pending || {}).reduce((sum, v) => sum + num(v), 0)}d</td>
                     <td>
                       <ActionMenu
                         summary={b.name}
@@ -12025,6 +12046,8 @@ function LeaveWorkspace({ user, setPage, globalPeriod = 'Month' }) {
               <article><span>Covering</span><strong>{detailLeave.coveringEmployee || '—'}</strong></article>
               <article><span>Responsibility</span><strong>{detailLeave.handoverResponsibility || detailLeave.coveringEmployee || '—'}</strong></article>
               <article><span>Emergency</span><strong>{detailLeave.emergencyContact || '—'}</strong></article>
+              <article><span>Email notification</span><strong>{detailLeave.emailStatus || '—'}</strong></article>
+              <article><span>Email recipients</span><strong>{(detailLeave.emailRecipients || []).join(', ') || detailLeave.notificationEmail || detailLeave.applicantEmail || '—'}</strong></article>
               <article><span>Applied</span><strong>{detailLeave.appliedAt ? new Date(detailLeave.appliedAt).toLocaleString() : '—'}</strong></article>
               <article><span>Decided by</span><strong>{detailLeave.decidedBy || '—'}</strong></article>
             </div>
@@ -12062,7 +12085,17 @@ function LeaveApplyModal({ user, leaveTypes, departments = [], balances = [], em
     notificationEmail: user.email || ''
   });
   const selectedType = leaveTypes.find(lt => lt.name === form.type) || { deducts: 'annual', defaultDays: 21 };
-  const balance = selectedType.deducts === 'sick' ? (me.sick ?? 10) : selectedType.deducts === 'casual' ? (me.casual ?? 5) : (me.annual ?? 21);
+  const typeName = String(selectedType.name || form.type || '').toLowerCase();
+  const balanceKey = selectedType.deducts === 'sick' ? 'sick'
+    : selectedType.deducts === 'casual' ? 'casual'
+    : selectedType.deducts === 'annual' ? 'annual'
+    : typeName.includes('maternity') ? 'maternity'
+    : typeName.includes('paternity') ? 'paternity'
+    : typeName.includes('compassionate') ? 'compassionate'
+    : typeName.includes('unpaid') ? 'unpaid'
+    : 'annual';
+  const entitlement = num(me.entitlement?.[balanceKey] ?? selectedType.defaultDays ?? 0);
+  const balance = balanceKey === 'unpaid' ? 999999 : num(me.remaining?.[balanceKey] ?? me[balanceKey] ?? entitlement);
   const days = businessDaysBetween(form.startDate, form.endDate);
   const remainingAfter = Math.max(0, balance - days);
   const exceedsBalance = days > balance;
@@ -12104,11 +12137,12 @@ function LeaveApplyModal({ user, leaveTypes, departments = [], balances = [], em
         </div></fieldset>
         <div className="leave-calc-preview">
           <div className="leave-calc-row"><span>Leave Type</span><strong>{form.type}</strong></div>
-          <div className="leave-calc-row"><span>Current balance</span><strong>{balance}d</strong></div>
+          <div className="leave-calc-row"><span>Entitlement</span><strong>{balanceKey === 'unpaid' ? 'Open' : `${entitlement}d`}</strong></div>
+          <div className="leave-calc-row"><span>Current balance</span><strong>{balanceKey === 'unpaid' ? 'Unlimited' : `${balance}d`}</strong></div>
           <div className="leave-calc-row"><span>Requested days</span><strong style={{ color: exceedsBalance ? '#d92d20' : '#101828' }}>{days}d</strong></div>
           <div className="leave-calc-row"><span>Calculation</span><strong>Business days only</strong></div>
           <div className="leave-calc-row"><span>Period</span><strong>{form.startDate} → {form.endDate}</strong></div>
-          <div className="leave-calc-row total"><span>Remaining after</span><strong style={{ color: exceedsBalance ? '#d92d20' : '#101828' }}>{remainingAfter}d</strong></div>
+          <div className="leave-calc-row total"><span>Remaining after</span><strong style={{ color: exceedsBalance ? '#d92d20' : '#101828' }}>{balanceKey === 'unpaid' ? 'Unlimited' : `${remainingAfter}d`}</strong></div>
           {exceedsBalance && <p className="leave-calc-warn">⚠ This request exceeds your available {form.type.toLowerCase()} balance. It may require manager approval.</p>}
         </div>
         <button className="primary-action" type="submit">Submit Leave Request</button>

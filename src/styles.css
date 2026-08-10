@@ -6770,7 +6770,7 @@ select {
 .compose-actions .primary-action {
   height: 42px;
   border-radius: 10px;
-  background: #4f46e5;
+  background: #050505;
   color: #fff;
   padding: 0 22px;
   font-weight: 700;
@@ -10401,7 +10401,7 @@ aside.sidebar {
   cursor: pointer;
   transition: transform 100ms ease, background 120ms ease;
 }
-.login-submit-v2:hover { background: #4338ca; }
+.login-submit-v2:hover { background: #101828; }
 .login-submit-v2:active { transform: scale(0.98); }
 .login-submit-v2:disabled { opacity: 0.7; cursor: wait; }
 .login-error-v2 {

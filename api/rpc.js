@@ -12601,32 +12601,67 @@ territory: geo,
       position: e.position || e.role || '',
       status: e.status || 'Active'
     }));
+    const bucketForLeave = leaveType => {
+      const type = (d.leaveTypes || []).find(t => String(t.name || '').toLowerCase() === String(leaveType || '').toLowerCase()) || {};
+      if (type.deducts === 'sick') return 'sick';
+      if (type.deducts === 'casual') return 'casual';
+      if (type.deducts === 'annual') return 'annual';
+      if (/maternity/i.test(String(leaveType || ''))) return 'maternity';
+      if (/paternity/i.test(String(leaveType || ''))) return 'paternity';
+      if (/compassionate/i.test(String(leaveType || ''))) return 'compassionate';
+      if (/unpaid/i.test(String(leaveType || ''))) return 'unpaid';
+      return '';
+    };
+    const bucketTemplate = () => ({ annual: 0, sick: 0, casual: 0, maternity: 0, paternity: 0, compassionate: 0, unpaid: 0 });
     const approvedByEmployee = {};
+    const pendingByEmployee = {};
     for (const leave of (d.leaveApplications || [])) {
-      if (leave.status !== 'Approved') continue;
       const key = leave.applicantId || String(leave.applicantEmail || '').toLowerCase() || leave.applicantName;
-      const type = (d.leaveTypes || []).find(t => String(t.name || '').toLowerCase() === String(leave.type || '').toLowerCase()) || {};
-      const bucket = type.deducts === 'sick' ? 'sick' : type.deducts === 'casual' ? 'casual' : type.deducts === 'annual' ? 'annual' : '';
+      const bucket = bucketForLeave(leave.type);
       if (!key || !bucket) continue;
-      approvedByEmployee[key] ||= { annual: 0, sick: 0, casual: 0 };
-      approvedByEmployee[key][bucket] += num(leave.days);
+      if (leave.status === 'Approved') {
+        approvedByEmployee[key] ||= bucketTemplate();
+        approvedByEmployee[key][bucket] += num(leave.days);
+      }
+      if (leave.status === 'Pending') {
+        pendingByEmployee[key] ||= bucketTemplate();
+        pendingByEmployee[key][bucket] += num(leave.days);
+      }
     }
     const balances = (d.employees || []).map(e => {
       const used = approvedByEmployee[e.id] || approvedByEmployee[String(e.email || '').toLowerCase()] || approvedByEmployee[e.name] || {};
+      const pendingUsed = pendingByEmployee[e.id] || pendingByEmployee[String(e.email || '').toLowerCase()] || pendingByEmployee[e.name] || {};
       const baseAnnual = num(e.leaveEntitlementAnnual || e.annualLeaveEntitlement || e.defaultAnnualLeave || 21);
       const baseSick = num(e.leaveEntitlementSick || e.sickLeaveEntitlement || e.defaultSickLeave || 10);
       const baseCasual = num(e.leaveEntitlementCasual || e.casualLeaveEntitlement || e.defaultCasualLeave || 5);
+      const baseMaternity = num(e.leaveEntitlementMaternity || e.maternityLeaveEntitlement || e.leaveBalanceMaternity || 90);
+      const basePaternity = num(e.leaveEntitlementPaternity || e.paternityLeaveEntitlement || e.leaveBalancePaternity || 14);
+      const baseCompassionate = num(e.leaveEntitlementCompassionate || e.compassionateLeaveEntitlement || 5);
+      const entitlement = { annual: baseAnnual, sick: baseSick, casual: baseCasual, maternity: baseMaternity, paternity: basePaternity, compassionate: baseCompassionate, unpaid: 0 };
+      const remaining = Object.fromEntries(Object.entries(entitlement).map(([k, v]) => [k, k === 'unpaid' ? 0 : Math.max(0, num(v) - num(used[k]))]));
       return {
         id: e.id,
         name: e.name,
         department: e.department,
         position: e.position || e.role || '',
-        annual: Math.max(0, baseAnnual - num(used.annual)),
-        sick: Math.max(0, baseSick - num(used.sick)),
-        casual: Math.max(0, baseCasual - num(used.casual)),
+        annual: remaining.annual,
+        sick: remaining.sick,
+        casual: remaining.casual,
+        maternity: remaining.maternity,
+        paternity: remaining.paternity,
+        compassionate: remaining.compassionate,
+        unpaid: 0,
+        entitlement,
+        remaining,
+        pending: pendingUsed,
+        used,
         usedAnnual: num(used.annual),
         usedSick: num(used.sick),
-        usedCasual: num(used.casual)
+        usedCasual: num(used.casual),
+        usedMaternity: num(used.maternity),
+        usedPaternity: num(used.paternity),
+        usedCompassionate: num(used.compassionate),
+        usedUnpaid: num(used.unpaid)
       };
     });
     const departments = [...new Set((d.employees || []).map(e => e.department).filter(Boolean))].sort();
@@ -12860,7 +12895,7 @@ territory: geo,
     log(u, `Apply for ${lt.name} leave`, 'Leaves', `${days} days · ${u.role}`);
     return { success: true, application, notified: hrEmails };
   },
-  decideLeave(user, id, decision = {}) {
+  async decideLeave(user, id, decision = {}) {
     // Boss / Executive / HR / Admin
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.EXECUTIVE, ROLES.DEV);
     const d = data();
@@ -12899,6 +12934,7 @@ territory: geo,
     emitBusinessEvent(u, outcome === 'Approved' ? 'hr.leave_approved' : 'hr.leave_rejected', 'leaveApplications', app.id, { days: app.days });
     // Email the applicant and any explicit notification email recorded on the request.
     const decisionRecipients = Array.from(new Set([app.applicantEmail, app.notificationEmail].map(clean).filter(Boolean)));
+    const emailResults = [];
     for (const to of decisionRecipients) {
       const emailFn = outcome === 'Approved'
         ? () => EmailService.sendLeaveApproved({
@@ -12909,10 +12945,15 @@ territory: geo,
             to, employeeName: app.applicantName, leaveType: app.type,
             startDate: app.startDate, endDate: app.endDate, days: app.days, leaveId: app.id, rejectedBy: u.name, reason: app.decisionNote
           });
-      deliverEmail(u, 'leave_decision', to, emailFn, { subject: `Leave ${outcome} - ${app.type}`, relatedModule: 'leaves', relatedId: app.id }).catch(() => {});
+      const result = await deliverEmail(u, 'leave_decision', to, emailFn, { subject: `Leave ${outcome} - ${app.type}`, relatedModule: 'leaves', relatedId: app.id });
+      emailResults.push({ to, sent: result.sent !== false, id: result.id || result.messageId || '', error: result.error || '' });
     }
+    app.emailStatus = emailResults.length && emailResults.every(r => r.sent) ? 'Sent' : emailResults.some(r => r.sent) ? 'Partially Sent' : 'Failed';
+    app.emailRecipients = emailResults.map(r => r.to);
+    app.emailResults = emailResults;
+    app.emailError = emailResults.find(r => r.error)?.error || '';
     log(u, `${outcome} leave ${app.applicantName}`, 'Leaves', `${app.days} days`);
-    return { success: true, application: app };
+    return { success: true, application: app, emailStatus: app.emailStatus, emailRecipients: app.emailRecipients, emailError: app.emailError };
   },
   cancelLeave(user, id) {
     const u = reqRole(user);
