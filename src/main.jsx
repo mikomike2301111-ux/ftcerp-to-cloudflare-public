@@ -1089,7 +1089,7 @@ function Login({ onLogin }) {
       <div className="login-card-v2">
         <aside className="login-hero-v2" aria-hidden="true">
           <div className="login-hero-mark">
-            <img src="https://i.postimg.cc/CM9BdKbH/logo-ftc.png" alt="" />
+            <img src="/logo-ftc.webp" alt="" />
           </div>
           <div className="login-hero-copy">
             <p className="login-hero-kicker">FarmTrack BioSciences</p>
@@ -1163,7 +1163,7 @@ function Sidebar({ page, setPage, open, setOpen, collapsed, setCollapsed, user, 
     <>
       <aside className={`sidebar ${open ? 'open' : ''}`}>
         <div className="sidebar-brand">
-          <img src="https://i.postimg.cc/CM9BdKbH/logo-ftc.png" alt="Farmtrack Biosciences logo" className="sidebar-logo-img" />
+          <img src="/logo-ftc.webp" alt="Farmtrack Biosciences logo" className="sidebar-logo-img" />
           <div className="sidebar-brand-text">
             <strong>Farmtrack</strong>
             <small>Biosciences</small>
@@ -1352,7 +1352,7 @@ function Topbar({ user, onMenu, onToggleSidebar, sidebarCollapsed, onNew, onLogo
       </div>
       <div className="topbar-actions">
         <div className="topbar-brand-chip" title="Farmtrack Biosciences Ltd">
-          <img src="https://i.postimg.cc/CM9BdKbH/logo-ftc.png" alt="FTC" />
+          <img src="/logo-ftc.webp" alt="FTC" />
         </div>
         <button><Sparkles size={20} /></button>
         <div className="notify-dropdown-wrap">
@@ -2363,8 +2363,8 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
 
       <div className="inline-actions">
         <button type="button" onClick={() => setModal('customer')}><Plus size={16} /> New Customer</button>
-        <button type="button" onClick={() => setModal('lead')}><Target size={16} /> New Opportunity</button>
-        <button type="button" className="primary-action" onClick={() => setModal('call')}><Phone size={16} /> Log Call</button>
+        <button type="button" className="primary-action" onClick={() => setView('calls')}><Phone size={16} /> Reception Calls</button>
+        <button type="button" onClick={() => setView('followups')}><Calendar size={16} /> Follow-ups</button>
         <button onClick={() => setView('reports')}><FileText size={16} /> CRM Reports</button>
         <button className="crm-sheet-action" onClick={() => exportCrmSheet('CRM', 'CRM Customers')} disabled={sheetExporting}><Upload size={16} /> {sheetExporting ? 'Syncing...' : 'CRM Sheets'}</button>
         <button className="crm-sheet-action" onClick={() => exportCrmSheet('Calls', 'CRM Calls')} disabled={sheetExporting}><Phone size={16} /> Calls Sheet</button>
@@ -2398,7 +2398,7 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
               </div>
             </Panel>
             <Panel className="span-4" title="Recent Activities"><CRMActivityList activities={data.activities || []} setPage={setPage} /></Panel>
-            <Panel className="span-4" title="Latest Calls" action={<button type="button" className="mini-action" onClick={() => setModal('call')}><Plus size={14} /> Log</button>}>
+            <Panel className="span-4" title="Latest Reception Calls" action={<button type="button" className="mini-action" onClick={() => setView('calls')}><Plus size={14} /> Open</button>}>
               <CRMCallsListV2 user={user} calls={allCalls.slice(0, 5)} onUpdated={() => setRefreshKey(x => x + 1)} compact />
             </Panel>
             <Panel className="span-7 sales-main-chart" title="Customer Growth + Revenue">
@@ -2942,16 +2942,14 @@ function CRMCustomerDetail({ customer, orders = [], calls = [], deliveries = [],
         <header style={{ flex: '0 0 auto' }}><h2>{customer.name}</h2><button type="button" onClick={onClose}><X size={18} /></button></header>
         <div className="overlay-scroll-body crm-customer-detail-body" style={{ flex: '1 1 auto', overflowX: 'auto', overflowY: 'auto', WebkitOverflowScrolling: 'touch', maxHeight: 'none', padding: '0 16px 20px', minWidth: 0 }}>
         <div className="crm-customer-actions">
-          <button type="button" className="primary-action" onClick={() => onLogCall?.(customer)}><Phone size={14} /> Log Call</button>
+          <button type="button" className="primary-action" onClick={() => onLogCall?.(customer)}><Phone size={14} /> Reception Call</button>
           <button type="button" className="secondary-action" onClick={() => onEmailCustomer?.(customer)}><Mail size={14} /> Send Email</button>
           <a className="secondary-action" href={`https://wa.me/${String(customer.phone || '').replace(/[^0-9]/g, '')}`} target="_blank" rel="noopener noreferrer"><MessageSquare size={14} /> WhatsApp</a>
         </div>
         <div className="settings-kv-grid">
           <article><span>Phone</span><strong>{customer.phone || '-'}</strong></article>
-          <article><span>Email</span><strong>{customer.email || '-'}</strong></article>
           <article><span>Location</span><strong>{customer.city || '-'}</strong></article>
           <article><span>Type</span><strong>{customer.type || 'Customer'}</strong></article>
-          <article><span>Sales owner</span><strong>{customer.salesOwner || customer.salesPerson || '-'}</strong></article>
           <article><span>Balance</span><strong>{currency(customer.balance)}</strong></article>
           <article><span>Revenue</span><strong>{currency(customer.revenue)}</strong></article>
           <article><span>Health</span><strong>{customer.health || customer.status}</strong></article>
@@ -3007,7 +3005,7 @@ function CRMCustomerDetail({ customer, orders = [], calls = [], deliveries = [],
             </div>
           </Panel>
           <Panel className="span-12" title="Purchase Records"><SimpleTable rows={customerOrders} columns={['saleNo', 'date', 'total', 'paid', 'balance', 'deliveryStatus']} /></Panel>
-          <Panel className="span-12" title="Call + Follow-up Records"><SimpleTable rows={customerCalls} columns={['date', 'stage', 'notes', 'comments', 'followUpDate', 'assignedTo']} /></Panel>
+          <Panel className="span-12" title="Call + Follow-up Records"><SimpleTable rows={customerCalls} columns={['date', 'stage', 'notes', 'comments', 'followUpDate']} /></Panel>
           <Panel className="span-12" title="Delivery Records"><SimpleTable rows={customerDeliveries} columns={['deliveryNo', 'date', 'destination', 'method', 'driver', 'status', 'arrival']} /></Panel>
         </div>
         </div>
@@ -3034,7 +3032,7 @@ function CRMFollowUpBoard({ rows = [], onLogCall, onOpenCustomers }) {
     <>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Date</th><th>Customer</th><th>Phone</th><th>Stage</th><th>Assigned</th><th></th></tr></thead>
+          <thead><tr><th>Date</th><th>Customer</th><th>Phone</th><th>Stage</th><th></th></tr></thead>
           <tbody>
             {rows.map(row => (
               <tr key={row.id} className="crm-followup-row" onClick={() => setSelected(row)}>
@@ -3042,7 +3040,6 @@ function CRMFollowUpBoard({ rows = [], onLogCall, onOpenCustomers }) {
                 <td><strong>{row.customerName || '—'}</strong></td>
                 <td>{row.phone || '—'}</td>
                 <td>{row.stage || '—'}</td>
-                <td>{row.assignedTo || '—'}</td>
                 <td><button type="button" className="mini-action" onClick={e => { e.stopPropagation(); setSelected(row); }}>Open</button></td>
               </tr>
             ))}
@@ -3065,7 +3062,6 @@ function CRMFollowUpBoard({ rows = [], onLogCall, onOpenCustomers }) {
                 <article><span>Follow-up date</span><strong>{selected.followUpDate || '—'}</strong></article>
                 <article><span>Stage</span><strong>{selected.stage || '—'}</strong></article>
                 <article><span>Phone</span><strong>{selected.phone || '—'}</strong></article>
-                <article><span>Assigned to</span><strong>{selected.assignedTo || '—'}</strong></article>
                 <article><span>Notes</span><strong>{selected.notes || selected.nextStep || '—'}</strong></article>
                 <article><span>Comments</span><strong>{selected.comments || '—'}</strong></article>
               </div>
@@ -12081,7 +12077,8 @@ function LeaveApplyModal({ user, leaveTypes, departments = [], balances = [], em
     reason: '',
     emergencyContact: '',
     coveringEmployee: '',
-    handoverResponsibility: ''
+    handoverResponsibility: '',
+    notificationEmail: user.email || ''
   });
   const selectedType = leaveTypes.find(lt => lt.name === form.type) || { deducts: 'annual', defaultDays: 21 };
   const balance = selectedType.deducts === 'sick' ? (me.sick ?? 10) : selectedType.deducts === 'casual' ? (me.casual ?? 5) : (me.annual ?? 21);
@@ -12114,6 +12111,7 @@ function LeaveApplyModal({ user, leaveTypes, departments = [], balances = [], em
         </div></fieldset>
         <fieldset className="settings-fieldset"><legend>Additional Information</legend><div>
           <label>Emergency Contact<input type="text" value={form.emergencyContact} onChange={e => setForm({ ...form, emergencyContact: e.target.value })} placeholder="Name and phone number..." /></label>
+          <label>Notification Email<input type="email" value={form.notificationEmail} onChange={e => setForm({ ...form, notificationEmail: e.target.value })} placeholder="email to receive approval/rejection..." /></label>
           <label>Covering Employee
             <select value={form.coveringEmployee} onChange={e => setForm({ ...form, coveringEmployee: e.target.value, handoverResponsibility: form.handoverResponsibility || e.target.value })}>
               <option value="">None</option>

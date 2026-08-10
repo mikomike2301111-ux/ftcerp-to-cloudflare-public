@@ -22,6 +22,7 @@ const files = {
   apAgeing: 'Farmtrack Biosciences Ltd_A_P Ageing Summary Report.csv',
   inventory: 'Farmtrack Biosciences Ltd_Inventory Status.csv',
   openPo: 'Farmtrack Biosciences Ltd_Open Purchase Order List by Supplier.csv',
+  purchaseList: 'Farmtrack Biosciences Ltd_Purchase List.csv',
   purchasesRecent: 'Farmtrack Biosciences Ltd_Purchases by Location Detail.csv',
   purchasesAll: 'Farmtrack Biosciences Ltd_Purchases by Location Detail (1).csv',
   salesA: 'Farmtrack Biosciences Ltd_Sales by Customer Type Detail.csv',
@@ -293,9 +294,26 @@ async function main() {
       source: 'QuickBooks Unpaid Bills'
     }));
   const allAp = [...ap, ...unpaidBills];
+  const purchaseListRows = simpleTable(readCsv(files.purchaseList), 'Transaction id')
+    .filter(r => r['Transaction id'] && amount(r.Amount))
+    .map(r => ({
+      id: id('QBO-PURCHASE-LIST', [r['Transaction id'], r.Date, r.Name, r.Number, r['Memo/Description'], r.Amount]),
+      date: dateIso(r.Date),
+      transactionId: r['Transaction id'],
+      number: r.Number || '',
+      category: r['Memo/Description'] || 'QuickBooks purchase',
+      vendor: r.Name || '',
+      supplierName: r.Name || '',
+      amount: Math.abs(amount(r.Amount)),
+      taxAmount: Math.abs(amount(r['Tax amount'])),
+      taxName: r['Tax name'] || '',
+      currency: r.Currency || 'KES',
+      source: 'QuickBooks Purchase List'
+    }));
   const suppliers = Array.from(new Set([
     ...allAp.map(r => r.supplierName),
-    ...groupedRows(readCsv(files.openPo), 'Date').map(r => r.group).filter(Boolean)
+    ...groupedRows(readCsv(files.openPo), 'Date').map(r => r.group).filter(Boolean),
+    ...purchaseListRows.map(r => r.supplierName).filter(Boolean)
   ])).map(name => ({ id: id('QBO-SUP', [name]), supplierNo: id('SUP', [name]), name, status: 'Active', source: 'QuickBooks' }));
   state.suppliers = upsertById(state.suppliers, suppliers);
   state.accountsPayable = upsertById(state.accountsPayable, allAp);
@@ -346,10 +364,22 @@ async function main() {
       notes: r['Memo/Description'] || r['Transaction type'],
       source: 'QuickBooks Purchases'
     }));
+  const compactPurchaseList = recentByDate(purchaseListRows, 1000);
   const liveExpenses = recentByDate(expenses, 1000);
-  state.expenses = replaceImported(state.expenses, 'QBO-EXP', liveExpenses);
+  state.expenses = replaceImported(replaceImported(state.expenses, 'QBO-EXP', liveExpenses), 'QBO-PURCHASE-LIST', compactPurchaseList);
+  state.qboPurchaseListImport = {
+    id: 'QBO-PURCHASE-LIST-2022-2026',
+    totalRows: purchaseListRows.length,
+    importedRecentRows: compactPurchaseList.length,
+    recentRows: compactPurchaseList,
+    note: 'Full QuickBooks Purchase List is compacted for fast ERP loading; recent rows are also available in expenses.',
+    source: 'QuickBooks Purchase List',
+    importedAt: new Date().toISOString()
+  };
   summary.expensesSeen = expenses.length;
   summary.expensesImportedLive = liveExpenses.length;
+  summary.purchaseListSeen = purchaseListRows.length;
+  summary.purchaseListImportedLive = compactPurchaseList.length;
 
   const taxRows = simpleTable(readCsv(files.tax), 'Date').filter(r => r.Date);
   state.taxRecords = upsertById(state.taxRecords, taxRows.map(r => ({

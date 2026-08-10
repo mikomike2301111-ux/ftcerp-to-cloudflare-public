@@ -12770,6 +12770,7 @@ territory: geo,
       emergencyContact: clean(form.emergencyContact),
       coveringEmployee: clean(form.coveringEmployee),
       handoverResponsibility: clean(form.handoverResponsibility || form.responsibility || form.coveringEmployee),
+      notificationEmail: clean(form.notificationEmail || form.notifyEmail || form.emailToNotify || u.email),
       status: 'Pending',
       appliedAt: new Date().toISOString(),
       attachments: []
@@ -12848,18 +12849,19 @@ territory: geo,
       sourceLabel: `${app.type} · ${app.applicantName}`
     });
     emitBusinessEvent(u, outcome === 'Approved' ? 'hr.leave_approved' : 'hr.leave_rejected', 'leaveApplications', app.id, { days: app.days });
-    // Email applicant about decision
-    if (app.applicantEmail) {
+    // Email the applicant and any explicit notification email recorded on the request.
+    const decisionRecipients = Array.from(new Set([app.applicantEmail, app.notificationEmail].map(clean).filter(Boolean)));
+    for (const to of decisionRecipients) {
       const emailFn = outcome === 'Approved'
         ? () => EmailService.sendLeaveApproved({
-            to: app.applicantEmail, employeeName: app.applicantName, leaveType: app.type,
+            to, employeeName: app.applicantName, leaveType: app.type,
             startDate: app.startDate, endDate: app.endDate, days: app.days, leaveId: app.id, approvedBy: u.name
           })
         : () => EmailService.sendLeaveRejected({
-            to: app.applicantEmail, employeeName: app.applicantName, leaveType: app.type,
+            to, employeeName: app.applicantName, leaveType: app.type,
             startDate: app.startDate, endDate: app.endDate, days: app.days, leaveId: app.id, rejectedBy: u.name, reason: app.decisionNote
           });
-      deliverEmail(u, 'leave_decision', app.applicantEmail, emailFn, { subject: `Leave ${outcome} — ${app.type}`, relatedModule: 'leaves', relatedId: app.id }).catch(() => {});
+      deliverEmail(u, 'leave_decision', to, emailFn, { subject: `Leave ${outcome} - ${app.type}`, relatedModule: 'leaves', relatedId: app.id }).catch(() => {});
     }
     log(u, `${outcome} leave ${app.applicantName}`, 'Leaves', `${app.days} days`);
     return { success: true, application: app };
