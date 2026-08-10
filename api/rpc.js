@@ -4450,7 +4450,7 @@ function computeKenyaPayslip(emp, hours, expectedHoursPeriod, lateHours = 0) {
   const payType = clean(emp.payType) || 'Salary';
   const hourlyRate = num(emp.hourlyRate) > 0
     ? num(emp.hourlyRate)
-    : num(emp.salary) / 22 / Math.max(1, num(emp.expectedHoursPerDay || 8));
+    : num(emp.salary) / Math.max(1, num(expectedHoursPeriod || 200));
   const overtime = Math.max(0, num(hours) - num(expectedHoursPeriod));
   const overtimePay = Math.round(overtime * hourlyRate * 1.5);
   const lateDeduction = Math.round(num(lateHours) * hourlyRate);
@@ -4578,7 +4578,38 @@ function expectedWorkHoursForDate(date, employee = {}) {
   const day = new Date(date || today()).getDay();
   if (day === 0) return 0;
   if (day === 6) return 5;
-  return Math.max(1, num(employee.expectedHoursPerDay || 8));
+  return Math.max(1, num(employee.expectedHoursPerDay || 9));
+}
+
+function expectedMonthlyWorkHours(period, employee = {}) {
+  const [year, month] = String(period || today().slice(0, 7)).split('-').map(Number);
+  if (!year || !month) return 50 * 4;
+  const last = new Date(year, month, 0).getDate();
+  let total = 0;
+  for (let day = 1; day <= last; day++) {
+    total += expectedWorkHoursForDate(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`, employee);
+  }
+  return total;
+}
+
+function attendanceStatusFromTimes(form = {}) {
+  const explicit = clean(form.status);
+  if (explicit && explicit !== 'Auto') return explicit;
+  const checkIn = clean(form.checkIn);
+  const checkOut = clean(form.checkOut);
+  if (!checkIn && !checkOut) return 'Absent';
+  const [ih, im] = checkIn ? checkIn.split(':').map(Number) : [0, 0];
+  const [oh, om] = checkOut ? checkOut.split(':').map(Number) : [0, 0];
+  const inMins = ih * 60 + im;
+  const outMins = oh * 60 + om;
+  const isSaturday = new Date(form.date || today()).getDay() === 6;
+  const latestOnTime = 8 * 60 + 30;
+  const earliestNormal = 7 * 60 + 30;
+  const expectedOut = isSaturday ? 13 * 60 : 17 * 60;
+  if (checkIn && inMins > latestOnTime) return 'Late';
+  if (checkOut && outMins < expectedOut) return 'Left Early';
+  if (checkIn && inMins < earliestNormal) return 'Early';
+  return 'Present';
 }
 function periodRange(period = 'Month') {
   const cleanPeriod = String(period || 'Month').toLowerCase();
@@ -11748,7 +11779,7 @@ territory: geo,
       const attendanceScore = Math.min(30, Math.round(attendanceRate * 0.3));
       const ratingScore = Math.min(20, Math.round(rating * 4));
       const performanceScore = Math.min(100, customerScore + revenueScore + attendanceScore + ratingScore);
-      const hourlyRate = num(emp.hourlyRate) > 0 ? num(emp.hourlyRate) : num(emp.salary) / 22 / Math.max(1, num(emp.expectedHoursPerDay || 8));
+      const hourlyRate = num(emp.hourlyRate) > 0 ? num(emp.hourlyRate) : num(emp.salary) / Math.max(1, expectedMonthlyWorkHours(currentMonth, emp));
       const payType = clean(emp.payType) || 'Salary';
       const overtimePay = emp.overtimeEligible === 'Yes' ? Math.round(overtime * hourlyRate * 1.5) : 0;
       const lateDeduction = Math.round(lateHours * hourlyRate);
@@ -12219,7 +12250,9 @@ territory: geo,
     if (!emp) throw new Error('Employee not found');
     const date = dateOnly(form.date || today());
     const expectedHours = expectedWorkHoursForDate(date, emp);
-    const hoursWorked = attendanceHours(form);
+    const hoursWorked = form.hoursWorked !== undefined && form.hoursWorked !== null && form.hoursWorked !== ''
+      ? num(form.hoursWorked)
+      : attendanceHours(form);
     const lateMinutes = (() => {
       const checkIn = clean(form.checkIn);
       if (!checkIn) return 0;
@@ -12227,7 +12260,7 @@ territory: geo,
       if ([h, m].some(Number.isNaN)) return 0;
       return Math.max(0, (h * 60 + m) - (8 * 60));
     })();
-    const status = clean(form.status) || (hoursWorked > 0 ? (lateMinutes > 0 ? 'Late' : 'Present') : 'Absent');
+    const status = attendanceStatusFromTimes({ ...form, date });
     const record = {
       id: clean(form.id) || gid(),
       employeeId: emp.id,
@@ -12243,6 +12276,7 @@ territory: geo,
       status,
       note: clean(form.note || ''),
       hoursWorked,
+      hoursSource: form.hoursWorked !== undefined && form.hoursWorked !== null && form.hoursWorked !== '' ? 'Manual' : 'Clock',
       expectedHours,
       overtimeHours: Math.max(0, Math.round((hoursWorked - expectedHours) * 10) / 10),
       lateHours: Math.round((lateMinutes / 60) * 10) / 10,
@@ -12418,7 +12452,7 @@ territory: geo,
       const lateHours = empAttendance.reduce((s, a) => s + num(a.lateHours), 0);
       const expectedHoursPeriod = empAttendance.length
         ? empAttendance.reduce((s, a) => s + expectedWorkHoursForDate(a.date, emp), 0)
-        : 22 * Math.max(1, num(emp.expectedHoursPerDay || 8)) + 4 * 5;
+        : expectedMonthlyWorkHours(period, emp);
       const slip = computeKenyaPayslip(emp, hours || expectedHoursPeriod, expectedHoursPeriod, lateHours);
       totalGrossPay += slip.grossPay;
       totalDeductions += slip.deductions;

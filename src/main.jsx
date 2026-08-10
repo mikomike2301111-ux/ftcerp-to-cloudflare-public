@@ -10540,7 +10540,7 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
   const [editEmp, setEditEmp] = useState(null);
   const [paySlipEmp, setPaySlipEmp] = useState(null);
   const [deptModal, setDeptModal] = useState(null);
-  const [attForm, setAttForm] = useState({ employeeId: '', date: new Date().toISOString().slice(0, 10), checkIn: '08:00', checkOut: '17:00', breakMinutes: 60, shiftType: 'Day Shift', workLocation: 'Office', status: 'Present', note: '' });
+  const [attForm, setAttForm] = useState({ employeeId: '', date: new Date().toISOString().slice(0, 10), checkIn: '08:00', checkOut: '17:00', breakMinutes: 0, hoursWorked: '', shiftType: 'Day Shift', workLocation: 'Office', status: 'Auto', note: '' });
   const [dirLimit, setDirLimit] = useState(50);
   const [attLimit, setAttLimit] = useState(50);
   const listStep = 50;
@@ -10566,6 +10566,7 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
       checkIn: day === 6 ? '08:00' : form.checkIn || '08:00',
       checkOut: day === 6 ? '13:00' : form.checkOut || '17:00',
       breakMinutes: day === 6 ? 0 : form.breakMinutes,
+      hoursWorked: day === 6 ? '5' : form.hoursWorked,
       shiftType: day === 6 ? 'Saturday 5h' : form.shiftType
     }));
   };
@@ -10574,7 +10575,7 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
   };
   const handleRecordAttendance = async (e) => {
     e.preventDefault();
-    try { await rpc('recordAttendance', [user, attForm]); setAttForm({ ...attForm, employeeId: '', note: '' }); setRefreshKey(k => k + 1); } catch (err) { alert(err.message); }
+    try { await rpc('recordAttendance', [user, attForm]); setAttForm({ ...attForm, employeeId: '', hoursWorked: '', note: '', status: 'Auto' }); setRefreshKey(k => k + 1); } catch (err) { alert(err.message); }
   };
   if (loading) return <Loading title="HR" />;
   if (error) return <ErrorState title="HR" error={error} />;
@@ -10795,6 +10796,12 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
             </div>
           </div>
           <Panel className="span-12" title="Clock In / Out" action="Entry">
+            <div className="att-stats-row" style={{ marginBottom: 12 }}>
+              <div className="att-stat-card"><strong>50h</strong><span>Weekly target</span></div>
+              <div className="att-stat-card"><strong>9h</strong><span>Mon-Fri shift</span></div>
+              <div className="att-stat-card"><strong>5h</strong><span>Saturday target</span></div>
+              <div className="att-stat-card"><strong>7:30-8:30</strong><span>On-time arrival window</span></div>
+            </div>
             <form className="settings-form-grid attendance-form-grid" onSubmit={handleRecordAttendance}>
               <fieldset className="settings-fieldset"><legend>Attendance Entry</legend><div>
                 <label>Employee
@@ -10807,6 +10814,7 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                 <label>Check In<input type="time" value={attForm.checkIn} onChange={e => setAttForm({ ...attForm, checkIn: e.target.value })} /></label>
                 <label>Check Out<input type="time" value={attForm.checkOut} onChange={e => setAttForm({ ...attForm, checkOut: e.target.value })} /></label>
                 <label>Break Minutes<input type="number" value={attForm.breakMinutes} onChange={e => setAttForm({ ...attForm, breakMinutes: Number(e.target.value) })} /></label>
+                <label>Hours Worked<input type="number" step="0.25" value={attForm.hoursWorked} onChange={e => setAttForm({ ...attForm, hoursWorked: e.target.value })} placeholder="Leave blank to calculate from in/out" /></label>
                 <label>Shift Type
                   <select value={attForm.shiftType} onChange={e => setAttForm({ ...attForm, shiftType: e.target.value })}>
                     {['Day Shift', 'Saturday 5h', 'Night Shift', 'Field Shift', 'Remote', 'Half-Day'].map(st => <option key={st} value={st}>{st}</option>)}
@@ -10815,7 +10823,7 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                 <label>Work Location<input type="text" value={attForm.workLocation} onChange={e => setAttForm({ ...attForm, workLocation: e.target.value })} placeholder="Office, Warehouse, Field..." /></label>
                 <label>Status
                   <select value={attForm.status} onChange={e => setAttForm({ ...attForm, status: e.target.value })}>
-                    {['Present', 'Absent', 'Late', 'Half-Day', 'Leave', 'Remote'].map(st => <option key={st} value={st}>{st}</option>)}
+                    {['Auto', 'Present', 'Early', 'Late', 'Left Early', 'Absent', 'Half-Day', 'Leave', 'Remote'].map(st => <option key={st} value={st}>{st}</option>)}
                   </select>
                 </label>
                 <label>Note<input type="text" value={attForm.note} onChange={e => setAttForm({ ...attForm, note: e.target.value })} placeholder="Optional note..." /></label>
@@ -10824,7 +10832,7 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                 if (!attForm.checkIn || !attForm.checkOut) return null;
                 const [ih, im] = attForm.checkIn.split(':').map(Number);
                 const [oh, om] = attForm.checkOut.split(':').map(Number);
-                const hrs = Math.max(0, Math.round(((((oh * 60 + om) - (ih * 60 + im) - num(attForm.breakMinutes)) / 60) * 10)) / 10);
+                const hrs = attForm.hoursWorked !== '' ? num(attForm.hoursWorked) : Math.max(0, Math.round(((((oh * 60 + om) - (ih * 60 + im) - num(attForm.breakMinutes)) / 60) * 10)) / 10);
                 return <div className="att-hours-preview"><Clock size={16} /><strong>{hrs}h</strong><span>worked after {attForm.breakMinutes || 0}m break</span></div>;
               })()}
               <button className="primary-action" type="submit">Save Attendance</button>
