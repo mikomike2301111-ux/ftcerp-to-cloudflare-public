@@ -3952,6 +3952,14 @@ function pushManualNotification(d, alert) {
     existing.message = alert.message;
     existing.createdAt = new Date().toISOString();
     existing.read = false;
+    existing.targetEmail = alert.targetEmail || existing.targetEmail || '';
+    existing.targetEmails = Array.isArray(alert.targetEmails) ? alert.targetEmails : (existing.targetEmails || []);
+    existing.targetUserId = alert.targetUserId || existing.targetUserId || '';
+    existing.targetUserIds = Array.isArray(alert.targetUserIds) ? alert.targetUserIds : (existing.targetUserIds || []);
+    existing.userEmail = alert.userEmail || existing.userEmail || '';
+    existing.userId = alert.userId || existing.userId || '';
+    existing.audienceRole = alert.audienceRole || existing.audienceRole || '';
+    existing.audienceRoles = Array.isArray(alert.audienceRoles) ? alert.audienceRoles : (existing.audienceRoles || []);
     return existing;
   }
   const n = {
