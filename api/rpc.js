@@ -10911,7 +10911,8 @@ territory: geo,
     const payrollList = Array.isArray(d.payrollRecords) ? d.payrollRecords : [];
     const taxList = Array.isArray(d.taxRecords) ? d.taxRecords : [];
     const budgetList = Array.isArray(d.budgets) ? d.budgets : [];
-    const payablesSource = Array.isArray(d.financeAccountsPayable) ? d.financeAccountsPayable
+    const payablesSource = Array.isArray(d.financeAccountsPayable) && d.financeAccountsPayable.length
+      ? d.financeAccountsPayable
       : Array.isArray(d.accountsPayable) ? d.accountsPayable : [];
 
     const revenue = Math.round(periodSales.reduce((s, x) => s + num(x.total), 0));
