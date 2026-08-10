@@ -10846,6 +10846,32 @@ svg.sparkline path {
 .panel { overflow: hidden; }
 .topbar-mobile-fix-anchor { display: contents; }
 
+.admin-ops-page .admin-office-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.admin-ops-page .tabs-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.admin-ops-page .tabs-row button {
+  min-height: 40px;
+  border: 1px solid #e4e7ec;
+  border-radius: 10px;
+  background: #fff;
+  color: #344054;
+  padding: 0 14px;
+  font-weight: 800;
+  text-transform: capitalize;
+}
+.admin-ops-page .tabs-row button.active {
+  background: #050505;
+  color: #fff;
+  border-color: #050505;
+}
+
 @media (max-width: 700px) {
   .topbar {
     align-items: flex-start !important;

@@ -661,7 +661,7 @@ function AdminOpsWorkspace({ user, setPage }) {
   const ov = data?.overview || {};
   const staff = data?.staff || [];
   return (
-    <div className="page-stack">
+    <div className="page-stack admin-ops-page">
       <section className="command-hero accounts-hero">
         <div>
           <span>ADMIN OFFICE</span>
@@ -675,6 +675,14 @@ function AdminOpsWorkspace({ user, setPage }) {
           <article><span>Open POs</span><strong>{ov.openPOs || 0}</strong></article>
         </div>
       </section>
+      <div className="inline-actions admin-office-actions">
+        <button type="button" className="primary-action" onClick={() => setView('meetings')}><Calendar size={16} /> Schedule Meeting</button>
+        <button type="button" onClick={() => setView('mass-email')}><Mail size={16} /> Mass Email</button>
+        <button type="button" onClick={() => setView('requisitions')}><ClipboardCheck size={16} /> Requisitions</button>
+        <button type="button" onClick={() => setView('suppliers')}><Users size={16} /> Suppliers</button>
+        <button type="button" onClick={() => setView('procurement')}><Send size={16} /> Procurement</button>
+        <button type="button" onClick={() => setVehicleOpen(true)}><Truck size={16} /> Car Requisition</button>
+      </div>
       <div className="tabs-row">
         {tabs.map(t => (
           <button key={t} type="button" className={view === t ? 'active' : ''} onClick={() => setView(t)}>{t.replace('-', ' ')}</button>
@@ -778,8 +786,8 @@ function AdminOpsWorkspace({ user, setPage }) {
                     <td>{r.priority || 'Normal'}</td>
                     <td>{r.status}</td>
                     <td style={{ display: 'flex', gap: 6 }}>
-                      <button type="button" className="mini-action" onClick={async () => { try { await rpc('adminResolveRequisition', [user, r.id, 'Approved', '']); setRefreshKey(x => x + 1); } catch (e) { alert(e.message); } }}>Approve</button>
-                      <button type="button" className="mini-action" onClick={async () => { try { await rpc('adminResolveRequisition', [user, r.id, 'Rejected', '']); setRefreshKey(x => x + 1); } catch (e) { alert(e.message); } }}>Reject</button>
+                      <button type="button" className="btn-approve" onClick={async () => { try { await rpc('adminResolveRequisition', [user, r.id, 'Approved', '']); setRefreshKey(x => x + 1); } catch (e) { alert(e.message); } }}>Approve</button>
+                      <button type="button" className="btn-reject" onClick={async () => { try { await rpc('adminResolveRequisition', [user, r.id, 'Rejected', '']); setRefreshKey(x => x + 1); } catch (e) { alert(e.message); } }}>Reject</button>
                     </td>
                   </tr>
                 ))}

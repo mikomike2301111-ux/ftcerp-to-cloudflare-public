@@ -3966,6 +3966,14 @@ function pushManualNotification(d, alert) {
     createdAt: new Date().toISOString(),
     status: 'active',
     read: false,
+    targetEmail: alert.targetEmail || '',
+    targetEmails: Array.isArray(alert.targetEmails) ? alert.targetEmails : [],
+    targetUserId: alert.targetUserId || '',
+    targetUserIds: Array.isArray(alert.targetUserIds) ? alert.targetUserIds : [],
+    userEmail: alert.userEmail || '',
+    userId: alert.userId || '',
+    audienceRole: alert.audienceRole || '',
+    audienceRoles: Array.isArray(alert.audienceRoles) ? alert.audienceRoles : [],
     assignedTo: alert.assignedTo || '',
     comments: [],
     auto: false,
@@ -12929,7 +12937,10 @@ territory: geo,
       message: `Your ${app.type} leave (${app.startDate} → ${app.endDate}) was ${outcome.toLowerCase()} by ${u.name}.`,
       sourceModule: 'leaves',
       sourceId: app.id,
-      sourceLabel: `${app.type} · ${app.applicantName}`
+      sourceLabel: `${app.type} · ${app.applicantName}`,
+      targetEmail: app.applicantEmail,
+      targetUserId: app.applicantId,
+      targetEmails: [app.applicantEmail, app.notificationEmail].map(clean).filter(Boolean)
     });
     emitBusinessEvent(u, outcome === 'Approved' ? 'hr.leave_approved' : 'hr.leave_rejected', 'leaveApplications', app.id, { days: app.days });
     // Email the applicant and any explicit notification email recorded on the request.
