@@ -655,7 +655,8 @@ function AdminOpsWorkspace({ user, setPage }) {
   const [supplierForm, setSupplierForm] = useState({ name: '', contactPerson: '', phone: '', whatsapp: '', email: '', address: '', category: 'General', paymentTerms: '', notes: '' });
   const [procForm, setProcForm] = useState({ type: 'quotation', channel: 'email', supplierName: '', toEmail: '', toWhatsapp: '', subject: '', body: '', total: '' });
   const [busy, setBusy] = useState(false);
-  if (loading && !data) return <LoadingState label="Loading Admin Office…" />;
+  const [vehicleOpen, setVehicleOpen] = useState(false);
+  if (loading && !data) return <Loading title="Admin Office" />;
   if (error && !data) return <ErrorState title="Admin Office" error={error} />;
   const ov = data?.overview || {};
   const staff = data?.staff || [];
@@ -690,6 +691,13 @@ function AdminOpsWorkspace({ user, setPage }) {
           </Panel>
           <Panel className="span-12" title="Active staff directory">
             <SimpleTable rows={staff} columns={['name', 'email', 'role', 'department']} pageSize={25} />
+          </Panel>
+          <Panel className="span-12" title="Company car requisition" action="4 vehicles">
+            <div className="inline-actions">
+              <button type="button" className="primary-action" onClick={() => setVehicleOpen(true)}><Truck size={16} /> New car movement</button>
+              <button type="button" onClick={() => setView('requisitions')}><ClipboardCheck size={16} /> Review car requests</button>
+            </div>
+            <SimpleTable rows={(data?.requisitions || []).filter(r => r.vehicleRequest || r.module === 'Vehicle Requisition').slice(0, 8)} columns={['reqNo', 'requester', 'requestDate', 'status', 'priority']} />
           </Panel>
         </div>
       )}
@@ -759,13 +767,14 @@ function AdminOpsWorkspace({ user, setPage }) {
           <p style={{ color: '#667085', fontSize: 13, marginTop: 0 }}>Approve or reject company requisitions here.</p>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Ref</th><th>Module</th><th>By</th><th>Priority</th><th>Status</th><th>Action</th></tr></thead>
+              <thead><tr><th>Ref</th><th>Module</th><th>By</th><th>Detail</th><th>Priority</th><th>Status</th><th>Action</th></tr></thead>
               <tbody>
                 {(data?.requisitions || []).map(r => (
                   <tr key={r.id}>
                     <td>{r.reqNo || r.id}</td>
                     <td>{r.module || '—'}</td>
                     <td>{r.requestedBy || r.createdBy || '—'}</td>
+                    <td>{r.vehicleRequest ? `${r.vehicleRequest.carRegistration || 'Car'} · ${r.vehicleRequest.destination || 'Destination'}` : (r.reason || r.description || '—')}</td>
                     <td>{r.priority || 'Normal'}</td>
                     <td>{r.status}</td>
                     <td style={{ display: 'flex', gap: 6 }}>
@@ -774,7 +783,7 @@ function AdminOpsWorkspace({ user, setPage }) {
                     </td>
                   </tr>
                 ))}
-                {!(data?.requisitions || []).length && <tr><td colSpan={6}><div className="empty-state">No pending requisitions</div></td></tr>}
+                {!(data?.requisitions || []).length && <tr><td colSpan={7}><div className="empty-state">No pending requisitions</div></td></tr>}
               </tbody>
             </table>
           </div>
@@ -857,6 +866,7 @@ function AdminOpsWorkspace({ user, setPage }) {
           </Panel>
         </div>
       )}
+      {vehicleOpen && <RequisitionModal user={user} module="vehicle" onClose={() => setVehicleOpen(false)} onSaved={() => { setVehicleOpen(false); setRefreshKey(x => x + 1); }} />}
     </div>
   );
 }
@@ -1173,8 +1183,6 @@ function Sidebar({ page, setPage, open, setOpen, collapsed, setCollapsed, user, 
             if (allowed.includes(item.id)) return true;
             // Shared modules
             if (['dashboard', 'notifications', 'email', 'leaves', 'requisitions'].includes(item.id)) return true;
-            // If allowedPages stale/empty, show nav (server still enforces writes)
-            if (!allowed.length) return true;
             return false;
           }).map(item => {
             const Icon = item.icon;
@@ -2295,7 +2303,7 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
   });
   const [followBusy, setFollowBusy] = useState(false);
   const [receptionForm, setReceptionForm] = useState({
-    customerName: '', comments: '', transferredTo: '', receivedBy: user?.name || '', date: new Date().toISOString().slice(0, 10)
+    phone: '', reason: '', date: new Date().toISOString().slice(0, 10), time: new Date().toTimeString().slice(0, 5)
   });
   const [receptionBusy, setReceptionBusy] = useState(false);
   if (loading) return <Loading title="CRM" />;
@@ -2473,7 +2481,7 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
           <Panel className="span-7" title="Follow-up report" action={`${(allCalls || []).filter(r => r.recordType === 'followup' || r.followUpDate || ['Follow-up', 'To Be Called', 'Pending Calls', 'To Be Meeting'].includes(r.stage)).length} rows`}>
             <div className="table-wrap">
               <table>
-                <thead><tr><th>Date</th><th>Name</th><th>Comments</th><th>Stage</th><th>Sales person</th></tr></thead>
+                <thead><tr><th>Date</th><th>Name</th><th>Phone</th><th>Detail</th><th>To</th></tr></thead>
                 <tbody>
                   {(allCalls || [])
                     .filter(r => r.recordType === 'followup' || r.followUpDate || ['Follow-up', 'To Be Called', 'Pending Calls', 'To Be Meeting', 'Closed'].includes(r.stage))
@@ -2485,12 +2493,9 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                       return (
                         <tr key={row.id}>
                           <td>{row.followUpDate || row.date || '—'}</td>
-                          <td>
-                            <strong>{row.customerName || '—'}</strong>
-                            {owner && owner !== '—' && <span className="crm-owner-tag" style={{ display: 'block', marginTop: 4 }}>Sales: {owner}</span>}
-                          </td>
-                          <td>{row.comments || row.notes || '—'}</td>
-                          <td><span className="status active">{row.stage || 'Follow-up'}</span></td>
+                          <td><strong>{row.customerName || '—'}</strong></td>
+                          <td>{row.phone || cust?.phone || '—'}</td>
+                          <td>{row.comments || row.notes || row.nextStep || '—'}</td>
                           <td>{owner}</td>
                         </tr>
                       );
@@ -2508,11 +2513,11 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
 {view === 'leads' && <Panel title="Leads and Opportunities" action="Live"><SimpleTable rows={allLeads} columns={['name', 'company', 'phone', 'stage', 'assignedTo', 'status']} /></Panel>}
       {view === 'calls' && (
         <div className="dashboard-grid">
-          <Panel className="span-5" title="Log call · Reception" action="DATE · TIME · NUMBER · COMMENTS">
+          <Panel className="span-5" title="Reception call" action="DATE · TIME · NUMBER · REASON">
             <form className="settings-form-grid" onSubmit={async e => {
               e.preventDefault();
               if (!receptionForm.phone) return alert('Phone number is required');
-              if (!receptionForm.comments) return alert('Comments are required');
+              if (!receptionForm.reason) return alert('Reason is required');
               setReceptionBusy(true);
               try {
                 const date = receptionForm.date || new Date().toISOString().slice(0, 10);
@@ -2521,8 +2526,9 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                   recordType: 'reception',
                   customerName: receptionForm.phone,
                   phone: receptionForm.phone,
-                  comments: receptionForm.comments,
-                  notes: receptionForm.comments,
+                  reason: receptionForm.reason,
+                  comments: receptionForm.reason,
+                  notes: receptionForm.reason,
                   receivedBy: user?.name || 'Reception',
                   assignedTo: user?.name || 'Reception',
                   stage: 'Reception',
@@ -2530,7 +2536,7 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                   time,
                   datetime: `${date} ${time}`
                 }]);
-                setReceptionForm({ phone: '', comments: '', date: new Date().toISOString().slice(0, 10), time: new Date().toTimeString().slice(0, 5) });
+                setReceptionForm({ phone: '', reason: '', date: new Date().toISOString().slice(0, 10), time: new Date().toTimeString().slice(0, 5) });
                 setRefreshKey(x => x + 1);
               } catch (err) { alert(err.message); }
               finally { setReceptionBusy(false); }
@@ -2538,14 +2544,14 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
               <label>Date<input type="date" value={receptionForm.date} onChange={e => setReceptionForm({ ...receptionForm, date: e.target.value })} required /></label>
               <label>Time<input type="time" value={receptionForm.time} onChange={e => setReceptionForm({ ...receptionForm, time: e.target.value })} required /></label>
               <label>Number<input type="tel" inputMode="tel" value={receptionForm.phone} onChange={e => setReceptionForm({ ...receptionForm, phone: e.target.value })} placeholder="Caller phone number" required /></label>
-              <label>Comments<textarea value={receptionForm.comments} onChange={e => setReceptionForm({ ...receptionForm, comments: e.target.value })} rows={3} placeholder="What the call was about" required /></label>
+              <label>Reason<textarea value={receptionForm.reason} onChange={e => setReceptionForm({ ...receptionForm, reason: e.target.value })} rows={3} placeholder="General enquiry, asking, direction, supplier, customer question..." required /></label>
               <button type="submit" className="primary-action" disabled={receptionBusy}>{receptionBusy ? 'Saving…' : 'Log call'}</button>
             </form>
           </Panel>
           <Panel className="span-7" title="Reception calls" action={`${(allCalls || []).filter(r => r.recordType === 'reception' || r.stage === 'Reception').length} calls`}>
             <div className="table-wrap">
               <table>
-                <thead><tr><th>Date</th><th>Time</th><th>Number</th><th>Comments</th></tr></thead>
+                <thead><tr><th>Date</th><th>Time</th><th>Number</th><th>Reason</th></tr></thead>
                 <tbody>
                   {(() => {
                     const rows = (allCalls || [])
@@ -2569,7 +2575,7 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                           <td>{row.date || '—'}</td>
                           <td>{row.time || String(row.datetime || '').slice(11, 16) || '—'}</td>
                           <td><strong>{row.phone || row.customerName || '—'}</strong></td>
-                          <td>{row.comments || row.notes || '—'}</td>
+                          <td>{row.reason || row.comments || row.notes || '—'}</td>
                         </tr>
                       );
                     });
@@ -3161,7 +3167,9 @@ function CRMReportsCenter({ user, data, globalPeriod = 'Month', onUpdated }) {
       date: dateValue(row) || String(row.followUpDate || row.createdAt || '').slice(0, 10),
       name: row.customerName || row.caller || row.name || 'Customer call',
       phone: row.phone || '',
-      detail: [row.notes, row.comments, row.outcome].filter(Boolean).join(' · ') || 'CRM call',
+      detail: [row.reason, row.notes, row.comments, row.outcome].filter(Boolean).join(' · ') || 'CRM call',
+      to: row.transferredTo || row.assignedTo || row.salesOwner || '',
+      recordType: row.recordType || '',
       status: row.stage || row.status || 'Logged',
       value: num(row.value),
       assignedTo: row.assignedTo || '',
@@ -3173,6 +3181,7 @@ function CRMReportsCenter({ user, data, globalPeriod = 'Month', onUpdated }) {
       phone: row.phone,
       email: row.email || '',
       detail: `${row.city || '—'} · ${row.type || 'Customer'}${row.salesOwner || row.salesPerson ? ` · Sales: ${row.salesOwner || row.salesPerson}` : ''}`,
+      to: row.salesOwner || row.salesPerson || row.assignedTo || '',
       status: row.status || row.health || 'Active',
       value: num(row.revenue || row.balance || row.creditLimit),
       balance: num(row.balance),
@@ -3183,6 +3192,7 @@ function CRMReportsCenter({ user, data, globalPeriod = 'Month', onUpdated }) {
       name: row.name || row.company,
       phone: row.phone,
       detail: row.company || row.assignedTo || 'Opportunity',
+      to: row.assignedTo || row.salesPerson || '',
       status: row.stage || row.status || 'Open',
       value: num(row.value)
     }));
@@ -3192,6 +3202,7 @@ function CRMReportsCenter({ user, data, globalPeriod = 'Month', onUpdated }) {
       name: row.name || row.customerName || 'Customer',
       phone: row.phone || '',
       detail: `${row.deliveryNo || 'Delivery'} · ${row.destination || 'No destination'} · ${row.deliveryMethod || row.method || '—'}`,
+      to: row.driver || row.assignedTo || '',
       status: row.status || 'Pending Delivery',
       value: num(row.value || row.total)
     }));
@@ -3200,6 +3211,7 @@ function CRMReportsCenter({ user, data, globalPeriod = 'Month', onUpdated }) {
       name: row.customerName || 'Customer',
       phone: row.phone || '',
       detail: `${row.saleNo || row.orderNo || 'Order'} · ${row.deliveryStatus || row.status || ''}`,
+      to: row.salesperson || row.salesPerson || row.assignedTo || '',
       status: row.status || row.deliveryStatus || 'Open',
       value: num(row.total || row.balance)
     }));
@@ -3207,15 +3219,16 @@ function CRMReportsCenter({ user, data, globalPeriod = 'Month', onUpdated }) {
       ...row,
       comments: row.comments || row.detail || '',
       followUpDate: row.followUpDate || '',
-      assignedTo: row.assignedTo || ''
+      assignedTo: row.assignedTo || '',
+      to: row.to || row.assignedTo || ''
     }));
     return {
-      customers: { label: 'Customer ledger', module: 'Customer', reportName: 'Customer Report', rows: customers, icon: Users, columns: ['date', 'name', 'phone', 'email', 'type', 'detail', 'status', 'balance', 'value'] },
-      calls: { label: 'Calls & notes', module: 'Customer', reportName: 'Call Report', rows: calls, icon: Phone, columns: ['date', 'name', 'phone', 'detail', 'status', 'assignedTo', 'followUpDate'] },
-      followup: { label: 'Follow-ups', module: 'Customer', reportName: 'Follow-up Report', rows: followups, icon: RefreshCw, columns: ['date', 'name', 'phone', 'detail', 'status', 'followUpDate', 'assignedTo', 'comments'] },
-      leads: { label: 'Pipeline', module: 'Customer', reportName: 'Pipeline Report', rows: leads, icon: Target, columns: ['date', 'name', 'phone', 'detail', 'status', 'value'] },
-      orders: { label: 'Purchases', module: 'Sales', reportName: 'Customer Purchases', rows: orders, icon: ShoppingCart, columns: ['date', 'name', 'detail', 'status', 'value'] },
-      delivery: { label: 'Deliveries', module: 'Delivery', reportName: 'Delivery Report', rows: deliveries, icon: Truck, columns: ['date', 'deliveryNo', 'name', 'destination', 'method', 'driver', 'status', 'value'] }
+      customers: { label: 'Customer ledger', module: 'Customer', reportName: 'Customer Report', rows: customers, icon: Users, columns: ['date', 'name', 'phone', 'detail', 'to'] },
+      calls: { label: 'Reception calls', module: 'Customer', reportName: 'Call Report', rows: calls.filter(row => row.status === 'Reception' || row.recordType === 'reception' || !row.followUpDate), icon: Phone, columns: ['date', 'name', 'phone', 'detail', 'to'] },
+      followup: { label: 'Follow-ups', module: 'Customer', reportName: 'Follow-up Report', rows: followups, icon: RefreshCw, columns: ['date', 'name', 'phone', 'detail', 'to'] },
+      leads: { label: 'Pipeline', module: 'Customer', reportName: 'Pipeline Report', rows: leads, icon: Target, columns: ['date', 'name', 'phone', 'detail', 'to'] },
+      orders: { label: 'Purchases', module: 'Sales', reportName: 'Customer Purchases', rows: orders, icon: ShoppingCart, columns: ['date', 'name', 'phone', 'detail', 'to'] },
+      delivery: { label: 'Deliveries', module: 'Delivery', reportName: 'Delivery Report', rows: deliveries, icon: Truck, columns: ['date', 'name', 'phone', 'detail', 'to'] }
     };
   }, [data]);
   const activeSet = reportSets[active] || reportSets.customers;
@@ -3232,7 +3245,7 @@ function CRMReportsCenter({ user, data, globalPeriod = 'Month', onUpdated }) {
   const totalValue = filteredRows.reduce((sum, row) => sum + num(row.value || row.balance), 0);
   const statusBreakdown = statuses.map(item => ({ name: item, count: filteredRows.filter(row => row.status === item).length })).filter(row => row.count);
   const chartRows = statusBreakdown.length ? statusBreakdown.map(row => ({ label: row.name, value: row.count })) : [{ label: 'Records', value: filteredRows.length }];
-  const columns = activeSet.columns || ['date', 'name', 'phone', 'detail', 'status', 'value'];
+  const columns = activeSet.columns || ['date', 'name', 'phone', 'detail', 'to'];
 
   async function exportCrmReport(format) {
     const fmt = String(format || 'CSV').toUpperCase();
@@ -8216,11 +8229,12 @@ const MODULE_REQUISITION_LABELS = {
 const MODULE_LABELS = {
   dashboard: 'Dashboard', analytics: 'Analytics', sales: 'Sales', purchasing: 'Purchases', inventory: 'Inventory',
   finance: 'Finance', accounts: 'Accounts', production: 'Manufacturing', customers: 'CRM', reports: 'Reports',
-  inputs: 'Inputs', notifications: 'Notifications', email: 'Email', 'email-admin': 'Email Admin', hr: 'HR', leaves: 'Leaves', requisitions: 'Requisitions'
+  inputs: 'Inputs', notifications: 'Notifications', email: 'Email', 'email-admin': 'Email Admin', hr: 'HR', leaves: 'Leaves', requisitions: 'Requisitions', vehicle: 'Vehicle Requisition'
 };
 
 function RequisitionModal({ user, module, onClose, onSaved }) {
   const moduleLabel = MODULE_LABELS[module] || module;
+  const isVehicle = module === 'vehicle';
   const [form, setForm] = useState({
     module: moduleLabel,
     requestDate: new Date().toISOString().slice(0, 10),
@@ -8231,6 +8245,29 @@ function RequisitionModal({ user, module, onClose, onSaved }) {
     requestedTo: 'Managing Director',
     requiredDate: '',
     comments: '',
+    vehicleRequest: {
+      requestorName: user.name || '',
+      carRegistration: '',
+      drivenBy: '',
+      destination: '',
+      reason: '',
+      kmStart: '',
+      fuelLevel: '',
+      spareWheel: false,
+      jack: false,
+      jackFire: false,
+      conditionOut: '',
+      returnDate: '',
+      kmReturn: '',
+      conditionReturn: '',
+      supervisorName: '',
+      supervisorDate: '',
+      transportManagerName: '',
+      transportManagerDate: '',
+      generalManagerName: '',
+      generalManagerDate: '',
+      signature: ''
+    },
     items: [{ item: '', description: '', quantity: 1, unit: 'PCS', estimatedPrice: 0 }]
   });
   const [saving, setSaving] = useState(false);
@@ -8255,7 +8292,13 @@ function RequisitionModal({ user, module, onClose, onSaved }) {
   async function save(asDraft) {
     setSaving(true);
     try {
-      const result = await rpc('createRequisition', [user, { ...form, estimatedCost }]);
+      const vehicle = form.vehicleRequest || {};
+      const result = await rpc('createRequisition', [user, {
+        ...form,
+        estimatedCost,
+        reason: isVehicle ? (vehicle.reason || form.reason || 'Vehicle requisition') : form.reason,
+        description: isVehicle ? `${vehicle.carRegistration || 'Vehicle'} to ${vehicle.destination || 'destination'} driven by ${vehicle.drivenBy || 'driver pending'}` : form.description
+      }]);
       if (!asDraft) {
         setSubmitting(true);
         try {
@@ -8288,6 +8331,31 @@ function RequisitionModal({ user, module, onClose, onSaved }) {
           <label>Branch<input value={form.branch} onChange={e => setForm({ ...form, branch: e.target.value })} placeholder="e.g. Nairobi" /></label>
           <label>Module<input readOnly value={form.module} /></label>
         </div>
+        {isVehicle && (
+          <fieldset className="settings-fieldset"><legend>Vehicle Movement</legend><div>
+            <label>Requestor<input value={form.vehicleRequest.requestorName} onChange={e => setForm({ ...form, vehicleRequest: { ...form.vehicleRequest, requestorName: e.target.value } })} /></label>
+            <label>Car Registration<input value={form.vehicleRequest.carRegistration} onChange={e => setForm({ ...form, vehicleRequest: { ...form.vehicleRequest, carRegistration: e.target.value } })} placeholder="KXX 000X" /></label>
+            <label>Driven By<input value={form.vehicleRequest.drivenBy} onChange={e => setForm({ ...form, vehicleRequest: { ...form.vehicleRequest, drivenBy: e.target.value } })} /></label>
+            <label>Destination<input value={form.vehicleRequest.destination} onChange={e => setForm({ ...form, vehicleRequest: { ...form.vehicleRequest, destination: e.target.value } })} /></label>
+            <label>Reason<textarea rows={2} value={form.vehicleRequest.reason} onChange={e => setForm({ ...form, vehicleRequest: { ...form.vehicleRequest, reason: e.target.value } })} /></label>
+            <label>KM at Start<input type="number" value={form.vehicleRequest.kmStart} onChange={e => setForm({ ...form, vehicleRequest: { ...form.vehicleRequest, kmStart: e.target.value } })} /></label>
+            <label>Fuel Level<input value={form.vehicleRequest.fuelLevel} onChange={e => setForm({ ...form, vehicleRequest: { ...form.vehicleRequest, fuelLevel: e.target.value } })} placeholder="Full / 1/2 / 1/4" /></label>
+            <label><span>Spare Wheel</span><input type="checkbox" checked={form.vehicleRequest.spareWheel} onChange={e => setForm({ ...form, vehicleRequest: { ...form.vehicleRequest, spareWheel: e.target.checked } })} /></label>
+            <label><span>Jack</span><input type="checkbox" checked={form.vehicleRequest.jack} onChange={e => setForm({ ...form, vehicleRequest: { ...form.vehicleRequest, jack: e.target.checked } })} /></label>
+            <label><span>Jack / Fire Extinguisher</span><input type="checkbox" checked={form.vehicleRequest.jackFire} onChange={e => setForm({ ...form, vehicleRequest: { ...form.vehicleRequest, jackFire: e.target.checked } })} /></label>
+            <label>Condition Out<textarea rows={2} value={form.vehicleRequest.conditionOut} onChange={e => setForm({ ...form, vehicleRequest: { ...form.vehicleRequest, conditionOut: e.target.value } })} /></label>
+            <label>Return Date<input type="date" value={form.vehicleRequest.returnDate} onChange={e => setForm({ ...form, vehicleRequest: { ...form.vehicleRequest, returnDate: e.target.value } })} /></label>
+            <label>KM on Return<input type="number" value={form.vehicleRequest.kmReturn} onChange={e => setForm({ ...form, vehicleRequest: { ...form.vehicleRequest, kmReturn: e.target.value } })} /></label>
+            <label>Condition Return<textarea rows={2} value={form.vehicleRequest.conditionReturn} onChange={e => setForm({ ...form, vehicleRequest: { ...form.vehicleRequest, conditionReturn: e.target.value } })} /></label>
+            <label>Supervisor Name<input value={form.vehicleRequest.supervisorName} onChange={e => setForm({ ...form, vehicleRequest: { ...form.vehicleRequest, supervisorName: e.target.value } })} /></label>
+            <label>Supervisor Date<input type="date" value={form.vehicleRequest.supervisorDate} onChange={e => setForm({ ...form, vehicleRequest: { ...form.vehicleRequest, supervisorDate: e.target.value } })} /></label>
+            <label>Transport Manager<input value={form.vehicleRequest.transportManagerName} onChange={e => setForm({ ...form, vehicleRequest: { ...form.vehicleRequest, transportManagerName: e.target.value } })} /></label>
+            <label>Transport Manager Date<input type="date" value={form.vehicleRequest.transportManagerDate} onChange={e => setForm({ ...form, vehicleRequest: { ...form.vehicleRequest, transportManagerDate: e.target.value } })} /></label>
+            <label>General Manager<input value={form.vehicleRequest.generalManagerName} onChange={e => setForm({ ...form, vehicleRequest: { ...form.vehicleRequest, generalManagerName: e.target.value } })} /></label>
+            <label>Authorization Date<input type="date" value={form.vehicleRequest.generalManagerDate} onChange={e => setForm({ ...form, vehicleRequest: { ...form.vehicleRequest, generalManagerDate: e.target.value } })} /></label>
+            <label>Signature<input value={form.vehicleRequest.signature} onChange={e => setForm({ ...form, vehicleRequest: { ...form.vehicleRequest, signature: e.target.value } })} /></label>
+          </div></fieldset>
+        )}
         <label>Priority
           <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
             {['Low', 'Medium', 'High', 'Urgent'].map(p => (
@@ -8304,11 +8372,11 @@ function RequisitionModal({ user, module, onClose, onSaved }) {
           <label>Required Date<input type="date" value={form.requiredDate} onChange={e => setForm({ ...form, requiredDate: e.target.value })} /></label>
           <label>Estimated Cost<input readOnly value={currency(estimatedCost)} /></label>
         </div>
-        <div className="quote-items-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+        {!isVehicle && <div className="quote-items-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
           <strong>Line Items</strong>
           <button type="button" className="mini-action" onClick={addItem}><Plus size={14} /> Add Item</button>
-        </div>
-        {form.items.map((item, index) => (
+        </div>}
+        {!isVehicle && form.items.map((item, index) => (
           <div key={index} className="modal-grid" style={{ gridTemplateColumns: '1.5fr 1fr 0.7fr 0.5fr 1fr auto', gap: 6, alignItems: 'end' }}>
             <label>Item<input value={item.item} onChange={e => updateItem(index, 'item', e.target.value)} placeholder="Item name" /></label>
             <label>Description<input value={item.description} onChange={e => updateItem(index, 'description', e.target.value)} placeholder="Description" /></label>
@@ -8347,6 +8415,7 @@ function RequisitionsPage({ user, setPage }) {
   const [filterPriority, setFilterPriority] = useState('');
   const [filterModule, setFilterModule] = useState('');
   const [reqModalOpen, setReqModalOpen] = useState(false);
+  const [vehicleModalOpen, setVehicleModalOpen] = useState(false);
   const [selectedReq, setSelectedReq] = useState(null);
   const [busy, setBusy] = useState('');
   const [statusMsg, setStatusMsg] = useState('');
@@ -8425,6 +8494,7 @@ function RequisitionsPage({ user, setPage }) {
       <div className="inline-actions">
         <button onClick={() => setReqModalOpen(true)}><Plus size={16} /> Create Requisition</button>
         <button onClick={() => { setReqModalOpen(true); }}><ClipboardCheck size={16} /> Purchase / Materials Form</button>
+        <button className="primary-action" onClick={() => setVehicleModalOpen(true)}><Truck size={16} /> Car Requisition</button>
       </div>
       <div className="control-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}>
         {[
@@ -8489,6 +8559,7 @@ function RequisitionsPage({ user, setPage }) {
         ))}
       </div>
       {reqModalOpen && <RequisitionModal user={user} module="requisitions" onClose={() => setReqModalOpen(false)} onSaved={() => { setReqModalOpen(false); setRefreshKey(k => k + 1); }} />}
+      {vehicleModalOpen && <RequisitionModal user={user} module="vehicle" onClose={() => setVehicleModalOpen(false)} onSaved={() => { setVehicleModalOpen(false); setRefreshKey(k => k + 1); }} />}
       {selectedReq && (
         <div className="modal-backdrop" onClick={() => setSelectedReq(null)}>
           <div className="modal-card" onClick={e => e.stopPropagation()} style={{ maxWidth: 700 }}>
@@ -8536,6 +8607,12 @@ function RequisitionsPage({ user, setPage }) {
             <div style={{ fontWeight: 700, textAlign: 'right', fontSize: 16, marginBottom: 12 }}>Estimated Total: {currency(selectedReq.estimatedCost)}</div>
             {selectedReq.approvedBy && <div style={{ color: '#22c55e', marginBottom: 8 }}>Approved by {selectedReq.approvedBy} on {selectedReq.approvedDate?.slice(0, 10)}</div>}
             {selectedReq.rejectedBy && <div style={{ color: '#ef4444', marginBottom: 8 }}>Rejected by {selectedReq.rejectedBy} on {selectedReq.rejectedDate?.slice(0, 10)}: {selectedReq.rejectedReason}</div>}
+            {selectedReq.vehicleRequest && (
+              <div style={{ background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 10, padding: 12, marginBottom: 12 }}>
+                <strong>Vehicle movement</strong>
+                <SimpleTable rows={[selectedReq.vehicleRequest]} columns={['carRegistration', 'drivenBy', 'destination', 'reason', 'kmStart', 'fuelLevel', 'conditionOut', 'returnDate', 'kmReturn', 'conditionReturn']} />
+              </div>
+            )}
             {(selectedReq.status === 'Pending Approval' || selectedReq.status === 'Submitted' || selectedReq.status === 'Draft') && (
               <form
                 className="requisition-decision-form"
@@ -10481,6 +10558,17 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
   const handleSaveReview = async (form) => {
     try { await rpc('saveReview', [user, form]); setModal(null); setRefreshKey(k => k + 1); } catch (err) { alert(err.message); }
   };
+  const setAttendanceDate = (date) => {
+    const day = new Date(date).getDay();
+    setAttForm(form => ({
+      ...form,
+      date,
+      checkIn: day === 6 ? '08:00' : form.checkIn || '08:00',
+      checkOut: day === 6 ? '13:00' : form.checkOut || '17:00',
+      breakMinutes: day === 6 ? 0 : form.breakMinutes,
+      shiftType: day === 6 ? 'Saturday 5h' : form.shiftType
+    }));
+  };
   const handleMoveCandidate = async (id, stage) => {
     try { await rpc('moveCandidate', [user, id, stage]); setRefreshKey(k => k + 1); } catch (err) { alert(err.message); }
   };
@@ -10715,13 +10803,13 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                     {data.employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name} · {emp.department}</option>)}
                   </select>
                 </label>
-                <label>Date<input type="date" value={attForm.date} onChange={e => setAttForm({ ...attForm, date: e.target.value })} required /></label>
+                <label>Date<input type="date" value={attForm.date} onChange={e => setAttendanceDate(e.target.value)} required /></label>
                 <label>Check In<input type="time" value={attForm.checkIn} onChange={e => setAttForm({ ...attForm, checkIn: e.target.value })} /></label>
                 <label>Check Out<input type="time" value={attForm.checkOut} onChange={e => setAttForm({ ...attForm, checkOut: e.target.value })} /></label>
                 <label>Break Minutes<input type="number" value={attForm.breakMinutes} onChange={e => setAttForm({ ...attForm, breakMinutes: Number(e.target.value) })} /></label>
                 <label>Shift Type
                   <select value={attForm.shiftType} onChange={e => setAttForm({ ...attForm, shiftType: e.target.value })}>
-                    {['Day Shift', 'Night Shift', 'Field Shift', 'Remote', 'Half-Day'].map(st => <option key={st} value={st}>{st}</option>)}
+                    {['Day Shift', 'Saturday 5h', 'Night Shift', 'Field Shift', 'Remote', 'Half-Day'].map(st => <option key={st} value={st}>{st}</option>)}
                   </select>
                 </label>
                 <label>Work Location<input type="text" value={attForm.workLocation} onChange={e => setAttForm({ ...attForm, workLocation: e.target.value })} placeholder="Office, Warehouse, Field..." /></label>
@@ -11910,6 +11998,7 @@ function LeaveWorkspace({ user, setPage, globalPeriod = 'Month' }) {
               <article><span>Period</span><strong>{detailLeave.startDate} → {detailLeave.endDate}</strong></article>
               <article><span>Department</span><strong>{detailLeave.department || '—'}</strong></article>
               <article><span>Covering</span><strong>{detailLeave.coveringEmployee || '—'}</strong></article>
+              <article><span>Responsibility</span><strong>{detailLeave.handoverResponsibility || detailLeave.coveringEmployee || '—'}</strong></article>
               <article><span>Emergency</span><strong>{detailLeave.emergencyContact || '—'}</strong></article>
               <article><span>Applied</span><strong>{detailLeave.appliedAt ? new Date(detailLeave.appliedAt).toLocaleString() : '—'}</strong></article>
               <article><span>Decided by</span><strong>{detailLeave.decidedBy || '—'}</strong></article>
@@ -11943,7 +12032,8 @@ function LeaveApplyModal({ user, leaveTypes, departments = [], balances = [], on
     endDate: new Date().toISOString().slice(0, 10),
     reason: '',
     emergencyContact: '',
-    coveringEmployee: ''
+    coveringEmployee: '',
+    handoverResponsibility: ''
   });
   const selectedType = leaveTypes.find(lt => lt.name === form.type) || { deducts: 'annual', defaultDays: 21 };
   const balance = selectedType.deducts === 'sick' ? (me.sick ?? 10) : selectedType.deducts === 'casual' ? (me.casual ?? 5) : (me.annual ?? 21);
@@ -11976,11 +12066,12 @@ function LeaveApplyModal({ user, leaveTypes, departments = [], balances = [], on
         <fieldset className="settings-fieldset"><legend>Additional Information</legend><div>
           <label>Emergency Contact<input type="text" value={form.emergencyContact} onChange={e => setForm({ ...form, emergencyContact: e.target.value })} placeholder="Name and phone number..." /></label>
           <label>Covering Employee
-            <select value={form.coveringEmployee} onChange={e => setForm({ ...form, coveringEmployee: e.target.value })}>
+            <select value={form.coveringEmployee} onChange={e => setForm({ ...form, coveringEmployee: e.target.value, handoverResponsibility: form.handoverResponsibility || e.target.value })}>
               <option value="">None</option>
               {coveringOptions.map(e => <option key={e.id} value={e.name}>{e.name} ({e.department})</option>)}
             </select>
           </label>
+          <label>Responsibility / Handover<textarea rows={2} value={form.handoverResponsibility} onChange={e => setForm({ ...form, handoverResponsibility: e.target.value })} placeholder="Who handles duties and what they cover..." /></label>
         </div></fieldset>
         <div className="leave-calc-preview">
           <div className="leave-calc-row"><span>Leave Type</span><strong>{form.type}</strong></div>

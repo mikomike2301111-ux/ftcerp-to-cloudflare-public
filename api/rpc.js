@@ -4570,8 +4570,15 @@ function attendanceHours(record = {}) {
   const [ih, im] = checkIn.split(':').map(Number);
   const [oh, om] = checkOut.split(':').map(Number);
   if ([ih, im, oh, om].some(value => Number.isNaN(value))) return 0;
-  const mins = (oh * 60 + om) - (ih * 60 + im);
+  const mins = (oh * 60 + om) - (ih * 60 + im) - num(record.breakMinutes || 0);
   return Math.max(0, Math.round((mins / 60) * 10) / 10);
+}
+
+function expectedWorkHoursForDate(date, employee = {}) {
+  const day = new Date(date || today()).getDay();
+  if (day === 0) return 0;
+  if (day === 6) return 5;
+  return Math.max(1, num(employee.expectedHoursPerDay || 8));
 }
 function periodRange(period = 'Month') {
   const cleanPeriod = String(period || 'Month').toLowerCase();
@@ -10124,6 +10131,29 @@ territory: geo,
       rejectedReason: '',
       completedDate: '',
       comments: clean(row.comments || ''),
+      vehicleRequest: row.vehicleRequest ? {
+        requestorName: clean(row.vehicleRequest.requestorName || row.employee || u.name),
+        carRegistration: clean(row.vehicleRequest.carRegistration),
+        drivenBy: clean(row.vehicleRequest.drivenBy),
+        destination: clean(row.vehicleRequest.destination),
+        reason: clean(row.vehicleRequest.reason || row.reason),
+        kmStart: num(row.vehicleRequest.kmStart),
+        fuelLevel: clean(row.vehicleRequest.fuelLevel),
+        spareWheel: Boolean(row.vehicleRequest.spareWheel),
+        jack: Boolean(row.vehicleRequest.jack),
+        jackFire: Boolean(row.vehicleRequest.jackFire),
+        conditionOut: clean(row.vehicleRequest.conditionOut),
+        returnDate: clean(row.vehicleRequest.returnDate),
+        kmReturn: num(row.vehicleRequest.kmReturn),
+        conditionReturn: clean(row.vehicleRequest.conditionReturn),
+        supervisorName: clean(row.vehicleRequest.supervisorName),
+        supervisorDate: clean(row.vehicleRequest.supervisorDate),
+        transportManagerName: clean(row.vehicleRequest.transportManagerName),
+        transportManagerDate: clean(row.vehicleRequest.transportManagerDate),
+        generalManagerName: clean(row.vehicleRequest.generalManagerName),
+        generalManagerDate: clean(row.vehicleRequest.generalManagerDate),
+        signature: clean(row.vehicleRequest.signature)
+      } : null,
       attachments: row.attachments || [],
       createdAt: now,
       updatedAt: now,
@@ -11642,7 +11672,10 @@ territory: geo,
     const presentInPeriod = attendanceInPeriod.filter(a => ['Present', 'Late', 'Remote', 'Half-Day'].includes(a.status));
     const absentInPeriod = attendanceInPeriod.filter(a => a.status === 'Absent');
     const hoursInPeriod = attendanceInPeriod.reduce((sum, a) => sum + num(a.hoursWorked), 0);
-    const overtimeHours = attendanceInPeriod.reduce((sum, a) => sum + Math.max(0, num(a.hoursWorked) - 8), 0);
+    const overtimeHours = attendanceInPeriod.reduce((sum, a) => {
+      const emp = (d.employees || []).find(e => e.id === a.employeeId || e.name === a.employeeName) || {};
+      return sum + Math.max(0, num(a.hoursWorked) - expectedWorkHoursForDate(a.date, emp));
+    }, 0);
     const lateArrivals = attendanceInPeriod.filter(a => {
       const checkIn = clean(a.checkIn);
       if (!checkIn || a.status === 'Absent') return false;
@@ -11679,8 +11712,8 @@ territory: geo,
       const present = empAttendance.filter(a => ['Present', 'Late', 'Remote', 'Half-Day'].includes(a.status)).length;
       const absent = empAttendance.filter(a => a.status === 'Absent' && !isKenyaHoliday(a.date) && !isWeekend(a.date)).length;
       const hours = empAttendance.reduce((sum, row) => sum + num(row.hoursWorked), 0);
-      const expectedHours = Math.max(1, present * num(emp.expectedHoursPerDay || 8));
-      const overtime = empAttendance.reduce((sum, row) => sum + Math.max(0, num(row.hoursWorked) - num(emp.expectedHoursPerDay || 8)), 0);
+      const expectedHours = empAttendance.reduce((sum, row) => sum + expectedWorkHoursForDate(row.date, emp), 0);
+      const overtime = empAttendance.reduce((sum, row) => sum + Math.max(0, num(row.hoursWorked) - expectedWorkHoursForDate(row.date, emp)), 0);
       const lateArrivals = empAttendance.filter(a => {
         if (a.status !== 'Late') return false;
         const checkIn = clean(a.checkIn);
@@ -12175,6 +12208,57 @@ territory: geo,
     log(u, `Deactivate employee ${emp.name}`, 'HR');
     return { success: true, employee: emp };
   },
+  recordAttendance(user, form = {}) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.DEV, ROLES.EXECUTIVE);
+    const d = data();
+    ensureHrData();
+    d.attendance = Array.isArray(d.attendance) ? d.attendance : [];
+    const employeeId = clean(form.employeeId);
+    assertRequired(employeeId, 'Employee');
+    const emp = (d.employees || []).find(e => e.id === employeeId || e.employeeNo === employeeId);
+    if (!emp) throw new Error('Employee not found');
+    const date = dateOnly(form.date || today());
+    const expectedHours = expectedWorkHoursForDate(date, emp);
+    const hoursWorked = attendanceHours(form);
+    const lateMinutes = (() => {
+      const checkIn = clean(form.checkIn);
+      if (!checkIn) return 0;
+      const [h, m] = checkIn.split(':').map(Number);
+      if ([h, m].some(Number.isNaN)) return 0;
+      return Math.max(0, (h * 60 + m) - (8 * 60));
+    })();
+    const status = clean(form.status) || (hoursWorked > 0 ? (lateMinutes > 0 ? 'Late' : 'Present') : 'Absent');
+    const record = {
+      id: clean(form.id) || gid(),
+      employeeId: emp.id,
+      employeeNo: emp.employeeNo || '',
+      employeeName: emp.name,
+      department: emp.department,
+      date,
+      checkIn: clean(form.checkIn),
+      checkOut: clean(form.checkOut),
+      breakMinutes: num(form.breakMinutes || 0),
+      shiftType: clean(form.shiftType) || (new Date(date).getDay() === 6 ? 'Saturday 5h' : 'Day Shift'),
+      workLocation: clean(form.workLocation || 'Office'),
+      status,
+      note: clean(form.note || ''),
+      hoursWorked,
+      expectedHours,
+      overtimeHours: Math.max(0, Math.round((hoursWorked - expectedHours) * 10) / 10),
+      lateHours: Math.round((lateMinutes / 60) * 10) / 10,
+      updatedAt: new Date().toISOString(),
+      recordedBy: u.name
+    };
+    const idx = d.attendance.findIndex(a => a.employeeId === emp.id && a.date === date);
+    if (idx >= 0) d.attendance[idx] = { ...d.attendance[idx], ...record, id: d.attendance[idx].id };
+    else {
+      record.createdAt = new Date().toISOString();
+      d.attendance.unshift(record);
+    }
+    pushHrTimeline(emp.id, 'Attendance Recorded', `${date}: ${hoursWorked}h of ${expectedHours}h`, u);
+    log(u, `Record attendance ${emp.name}`, 'HR', `${date} · ${hoursWorked}h`);
+    return { success: true, attendance: idx >= 0 ? d.attendance[idx] : record };
+  },
   restoreEmployee(user, id) {
     const u = reqRole(user, ROLES.ADMIN);
     const d = data();
@@ -12330,9 +12414,11 @@ territory: geo,
     const rows = [];
     for (const emp of employees) {
       const empAttendance = (d.attendance || []).filter(a => a.employeeId === emp.id && dateOnly(a.date).slice(0, 7) === period);
-      const hours = empAttendance.reduce((s, a) => s + num(a.hoursWorked || a.hours || (a.status === 'Present' ? 8 : 0)), 0);
+      const hours = empAttendance.reduce((s, a) => s + (a.hoursWorked !== undefined ? num(a.hoursWorked) : attendanceHours(a)), 0);
       const lateHours = empAttendance.reduce((s, a) => s + num(a.lateHours), 0);
-      const expectedHoursPeriod = 22 * Math.max(1, num(emp.expectedHoursPerDay || 8));
+      const expectedHoursPeriod = empAttendance.length
+        ? empAttendance.reduce((s, a) => s + expectedWorkHoursForDate(a.date, emp), 0)
+        : 22 * Math.max(1, num(emp.expectedHoursPerDay || 8)) + 4 * 5;
       const slip = computeKenyaPayslip(emp, hours || expectedHoursPeriod, expectedHoursPeriod, lateHours);
       totalGrossPay += slip.grossPay;
       totalDeductions += slip.deductions;
@@ -12639,6 +12725,7 @@ territory: geo,
       reason: clean(form.reason) || 'Leave request',
       emergencyContact: clean(form.emergencyContact),
       coveringEmployee: clean(form.coveringEmployee),
+      handoverResponsibility: clean(form.handoverResponsibility || form.responsibility || form.coveringEmployee),
       status: 'Pending',
       appliedAt: new Date().toISOString(),
       attachments: []
