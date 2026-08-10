@@ -157,10 +157,13 @@ function ensureCrmPipelineLead(d, customer, { salesperson, stage, notes, product
   return lead;
 }
 
+const OFFICE_ADMIN_EMAIL = String(process.env.OFFICE_ADMIN_EMAIL || 'kiarieadmin@gmail.com').trim().toLowerCase();
+const OFFICE_ADMIN_PASSWORD = String(process.env.OFFICE_ADMIN_PASSWORD || 'Adminftc@2026#');
+
 const STAFF_ROSTER = [
   { name: 'Miko Admin', email: 'miko@gmail.com', password: 'MM@29315122', role: ROLES.DEV, department: 'Executive' },
   { name: 'Samuel', email: 'farmtrackbiosciencesltd@gmail.com', password: 'Boss2026!', role: ROLES.EXECUTIVE, department: 'Executive' },
-  { name: 'Office Admin', email: 'admin@farmtrack.co.ke', password: 'Admin2026!', role: ROLES.ADMIN, department: 'Administration' },
+  { name: 'Office Admin', email: OFFICE_ADMIN_EMAIL, password: OFFICE_ADMIN_PASSWORD, role: ROLES.ADMIN, department: 'Administration' },
   { name: 'HR Officer', email: 'hr@farmtrack.co.ke', password: 'Hr2026!', role: ROLES.HR, department: 'HR' },
   { name: 'Accounts Officer', email: 'accounts@farmtrack.co.ke', password: 'Acc2026!', role: ROLES.ACCOUNTANT, department: 'Finance' },
   { name: 'Reception', email: 'reception@farmtrack.co.ke', password: 'Rec2026!', role: ROLES.RECEPTION, department: 'Administration' },
@@ -177,6 +180,16 @@ const STAFF_ROSTER = [
 
 function ensureStaffUsers(db) {
   db.users = Array.isArray(db.users) ? db.users : [];
+  const oldOfficeAdmin = db.users.find(x => String(x.email || '').toLowerCase() === 'admin@farmtrack.co.ke');
+  const newOfficeAdmin = db.users.find(x => String(x.email || '').toLowerCase() === OFFICE_ADMIN_EMAIL);
+  if (oldOfficeAdmin && OFFICE_ADMIN_EMAIL !== 'admin@farmtrack.co.ke' && !newOfficeAdmin) {
+    oldOfficeAdmin.email = OFFICE_ADMIN_EMAIL;
+    oldOfficeAdmin.name = 'Office Admin';
+    oldOfficeAdmin.password = OFFICE_ADMIN_PASSWORD;
+    oldOfficeAdmin.role = ROLES.ADMIN;
+    oldOfficeAdmin.department = 'Administration';
+    oldOfficeAdmin.status = 'Active';
+  }
   for (const row of STAFF_ROSTER) {
     const email = String(row.email).toLowerCase();
     let u = db.users.find(x => String(x.email || '').toLowerCase() === email);
@@ -7437,7 +7450,7 @@ const api = {
     };
   },
   saveCustomer(user, row = {}) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD, ROLES.RECEPTION);
     const allowedTypes = ['Farm', 'Agrovet', 'Broker', 'Supplier', 'Customer', 'Distributor', 'Other'];
     const type = allowedTypes.includes(clean(row.type)) ? clean(row.type) : (clean(row.type) || 'Customer');
     const salesOwner = clean(row.salesOwner || row.salesPerson || row.owner) || u.name;
@@ -7465,7 +7478,7 @@ const api = {
   deleteSupplier: (user, id) => (reqRole(user, ROLES.ADMIN, ROLES.MANAGER), softDelete('suppliers', id)),
   getLeads: user => (reqRole(user), list('leads')),
   saveLead(user, row = {}) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD, ROLES.RECEPTION);
     const payload = {
       ...row,
       name: clean(row.name) || clean(row.company) || 'Lead',
@@ -7483,7 +7496,7 @@ const api = {
   deleteLead: (user, id) => (reqRole(user, ROLES.ADMIN, ROLES.MANAGER), softDelete('leads', id)),
   getCalls: user => (reqRole(user), list('calls')),
   saveCall(user, row = {}) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD, ROLES.RECEPTION);
     const d = data();
     d.calls = Array.isArray(d.calls) ? d.calls : [];
     let customer = null;
@@ -7522,7 +7535,7 @@ const api = {
     return rows.sort((a, b) => String(b.visitDate || b.createdAt || '').localeCompare(String(a.visitDate || a.createdAt || '')));
   },
   logVisit(user, row = {}) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD, ROLES.RECEPTION);
     const d = data();
     assertRequired(row.shopOrCustomer, 'Shop / Customer');
     assertRequired(row.salesperson, 'Salesperson');
@@ -11192,7 +11205,7 @@ territory: geo,
     return { success: true, quote };
   },
   generateCustomerStatement(user, customerId, options = {}) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.ACCOUNTANT);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.ACCOUNTANT, ROLES.RECEPTION, ROLES.DEV, ROLES.EXECUTIVE);
     const d = data();
     const customer = (d.customers || []).find(c => c.id === customerId || String(c.name).toLowerCase() === String(customerId || '').toLowerCase());
     if (!customer) throw new Error('Customer not found');
@@ -12433,7 +12446,7 @@ territory: geo,
     ensureLeaveData();
     const scope = filters && filters.period ? { ...periodRange(filters.period), ...filters } : (filters || {});
     const inScope = l => inDateRange({ date: l.startDate }, scope);
-    const isManager = [ROLES.ADMIN, ROLES.MANAGER].includes(u.role);
+    const isManager = [ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.EXECUTIVE, ROLES.DEV].includes(u.role);
     const mine = (d.leaveApplications || []).filter(l => l.applicantEmail === u.email || l.applicantId === u.id).filter(inScope);
     const all = isManager ? (d.leaveApplications || []).filter(inScope) : mine;
     const pending = (d.leaveApplications || []).filter(l => l.status === 'Pending');
@@ -12669,7 +12682,7 @@ territory: geo,
   },
   decideLeave(user, id, decision = {}) {
     // Boss / Executive / HR / Admin
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.EXECUTIVE, ROLES.DEV);
     const d = data();
     ensureLeaveData();
     const app = (d.leaveApplications || []).find(l => l.id === id);
