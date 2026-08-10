@@ -5901,7 +5901,7 @@ const api = {
     };
   },
   getReportCenterData(user, filters = {}) {
-    const u = reqRole(user);
+    const u = reqRole(user, ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.ACCOUNTANT, ROLES.HR, ROLES.SALES);
     const d = data();
     const module = String(filters.module || 'Executive');
     const startDate = filters.startDate || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);

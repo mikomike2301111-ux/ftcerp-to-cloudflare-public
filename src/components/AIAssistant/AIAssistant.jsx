@@ -88,6 +88,10 @@ const MODULE_PROMPTS = {
     'Production cost analysis',
     'Batch traceability summary',
     'Quality control status',
+    'Walk me through creating a production order',
+    'What is the formula / BOM tab for?',
+    'How does inventory link to production?',
+    'Where do finished goods go after production?',
   ],
   accounts: [
     'How does the accounting workflow work?',
@@ -182,14 +186,6 @@ const MODULE_PROMPTS = {
     'How is waste recorded and notified?',
     'Batch traceability: materials to finished product',
     'Production cost and yield summary',
-  ],
-  manufacturing: [
-    'How does manufacturing work in FarmTrack?',
-    'Walk me through creating a production order',
-    'What is the formula / BOM tab for?',
-    'How does inventory link to production?',
-    'Explain traceability for a batch',
-    'Where do finished goods go after production?',
   ],
   purchasing: [
     'How does procurement work?',
