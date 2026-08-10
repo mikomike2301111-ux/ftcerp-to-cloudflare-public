@@ -4741,7 +4741,11 @@ function ManufacturingAi({ insights }) {
 }
 
 function SalesModule({ user, setPage, globalPeriod }) {
-  const tabs = ['overview', 'pipeline', 'quotes', 'orders', 'invoices', 'team', 'territory', 'reports', 'analytics', 'insights', 'import', 'visits'];
+  const salesRole = String(user?.role || '').toLowerCase();
+  const isSalesRep = salesRole.includes('sales') || salesRole.includes('field');
+  const tabs = isSalesRep
+    ? ['overview', 'pipeline', 'quotes', 'orders', 'territory', 'insights', 'visits']
+    : ['overview', 'pipeline', 'quotes', 'orders', 'invoices', 'team', 'territory', 'reports', 'analytics', 'insights', 'import', 'visits'];
   const [refreshKey, setRefreshKey] = useState(0);
   const workspace = useServer(user, 'getSalesWorkspaceData', [{ period: globalPeriod }], [refreshKey, globalPeriod]);
   const [view, setView] = useRouteTab('sales', tabs, 'overview');
@@ -4829,7 +4833,7 @@ function SalesModule({ user, setPage, globalPeriod }) {
         <div>
           <span>Revenue Operations Center</span>
           <h1>Sales Workspace</h1>
-          <p>Pipeline, quotes, orders, invoices, team, territory, reports, and analytics operating as one shared workspace.</p>
+          <p>{isSalesRep ? 'Your customers, quotes, orders, visits, and follow-ups in one focused workspace.' : 'Pipeline, quotes, orders, invoices, team, territory, reports, and analytics operating as one shared workspace.'}</p>
         </div>
         <HeroStats items={[
           [currency(overview.revenue || 0), 'Revenue'],
@@ -4842,14 +4846,14 @@ function SalesModule({ user, setPage, globalPeriod }) {
         <button onClick={() => { setView('quotes'); setQuoteFormOpen(true); }}><FileText size={16} /> New Quote</button>
         <button onClick={() => setView('orders')}><Truck size={16} /> Delivery Queue</button>
         <button onClick={() => setView('visits')}><MapPin size={16} /> Visits</button>
-        <button onClick={async () => {
+        {!isSalesRep && <button onClick={async () => {
           try {
             const r = await rpc('pullAllSalesFieldData', [user, {}]);
             alert(r?.message || `Synced visits ${r?.visitsImported || 0}, orders ${r?.ordersImported || 0}`);
             setRefreshKey(x => x + 1);
           } catch (e) { alert(e.message || 'Sheet sync failed'); }
-        }}><RefreshCw size={16} /> Sync Sheets</button>
-        <button onClick={() => setView('reports')}><FileText size={16} /> Sales Reports</button>
+        }}><RefreshCw size={16} /> Sync Sheets</button>}
+        {!isSalesRep && <button onClick={() => setView('reports')}><FileText size={16} /> Sales Reports</button>}
         <CreateRequisitionButton user={user} module="sales" />
       </div>
 
@@ -4884,15 +4888,15 @@ function SalesModule({ user, setPage, globalPeriod }) {
       )}
 
       {view === 'pipeline' && <SalesPipeline stages={(data.pipeline || {}).stages || []} leads={(data.pipeline || {}).leads || []} />}
-      {view === 'quotes' && <QuotesWorkspace user={user} quotes={data.quotes || []} onDone={() => setRefreshKey(x => x + 1)} customers={data.customers || []} />}
-      {view === 'orders' && <SalesOrdersWorkspace user={user} orders={data.orders || []} deliveries={data.deliveries || []} onDone={() => setRefreshKey(x => x + 1)} />}
-      {view === 'invoices' && <Panel title="Invoices" action="Printable"><InvoiceDocumentTable user={user} rows={data.invoices || []} columns={['invNo', 'customerName', 'total', 'paid', 'balance', 'liveStatus']} /></Panel>}
+      {view === 'quotes' && <QuotesWorkspace user={user} quotes={data.quotes || []} onDone={() => setRefreshKey(x => x + 1)} customers={data.customers || []} canGenerateInvoice={!isSalesRep} />}
+      {view === 'orders' && <SalesOrdersWorkspace user={user} orders={data.orders || []} deliveries={data.deliveries || []} onDone={() => setRefreshKey(x => x + 1)} canGenerateInvoice={!isSalesRep} />}
+      {!isSalesRep && view === 'invoices' && <Panel title="Invoices" action="Printable"><InvoiceDocumentTable user={user} rows={data.invoices || []} columns={['invNo', 'customerName', 'total', 'paid', 'balance', 'liveStatus']} /></Panel>}
       {view === 'team' && <TeamWorkspace data={data || {}} metric={metric} />}
       {view === 'territory' && <TerritoryWorkspace territory={territory} county={county} setSelectedCounty={setSelectedCounty} />}
-      {view === 'reports' && <InventoryReports reports={data.reports || []} user={user} module="Sales" />}
-      {view === 'analytics' && <SalesAnalytics analytics={data.analytics || {}} />}
+      {!isSalesRep && view === 'reports' && <InventoryReports reports={data.reports || []} user={user} module="Sales" />}
+      {!isSalesRep && view === 'analytics' && <SalesAnalytics analytics={data.analytics || {}} />}
       {view === 'insights' && <SalesAi insights={data.ai || []} overview={overview} team={data.teamComparison || []} />}
-      {view === 'import' && <SalesImportWorkspace user={user} products={data.products || []} onDone={() => setRefreshKey(x => x + 1)} />}
+      {!isSalesRep && view === 'import' && <SalesImportWorkspace user={user} products={data.products || []} onDone={() => setRefreshKey(x => x + 1)} />}
       {view === 'visits' && <SalesVisitsWorkspace user={user} visits={data.visits || []} salesPeople={data.salesPeople || ['Edna', 'Njoroge', 'Joseph', 'Purity']} onDone={() => setRefreshKey(x => x + 1)} />}
 {saleFormOpen && <NewSaleModal user={user} onClose={() => setSaleFormOpen(false)} onSaved={() => { setSaleFormOpen(false); setRefreshKey(x => x + 1); setView('orders'); }} />}
        {quoteFormOpen && <QuotationModal user={user} customers={data.customers} onClose={() => setQuoteFormOpen(false)} onSaved={() => { setQuoteFormOpen(false); setRefreshKey(x => x + 1); setView('quotes'); }} />}
@@ -5653,7 +5657,7 @@ function SalesPipeline({ stages, leads }) {
   );
 }
 
-function QuotesWorkspace({ user, quotes = [], onDone, customers = [] }) {
+function QuotesWorkspace({ user, quotes = [], onDone, customers = [], canGenerateInvoice = true }) {
   const [busy, setBusy] = useState('');
   const [statusMsg, setStatusMsg] = useState('');
   const [quoteModalOpen, setQuoteModalOpen] = useState(false);
@@ -5708,7 +5712,7 @@ function QuotesWorkspace({ user, quotes = [], onDone, customers = [] }) {
             const menuActions = [
               quote.status === 'Draft' && { label: 'Send quote', icon: <Send size={15} />, disabled: busy === `${quote.id}-Send Quote`, onClick: () => act(quote, 'Send Quote') },
               quote.status === 'Sent' && { label: 'Convert to order', icon: <ArrowRight size={15} />, disabled: busy === `${quote.id}-Convert To Order`, onClick: () => act(quote, 'Convert To Order') },
-              (quote.status === 'Converted' || quote.status === 'Sent') && { label: 'Generate invoice', icon: <ReceiptText size={15} />, disabled: busy === `${quote.id}-Generate Invoice`, onClick: () => act(quote, 'Generate Invoice') },
+              canGenerateInvoice && (quote.status === 'Converted' || quote.status === 'Sent') && { label: 'Generate invoice', icon: <ReceiptText size={15} />, disabled: busy === `${quote.id}-Generate Invoice`, onClick: () => act(quote, 'Generate Invoice') },
               { label: 'Download PDF', icon: <Download size={15} />, disabled: busy === `${quote.id}-Download PDF`, onClick: () => act(quote, 'Download PDF') },
               { label: 'Email quote', icon: <Mail size={15} />, disabled: busy === `${quote.id}-Email Quote`, onClick: () => act(quote, 'Email Quote') },
               { label: 'Print', icon: <Printer size={15} />, disabled: busy === `${quote.id}-Print`, onClick: () => act(quote, 'Print') },
@@ -5725,7 +5729,7 @@ function QuotesWorkspace({ user, quotes = [], onDone, customers = [] }) {
                 <div className="quote-actions" onClick={e => e.stopPropagation()}>
                   {quote.status === 'Draft' && <button onClick={() => act(quote, 'Send Quote')} disabled={busy === `${quote.id}-Send Quote`}><Send size={14} /> Send</button>}
                   {quote.status === 'Sent' && <button onClick={() => act(quote, 'Convert To Order')} disabled={busy === `${quote.id}-Convert To Order`}><ArrowRight size={14} /> Convert</button>}
-                  {quote.status === 'Converted' && <button onClick={() => act(quote, 'Generate Invoice')} disabled={busy === `${quote.id}-Generate Invoice`}><FileText size={14} /> Invoice</button>}
+                  {canGenerateInvoice && quote.status === 'Converted' && <button onClick={() => act(quote, 'Generate Invoice')} disabled={busy === `${quote.id}-Generate Invoice`}><FileText size={14} /> Invoice</button>}
                   {quote.status === 'Invoiced' && <span className="badge badge-success">Complete</span>}
                   <ActionMenu actions={menuActions} summary={quote.quoteNo} />
                 </div>
@@ -5881,7 +5885,7 @@ function ActionMenu({ actions = [], align = 'right', summary, quickActions = 0 }
   );
 }
 
-function SalesOrdersWorkspace({ user, orders, deliveries, onDone }) {
+function SalesOrdersWorkspace({ user, orders, deliveries, onDone, canGenerateInvoice = true }) {
   const [busy, setBusy] = useState('');
   async function setDeliveryStatus(order, status) {
     const deliveryId = order.deliveryId || deliveries.find(row => row.saleId === order.id || row.saleNo === order.saleNo)?.id;
@@ -5924,7 +5928,7 @@ function SalesOrdersWorkspace({ user, orders, deliveries, onDone }) {
       { label: 'Mark Picked', icon: <ClipboardCheck size={15} />, disabled: !deliveryId || liveStatus === 'Delivered', onClick: () => setDeliveryStatus(order, 'Picked') },
       { label: 'Mark Dispatched', icon: <Truck size={15} />, disabled: !deliveryId || liveStatus === 'Delivered', onClick: () => setDeliveryStatus(order, 'Dispatched') },
       { label: liveStatus === 'Delivered' ? 'Unconfirm Delivery' : 'Confirm Delivered', icon: <CheckCircle2 size={15} />, disabled: !deliveryId, onClick: () => toggleDelivery(order, liveStatus !== 'Delivered') },
-      { label: 'Generate Invoice', icon: <ReceiptText size={15} />, onClick: () => generateInvoice(order) },
+      canGenerateInvoice && { label: 'Generate Invoice', icon: <ReceiptText size={15} />, onClick: () => generateInvoice(order) },
       { label: 'Copy Details', icon: <FileText size={15} />, onClick: () => copyText(summary) },
       { label: 'Print Summary', icon: <Printer size={15} />, onClick: () => printText(order.saleNo || 'Sales Order', summary) }
     ];
@@ -5975,7 +5979,7 @@ function SalesOrdersWorkspace({ user, orders, deliveries, onDone }) {
               <article><span>Payment</span><strong>{detailOrder.paymentMethod || '—'}</strong></article>
             </div>
             <div className="invoice-actions-row" style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button className="primary-action" type="button" onClick={() => generateInvoice(detailOrder)}><ReceiptText size={14} /> Invoice</button>
+              {canGenerateInvoice && <button className="primary-action" type="button" onClick={() => generateInvoice(detailOrder)}><ReceiptText size={14} /> Invoice</button>}
               <button className="secondary-action" type="button" onClick={() => copyText(rowSummary(detailOrder))}><FileText size={14} /> Copy</button>
               <button className="secondary-action" type="button" onClick={() => printText(detailOrder.saleNo || 'Order', rowSummary(detailOrder))}><Printer size={14} /> Print</button>
             </div>
@@ -7825,6 +7829,21 @@ function FinanceQuickActions({ onJournal, onExpense, onPayment }) {
 }
 
 function AccountsQuickActions({ onOrder, onJournal, onExpense, onAccount, onBank, onPayment, onReports, onAudit }) {
+  const groups = [
+    ['Customers', [
+      ['Invoice', onOrder], ['Receive payment', onPayment], ['Statement', onReports], ['Estimate', onOrder], ['Sales order', onOrder],
+      ['Credit note', onJournal], ['Sales receipt', onPayment], ['Refund receipt', onJournal], ['Delayed credit', onJournal], ['Delayed charge', onJournal], ['Add customer', onOrder]
+    ]],
+    ['Suppliers', [
+      ['Expense', onExpense], ['Cheque', onBank], ['Bill', onExpense], ['Pay bills', onPayment], ['Purchase order', onReports],
+      ['Item receipt', onReports], ['Supplier credit', onJournal], ['Credit card credit', onJournal], ['Add supplier', onReports]
+    ]],
+    ['Team', [['Single time activity', onReports], ['Weekly timesheet', onReports]]],
+    ['Other', [
+      ['Bank deposit', onBank], ['Transfer', onBank], ['Journal entry', onJournal], ['Inventory adjustment', onReports],
+      ['Pay down credit card', onPayment], ['Add product/service', onReports]
+    ]]
+  ];
   return (
     <div className="finance-action-stack">
       <button onClick={onOrder}><ShoppingCart size={17} /><span>Create customer order</span><em>Creates order, invoice, delivery, and CRM purchase record</em></button>
@@ -7835,6 +7854,16 @@ function AccountsQuickActions({ onOrder, onJournal, onExpense, onAccount, onBank
       <button onClick={onPayment}><ReceiptText size={17} /><span>Receive payment</span><em>Update AR and cash position</em></button>
       <button onClick={onAudit}><ShieldCheck size={17} /><span>Audit checks</span><em>Review reconciliation and control exceptions</em></button>
       <button onClick={onReports}><FileText size={17} /><span>Accounts reports</span><em>Trial balance, AR/AP, cash, ledger exports</em></button>
+      <div className="quickbooks-action-board">
+        {groups.map(([group, items]) => (
+          <section key={group}>
+            <strong>{group}</strong>
+            <div>
+              {items.map(([name, action]) => <button key={name} type="button" onClick={action}>{name}</button>)}
+            </div>
+          </section>
+        ))}
+      </div>
     </div>
   );
 }

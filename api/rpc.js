@@ -9680,7 +9680,7 @@ territory: geo,
     return { success: true, quote, emailSent: !!customerEmail };
   },
   generateInvoiceFromSale(user, saleId) {
-    reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.ACCOUNTANT);
+    reqRole(user, ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.ACCOUNTANT);
     const sale = data().sales.find(s => s.id === saleId);
     if (!sale) throw new Error('Sale not found');
     let invoice = data().invoices.find(i => i.saleId === saleId);
@@ -10041,7 +10041,7 @@ territory: geo,
     return { success: true, message: 'OK Quotation converted to Sale', saleNo: result.saleNo, saleId: result.id, invoice: invoiceResult.invoice };
   },
   async generateInvoiceFromQuote(user, id) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.ACCOUNTANT);
+    const u = reqRole(user, ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.ACCOUNTANT);
     const quote = data().quotations.find(q => q.id === id);
     if (!quote) throw new Error('Quotation not found');
     if (!quote.saleId) throw new Error('Quotation has not been converted to a sale yet. Convert it first.');
