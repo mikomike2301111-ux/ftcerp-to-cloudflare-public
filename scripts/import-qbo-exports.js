@@ -26,6 +26,8 @@ const files = {
   purchasesAll: 'Farmtrack Biosciences Ltd_Purchases by Location Detail (1).csv',
   salesA: 'Farmtrack Biosciences Ltd_Sales by Customer Type Detail.csv',
   salesB: 'Farmtrack Biosciences Ltd_Sales by Customer Type Detail (1).csv',
+  salesC: 'Farmtrack Biosciences Ltd_Sales by Customer Type Detail (2).csv',
+  unpaidBills: 'Farmtrack Biosciences Ltd_Unpaid Bills Report.csv',
   tax: 'TEMP_CSV.prod.QBOC4_UW2APP21.20260810.043547.16114684636272450944432176471601621390.csv',
   balanceSummary: 'Farmtrack Biosciences Ltd_Balance Sheet Summary.csv',
   balanceDetail: 'Farmtrack Biosciences Ltd_Balance Sheet (1).csv',
@@ -96,7 +98,10 @@ function groupedRows(rows, headerNeedle) {
     if (first && !hasDate && !/^Total for/i.test(first)) { group = first; continue; }
     if (!hasDate) continue;
     const obj = { group };
-    headers.forEach((h, i) => { obj[h || `col${i}`] = row[i] || ''; });
+    headers.forEach((h, i) => {
+      if (i === 0 && h === 'group') return;
+      obj[h || `col${i}`] = row[i] || '';
+    });
     out.push(obj);
   }
   return out;
@@ -117,6 +122,15 @@ function upsertById(list, rows) {
   const map = new Map((Array.isArray(list) ? list : []).map(x => [x.id, x]));
   for (const row of rows) map.set(row.id, { ...(map.get(row.id) || {}), ...row });
   return Array.from(map.values());
+}
+
+function replaceImported(list, prefix, rows) {
+  const keep = (Array.isArray(list) ? list : []).filter(row => !String(row?.id || '').startsWith(prefix));
+  return upsertById(keep, rows);
+}
+
+function recentByDate(rows, limit) {
+  return [...rows].sort((a, b) => String(b.date || b.dueDate || '').localeCompare(String(a.date || a.dueDate || ''))).slice(0, limit);
 }
 
 async function supabase(pathname, options = {}) {
@@ -189,8 +203,14 @@ async function main() {
   for (const r of groupedRows(readCsv(files.customerBalance), 'Date')) if ((r['Transaction type'] || '').includes('Invoice')) addInvoice(r, r.group, 'QuickBooks Customer Balance');
   for (const r of groupedRows(readCsv(files.arDetail), 'Date')) if ((r['Transaction type'] || '').includes('Invoice')) addInvoice(r, r['Customer full name'] || r.group, 'QuickBooks AR Ageing');
   for (const r of groupedRows(readCsv(files.invoicesPayments), 'Date')) if ((r['Transaction type'] || '').includes('Invoice')) addInvoice(r, r.group, 'QuickBooks Invoices and Payments');
-  state.invoices = upsertById(state.invoices, Array.from(invoiceMap.values()));
-  summary.invoices = invoiceMap.size;
+  const allInvoices = Array.from(invoiceMap.values());
+  const liveInvoices = [
+    ...allInvoices.filter(inv => amount(inv.balance) !== 0),
+    ...recentByDate(allInvoices.filter(inv => amount(inv.balance) === 0), 500)
+  ];
+  state.invoices = replaceImported(state.invoices, 'QBO-INV', liveInvoices);
+  summary.invoicesSeen = invoiceMap.size;
+  summary.invoicesImportedLive = liveInvoices.length;
 
   const payments = groupedRows(readCsv(files.invoicesPayments), 'Date')
     .filter(r => /payment/i.test(r['Transaction type'] || ''))
@@ -206,8 +226,10 @@ async function main() {
       source: 'QuickBooks Invoices and Payments',
       createdAt: new Date().toISOString()
     }));
-  state.payments = upsertById(state.payments, payments);
-  summary.payments = payments.length;
+  const livePayments = recentByDate(payments, 1000);
+  state.payments = replaceImported(state.payments, 'QBO-PAY', livePayments);
+  summary.paymentsSeen = payments.length;
+  summary.paymentsImportedLive = livePayments.length;
 
   const invRows = simpleTable(readCsv(files.inventory), 'Product/Service').filter(r => r['Product/Service']);
   const products = invRows.map(r => ({
@@ -254,15 +276,46 @@ async function main() {
       source: 'QuickBooks AP Ageing'
     };
   }).filter(r => r.supplierName && r.outstandingBalance);
+  const unpaidBills = groupedRows(readCsv(files.unpaidBills), 'Date')
+    .filter(r => r.group && amount(r['Open balance']))
+    .map(r => ({
+      id: id('QBO-BILL', [r.group, r.Number, r.Date, r['Open balance']]),
+      supplierInvoiceId: id('QBO-SUPINV', [r.group, r.Number, r.Date, r['Open balance']]),
+      supplierId: id('QBO-SUP', [r.group]),
+      supplierName: r.group,
+      invoiceNo: r.Number || `BILL-${dateIso(r.Date)}-${slug(r.group).slice(0, 16)}`,
+      dueDate: dateIso(r['Due date'] || r.Date),
+      invoiceAmount: amount(r.Amount),
+      paidAmount: Math.max(0, amount(r.Amount) - amount(r['Open balance'])),
+      outstandingBalance: amount(r['Open balance']),
+      paymentStatus: amount(r['Open balance']) > 0 ? 'Open' : 'Credit',
+      agingBucket: amount(r['Past due']) > 90 ? '91+' : amount(r['Past due']) > 60 ? '61-90' : amount(r['Past due']) > 30 ? '31-60' : amount(r['Past due']) > 0 ? '1-30' : 'Current',
+      source: 'QuickBooks Unpaid Bills'
+    }));
+  const allAp = [...ap, ...unpaidBills];
   const suppliers = Array.from(new Set([
-    ...ap.map(r => r.supplierName),
+    ...allAp.map(r => r.supplierName),
     ...groupedRows(readCsv(files.openPo), 'Date').map(r => r.group).filter(Boolean)
   ])).map(name => ({ id: id('QBO-SUP', [name]), supplierNo: id('SUP', [name]), name, status: 'Active', source: 'QuickBooks' }));
   state.suppliers = upsertById(state.suppliers, suppliers);
-  state.accountsPayable = upsertById(state.accountsPayable, ap);
-  state.financeAccountsPayable = upsertById(state.financeAccountsPayable, ap);
+  state.accountsPayable = upsertById(state.accountsPayable, allAp);
+  state.financeAccountsPayable = upsertById(state.financeAccountsPayable, allAp);
+  state.supplierInvoices = upsertById(state.supplierInvoices, unpaidBills.map(row => ({
+    id: row.supplierInvoiceId,
+    invoiceNo: row.invoiceNo,
+    supplierId: row.supplierId,
+    supplierName: row.supplierName,
+    invoiceDate: row.dueDate,
+    dueDate: row.dueDate,
+    invoiceAmount: row.invoiceAmount,
+    paidAmount: row.paidAmount,
+    outstandingBalance: row.outstandingBalance,
+    status: row.paymentStatus,
+    source: row.source
+  })));
   summary.suppliers = suppliers.length;
-  summary.accountsPayable = ap.length;
+  summary.accountsPayable = allAp.length;
+  summary.unpaidBills = unpaidBills.length;
 
   const poRows = groupedRows(readCsv(files.openPo), 'Date').map(r => ({
     id: id('QBO-PO', [r.group, r.Number, r.Date]),
@@ -277,7 +330,7 @@ async function main() {
     notes: r['Memo/Description'] || '',
     source: 'QuickBooks Open PO'
   })).filter(r => r.poNo);
-  state.purchaseOrders = upsertById(state.purchaseOrders, poRows);
+  state.purchaseOrders = replaceImported(state.purchaseOrders, 'QBO-PO', poRows);
   summary.purchaseOrders = poRows.length;
 
   const expenses = [...groupedRows(readCsv(files.purchasesRecent), 'Date'), ...groupedRows(readCsv(files.purchasesAll), 'Date')]
@@ -293,8 +346,10 @@ async function main() {
       notes: r['Memo/Description'] || r['Transaction type'],
       source: 'QuickBooks Purchases'
     }));
-  state.expenses = upsertById(state.expenses, expenses);
-  summary.expenses = expenses.length;
+  const liveExpenses = recentByDate(expenses, 1000);
+  state.expenses = replaceImported(state.expenses, 'QBO-EXP', liveExpenses);
+  summary.expensesSeen = expenses.length;
+  summary.expensesImportedLive = liveExpenses.length;
 
   const taxRows = simpleTable(readCsv(files.tax), 'Date').filter(r => r.Date);
   state.taxRecords = upsertById(state.taxRecords, taxRows.map(r => ({
@@ -326,8 +381,8 @@ async function main() {
   state.qboJournalImport = {
     id: 'QBO-JOURNAL-2020-2026',
     totalLines: journalLines.length,
-    importedRecentLines: Math.min(1000, journalLines.length),
-    recentLines: journalLines.slice(-1000).map(r => ({
+    importedRecentLines: Math.min(300, journalLines.length),
+    recentLines: journalLines.slice(-300).map(r => ({
       date: dateIso(r.Date),
       transactionType: r['Transaction type'],
       number: r.Number,
@@ -344,14 +399,52 @@ async function main() {
   summary.journalLinesSeen = journalLines.length;
   summary.journalRecentLinesImported = state.qboJournalImport.importedRecentLines;
 
+  const salesLines = [
+    ...groupedRows(readCsv(files.salesA), 'Date'),
+    ...groupedRows(readCsv(files.salesB), 'Date'),
+    ...groupedRows(readCsv(files.salesC), 'Date')
+  ].filter(r => /invoice|sales receipt/i.test(r['Transaction type'] || '') && amount(r.Amount));
+  state.qboSalesLineImport = {
+    id: 'QBO-SALES-LINES-2020-2026',
+    totalLines: salesLines.length,
+    importedRecentLines: Math.min(500, salesLines.length),
+    recentLines: salesLines.slice(-500).map(r => ({
+      date: dateIso(r.Date),
+      transactionType: r['Transaction type'],
+      number: r.Number,
+      customerGroup: r.group || '',
+      productName: r['Product/Service full name'] || 'Services',
+      memo: r['Memo/Description'] || '',
+      quantity: amount(r.Qty),
+      unitPrice: amount(r['Sales price']),
+      amount: amount(r.Amount),
+      balance: amount(r.Balance)
+    })),
+    note: 'Sales detail exports are retained as line-level import audit because customer names are not present on every row.',
+    source: 'QuickBooks Sales by Customer Type Detail',
+    importedAt: new Date().toISOString()
+  };
+  summary.salesLinesSeen = salesLines.length;
+  summary.salesRecentLinesImported = state.qboSalesLineImport.importedRecentLines;
+
   state.qboImportSummary = { importedAt: new Date().toISOString(), files, summary };
 
   const body = JSON.stringify({ id: STATE_ID, data: state, updated_at: new Date().toISOString() });
-  await supabase('erp_state?on_conflict=id', {
-    method: 'POST',
-    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
-    body
-  });
+  try {
+    await supabase('erp_state?on_conflict=id', {
+      method: 'POST',
+      headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+      body
+    });
+  } catch (error) {
+    if (!/statement timeout|57014|timeout/i.test(error.message || '')) throw error;
+    await supabase(`erp_state?id=eq.${encodeURIComponent(STATE_ID)}`, { method: 'DELETE' });
+    await supabase('erp_state', {
+      method: 'POST',
+      headers: { Prefer: 'return=minimal' },
+      body
+    });
+  }
   console.log(JSON.stringify({ ok: true, summary }, null, 2));
 }
 

@@ -1243,7 +1243,10 @@ function Topbar({ user, onMenu, onToggleSidebar, sidebarCollapsed, onNew, onLogo
     let prevUnread = bellData.unread || 0;
     const load = () => rpc('getNotificationsBell', [user]).then(d => {
       if (d.unread > prevUnread && d.unread > 0) {
-        try { const a = new Audio('/notification.wav'); a.volume = 0.4; a.play().catch(() => {}); } catch {}
+        const mutedUntil = Number(localStorage.getItem('farmtrackNotificationSoundMutedUntil') || 0);
+        if (!mutedUntil || mutedUntil < Date.now()) {
+          try { const a = new Audio('/notification.wav'); a.volume = 0.4; a.play().catch(() => {}); } catch {}
+        }
       }
       prevUnread = d.unread;
       setBellData(d);
@@ -10454,6 +10457,10 @@ function NotificationCenter({ user, setPage }) {
     } catch (err) { console.error(err); }
   };
   const markAllRead = async () => { try { await rpc('markNotificationsRead', [user]); setRefreshKey(k => k + 1); } catch {} };
+  const muteSound = hours => {
+    localStorage.setItem('farmtrackNotificationSoundMutedUntil', String(Date.now() + hours * 3600000));
+    setRefreshKey(k => k + 1);
+  };
   if (loading) return <Loading title="Notifications" />;
   if (error) return <ErrorState title="Notifications" error={error} />;
   const s = data.stats || {};
@@ -10477,6 +10484,8 @@ function NotificationCenter({ user, setPage }) {
       <div className="inline-actions">
         {(s.unread || 0) > 0 && <button className="panel-action-button" type="button" onClick={markAllRead}>Mark all read</button>}
         <button type="button" className="panel-action-button" onClick={() => setRefreshKey(k => k + 1)}>Refresh</button>
+        <button type="button" className="panel-action-button" onClick={() => muteSound(1)}>Mute sound 1h</button>
+        <button type="button" className="panel-action-button" onClick={() => muteSound(24)}>Mute sound 1d</button>
       </div>
       <div className="notify-toolbar">
         <div className="notify-search"><Search size={16} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search notifications..." /></div>
@@ -10539,7 +10548,9 @@ function NotificationCenter({ user, setPage }) {
                         summary={title}
                         actions={[
                           n.status === 'active' && { label: 'Acknowledge', icon: <CheckCircle2 size={15} />, onClick: () => handleAction(n, 'acknowledge') },
+                          n.status === 'active' && { label: 'Snooze 1h', icon: <Hourglass size={15} />, onClick: () => handleAction(n, 'snooze', { hours: 1 }) },
                           n.status === 'active' && { label: 'Snooze 24h', icon: <Hourglass size={15} />, onClick: () => handleAction(n, 'snooze', { hours: 24 }) },
+                          n.status === 'active' && { label: 'Snooze 1 week', icon: <Hourglass size={15} />, onClick: () => handleAction(n, 'snooze', { hours: 168 }) },
                           n.status === 'active' && { label: 'Archive', icon: <Archive size={15} />, onClick: () => handleAction(n, 'archive') },
                           n.sourceModule === 'leaves' && n.status === 'active' && { label: 'Approve leave', icon: <CheckCircle2 size={15} />, onClick: () => handleAction(n, 'approve-leave') },
                           n.sourceModule === 'leaves' && n.status === 'active' && { label: 'Reject leave', icon: <X size={15} />, onClick: () => handleAction(n, 'reject-leave') },
@@ -12024,7 +12035,7 @@ function LeaveWorkspace({ user, setPage, globalPeriod = 'Month' }) {
         </div>
       )}
 
-      {applyModal && <LeaveApplyModal user={user} leaveTypes={data.leaveTypes} departments={data.departments || []} balances={data.balances} onClose={() => setApplyModal(false)} onSave={handleApply} />}
+      {applyModal && <LeaveApplyModal user={user} leaveTypes={data.leaveTypes} departments={data.departments || []} balances={data.balances} employees={data.employees || []} onClose={() => setApplyModal(false)} onSave={handleApply} />}
       {detailLeave && (
         <div className="modal-backdrop" onClick={() => setDetailLeave(null)}>
           <div className="modal-card wide" onClick={e => e.stopPropagation()}>
@@ -12059,8 +12070,8 @@ function LeaveWorkspace({ user, setPage, globalPeriod = 'Month' }) {
   );
 }
 
-function LeaveApplyModal({ user, leaveTypes, departments = [], balances = [], onClose, onSave }) {
-  const employees = balances || [];
+function LeaveApplyModal({ user, leaveTypes, departments = [], balances = [], employees = [], onClose, onSave }) {
+  const staffOptions = employees.length ? employees : balances;
   const me = balances.find(b => b.name === user.name) || {};
   const [form, setForm] = useState({
     type: 'Annual',
@@ -12077,7 +12088,8 @@ function LeaveApplyModal({ user, leaveTypes, departments = [], balances = [], on
   const days = businessDaysBetween(form.startDate, form.endDate);
   const remainingAfter = Math.max(0, balance - days);
   const exceedsBalance = days > balance;
-  const coveringOptions = employees.filter(e => e.name !== user.name && e.department === form.department);
+  const coveringOptions = staffOptions.filter(e => e.name !== user.name && (!form.department || e.department === form.department));
+  const selectedCover = coveringOptions.find(e => e.name === form.coveringEmployee);
   return (
     <ModalCard title="Apply for Leave" onClose={onClose}>
       <form className="settings-form-grid" onSubmit={e => { e.preventDefault(); onSave(form); }}>
@@ -12105,10 +12117,11 @@ function LeaveApplyModal({ user, leaveTypes, departments = [], balances = [], on
           <label>Covering Employee
             <select value={form.coveringEmployee} onChange={e => setForm({ ...form, coveringEmployee: e.target.value, handoverResponsibility: form.handoverResponsibility || e.target.value })}>
               <option value="">None</option>
-              {coveringOptions.map(e => <option key={e.id} value={e.name}>{e.name} ({e.department})</option>)}
+              {coveringOptions.map(e => <option key={e.id || e.name} value={e.name}>{e.name} ({e.department || 'No department'}{e.position ? ` - ${e.position}` : ''})</option>)}
             </select>
           </label>
           <label>Responsibility / Handover<textarea rows={2} value={form.handoverResponsibility} onChange={e => setForm({ ...form, handoverResponsibility: e.target.value })} placeholder="Who handles duties and what they cover..." /></label>
+          {selectedCover && <div className="inline-result"><CheckCircle2 size={16} /><div><strong>{selectedCover.name} will cover</strong><span>{selectedCover.department || 'Department not set'}{selectedCover.position ? ` - ${selectedCover.position}` : ''}</span></div></div>}
         </div></fieldset>
         <div className="leave-calc-preview">
           <div className="leave-calc-row"><span>Leave Type</span><strong>{form.type}</strong></div>

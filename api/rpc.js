@@ -12572,7 +12572,15 @@ territory: geo,
     const all = isManager ? (d.leaveApplications || []).filter(inScope) : mine;
     const pending = (d.leaveApplications || []).filter(l => l.status === 'Pending');
     const onLeaveToday = (d.leaveApplications || []).filter(l => l.status === 'Approved' && dateOnly(l.startDate) <= today() && dateOnly(l.endDate) >= today());
-    const balances = (d.employees || []).map(e => ({ id: e.id, name: e.name, department: e.department, annual: num(e.leaveBalanceAnnual), sick: num(e.leaveBalanceSick), casual: num(e.leaveBalanceCasual) }));
+    const employees = (d.employees || []).filter(e => String(e.status || 'Active') !== 'Deleted').map(e => ({
+      id: e.id,
+      name: e.name,
+      email: e.email || '',
+      department: e.department || '',
+      position: e.position || e.role || '',
+      status: e.status || 'Active'
+    }));
+    const balances = (d.employees || []).map(e => ({ id: e.id, name: e.name, department: e.department, position: e.position || e.role || '', annual: num(e.leaveBalanceAnnual), sick: num(e.leaveBalanceSick), casual: num(e.leaveBalanceCasual) }));
     const departments = [...new Set((d.employees || []).map(e => e.department).filter(Boolean))].sort();
     const scoped = (d.leaveApplications || []).filter(inScope);
     return {
@@ -12581,6 +12589,7 @@ territory: geo,
       pendingApprovals: pending,
       onLeaveToday,
       balances,
+      employees,
       leaveTypes: d.leaveTypes || [],
       calendar: buildLeaveCalendar(d.leaveApplications || []),
       isManager,
