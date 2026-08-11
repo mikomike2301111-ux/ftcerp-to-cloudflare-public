@@ -2284,7 +2284,7 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
   });
   const [followBusy, setFollowBusy] = useState(false);
   const [receptionForm, setReceptionForm] = useState({
-    callerName: '', phone: '', reason: '', date: new Date().toISOString().slice(0, 10), time: new Date().toTimeString().slice(0, 5)
+    callerName: '', phone: '', reason: '', receivedBy: user?.name || '', date: new Date().toISOString().slice(0, 10), time: new Date().toTimeString().slice(0, 5)
   });
   const [receptionBusy, setReceptionBusy] = useState(false);
   if (loading) return <Loading title="CRM" />;
@@ -2459,7 +2459,7 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
           <Panel className="span-7" title="Follow-up report" action={`${(allCalls || []).filter(r => r.recordType === 'followup' || r.followUpDate || ['Follow-up', 'To Be Called', 'Pending Calls', 'To Be Meeting'].includes(r.stage)).length} rows`}>
             <div className="table-wrap">
               <table>
-                <thead><tr><th>Date</th><th>Name</th><th>Phone</th><th>Detail</th><th>To</th></tr></thead>
+                <thead><tr><th>Date</th><th>Name</th><th>Phone</th><th>Detail</th></tr></thead>
                 <tbody>
                   {(allCalls || [])
                     .filter(r => r.recordType === 'followup' || r.followUpDate || ['Follow-up', 'To Be Called', 'Pending Calls', 'To Be Meeting', 'Closed'].includes(r.stage))
@@ -2467,19 +2467,17 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                     .sort((a, b) => String(b.followUpDate || b.date || '').localeCompare(String(a.followUpDate || a.date || '')))
                     .map(row => {
                       const cust = allCustomers.find(c => c.id === row.customerId || c.name === row.customerName);
-                      const owner = row.salesOwner || cust?.salesOwner || cust?.salesPerson || row.assignedTo || '—';
                       return (
                         <tr key={row.id}>
                           <td>{row.followUpDate || row.date || '—'}</td>
                           <td><strong>{row.customerName || '—'}</strong></td>
                           <td>{row.phone || cust?.phone || '—'}</td>
                           <td>{row.comments || row.notes || row.nextStep || '—'}</td>
-                          <td>{owner}</td>
                         </tr>
                       );
                     })}
                   {(allCalls || []).filter(r => r.recordType === 'followup' || r.followUpDate).length === 0 && (
-                    <tr><td colSpan={5}><div className="empty-state">No follow-ups yet. Add one on the left.</div></td></tr>
+                    <tr><td colSpan={4}><div className="empty-state">No follow-ups yet. Add one on the left.</div></td></tr>
                   )}
                 </tbody>
               </table>
@@ -2509,14 +2507,15 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                   reason: receptionForm.reason,
                   comments: receptionForm.reason,
                   notes: receptionForm.reason,
-                  receivedBy: user?.name || 'Reception',
-                  assignedTo: user?.name || 'Reception',
+                  receivedBy: receptionForm.receivedBy || user?.name || 'Reception',
+                  transferTo: receptionForm.receivedBy || '',
+                  assignedTo: receptionForm.receivedBy || user?.name || 'Reception',
                   stage: 'Reception',
                   date,
                   time,
                   datetime: `${date} ${time}`
                 }]);
-                setReceptionForm({ callerName: '', phone: '', reason: '', date: new Date().toISOString().slice(0, 10), time: new Date().toTimeString().slice(0, 5) });
+                setReceptionForm({ callerName: '', phone: '', reason: '', receivedBy: user?.name || '', date: new Date().toISOString().slice(0, 10), time: new Date().toTimeString().slice(0, 5) });
                 setRefreshKey(x => x + 1);
               } catch (err) { alert(err.message); }
               finally { setReceptionBusy(false); }
@@ -2526,19 +2525,20 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
               <label>Name of Call<input value={receptionForm.callerName} onChange={e => setReceptionForm({ ...receptionForm, callerName: e.target.value })} placeholder="Caller / customer name" /></label>
               <label>Number<input type="tel" inputMode="tel" value={receptionForm.phone} onChange={e => setReceptionForm({ ...receptionForm, phone: e.target.value })} placeholder="Caller phone number" required /></label>
               <label>Reason<textarea value={receptionForm.reason} onChange={e => setReceptionForm({ ...receptionForm, reason: e.target.value })} rows={3} placeholder="General enquiry, asking, direction, supplier, customer question..." required /></label>
+              <label>Received by / Transfer to<input value={receptionForm.receivedBy} onChange={e => setReceptionForm({ ...receptionForm, receivedBy: e.target.value })} placeholder="Reception / staff name / department" /></label>
               <button type="submit" className="primary-action" disabled={receptionBusy}>{receptionBusy ? 'Saving…' : 'Log call'}</button>
             </form>
           </Panel>
           <Panel className="span-7" title="Reception calls" action={`${(allCalls || []).filter(r => r.recordType === 'reception' || r.stage === 'Reception').length} calls`}>
             <div className="table-wrap">
               <table>
-                <thead><tr><th>Date</th><th>Time</th><th>Number</th><th>Reason</th></tr></thead>
+                <thead><tr><th>Date</th><th>Time</th><th>Number</th><th>Reason</th><th>Received by / Transfer to</th></tr></thead>
                 <tbody>
                   {(() => {
                     const rows = (allCalls || [])
                       .filter(r => r.recordType === 'reception' || r.stage === 'Reception')
                       .sort((a, b) => String(b.datetime || b.date || '').localeCompare(String(a.datetime || a.date || '')));
-                    if (!rows.length) return <tr><td colSpan={4}><div className="empty-state">No reception calls yet.</div></td></tr>;
+                    if (!rows.length) return <tr><td colSpan={5}><div className="empty-state">No reception calls yet.</div></td></tr>;
                     let lastDay = '';
                     const out = [];
                     rows.forEach(row => {
@@ -2547,7 +2547,7 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                         lastDay = day;
                         out.push(
                           <tr key={`day-${day}`} className="day-separator-row">
-                            <td colSpan={4} style={{ background: '#f8fafc', fontWeight: 700, color: '#334155', padding: '8px 12px' }}>{day}</td>
+                            <td colSpan={5} style={{ background: '#f8fafc', fontWeight: 700, color: '#334155', padding: '8px 12px' }}>{day}</td>
                           </tr>
                         );
                       }
@@ -2557,6 +2557,7 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                           <td>{row.time || String(row.datetime || '').slice(11, 16) || '—'}</td>
                           <td><strong>{row.phone || row.customerName || '—'}</strong></td>
                           <td>{row.reason || row.comments || row.notes || '—'}</td>
+                          <td>{row.receivedBy || row.transferTo || row.assignedTo || '—'}</td>
                         </tr>
                       );
                     });
@@ -2815,9 +2816,9 @@ function CRMCallsListV2({ user, calls = [], onStageChange, onUpdated, compact = 
     <Panel className="span-12" title={compact ? 'Latest Calls' : 'Call Records'} action={`${calls.length} calls`}>
       <div className="table-wrap">
         <table className="crm-calls-table">
-          <thead><tr><th>Date</th><th>Name of Call</th><th>Phone</th><th>Stage</th><th>Notes / Comments</th><th>Follow-up</th><th>Assigned To</th><th>Quick Actions</th><th>Update Stage</th></tr></thead>
+          <thead><tr><th>Date</th><th>Name of Call</th><th>Phone</th><th>Stage</th><th>Notes / Comments</th><th>Follow-up</th><th>Quick Actions</th><th>Update Stage</th></tr></thead>
           <tbody>
-            {calls.length === 0 && <tr><td colSpan={9}><div className="empty-state">No call records. Click "Log Call" to add one.</div></td></tr>}
+            {calls.length === 0 && <tr><td colSpan={8}><div className="empty-state">No call records. Click "Log Call" to add one.</div></td></tr>}
             {shown.map(c => (
               <tr key={c.id}>
                 <td>{dateValue(c)}</td>
@@ -2826,7 +2827,6 @@ function CRMCallsListV2({ user, calls = [], onStageChange, onUpdated, compact = 
                 <td><span className={stageClass(c.stage)}>{c.stage || '-'}</span></td>
                 <td className="call-notes">{c.comments || c.feedback || c.notes || '-'}</td>
                 <td>{c.followUpDate || '-'}</td>
-                <td>{c.assignedTo || '-'}</td>
                 <td>
                   <div className="call-quick-actions">
                     {c.phone && <a href={`tel:${c.phone}`} className="call-btn" title="Call now"><Phone size={14} /></a>}
