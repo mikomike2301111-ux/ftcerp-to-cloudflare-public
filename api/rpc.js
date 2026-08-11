@@ -8228,7 +8228,7 @@ const api = {
     if (!item) throw new Error('Inventory item not found');
     return api.createPurchaseRequest(u, { productId: item.productId, quantity: Math.max(25, num(item.reorderPoint) * 2), priority: 'High', reason: `Inventory low stock trigger for ${item.productName}`, department: 'Warehouse' });
   },
-  getProductionJobs: user => (reqRole(user), list('production')),
+  getProductionJobs: user => (reqRole(user, ROLES.ADMIN, ROLES.DEV, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.PRODUCTION, ROLES.WAREHOUSE), list('production')),
   getUomConversionPreview(user, quantity, fromUnit, consumeQty, consumeUnit) {
     reqRole(user);
     const baseUnit = UOM_FACTORS[normUom(fromUnit)]?.family === 'mass' ? 'G' : UOM_FACTORS[normUom(fromUnit)]?.family === 'volume' ? 'ML' : 'PCS';
@@ -8237,7 +8237,7 @@ const api = {
     return { input: `${quantity} ${normUom(fromUnit)}`, storedBase, baseUnit, consumed: `${consumeQty} ${normUom(consumeUnit)}`, consumedBase, remainingBase: storedBase - consumedBase };
   },
   getManufacturingWorkspaceData(user, filters = {}) {
-    reqRole(user);
+    reqRole(user, ROLES.ADMIN, ROLES.DEV, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.PRODUCTION, ROLES.WAREHOUSE);
     ensureManufacturingData();
     const d = data();
     ['rawMaterials','rawMaterialBatches','formulas','formulaVersions','productionOrders','productionBatches',
@@ -12604,12 +12604,18 @@ territory: geo,
     ensureLeaveData();
     const scope = filters && filters.period ? { ...periodRange(filters.period), ...filters } : (filters || {});
     const inScope = l => inDateRange({ date: l.startDate }, scope);
-    const isManager = [ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.EXECUTIVE, ROLES.DEV].includes(u.role);
+    const isManager = [ROLES.ADMIN, ROLES.HR, ROLES.EXECUTIVE, ROLES.DEV].includes(u.role);
     const mine = (d.leaveApplications || []).filter(l => l.applicantEmail === u.email || l.applicantId === u.id).filter(inScope);
     const all = isManager ? (d.leaveApplications || []).filter(inScope) : mine;
-    const pending = (d.leaveApplications || []).filter(l => l.status === 'Pending');
-    const onLeaveToday = (d.leaveApplications || []).filter(l => l.status === 'Approved' && dateOnly(l.startDate) <= today() && dateOnly(l.endDate) >= today());
-    const employees = (d.employees || []).filter(e => String(e.status || 'Active') !== 'Deleted').map(e => ({
+    const pending = isManager ? (d.leaveApplications || []).filter(l => l.status === 'Pending') : [];
+    const visibleLeaveRows = isManager ? (d.leaveApplications || []) : mine;
+    const onLeaveToday = visibleLeaveRows.filter(l => l.status === 'Approved' && dateOnly(l.startDate) <= today() && dateOnly(l.endDate) >= today());
+    const viewerEmployee = (d.employees || []).find(e => e.id === u.id || String(e.email || '').toLowerCase() === String(u.email || '').toLowerCase() || e.name === u.name);
+    const viewerDepartment = viewerEmployee?.department || u.department || roleDepartment(u.role);
+    const employees = (d.employees || [])
+      .filter(e => String(e.status || 'Active') !== 'Deleted')
+      .filter(e => isManager || (viewerDepartment && e.department === viewerDepartment) || e.id === u.id || String(e.email || '').toLowerCase() === String(u.email || '').toLowerCase() || e.name === u.name)
+      .map(e => ({
       id: e.id,
       name: e.name,
       email: e.email || '',
@@ -12644,7 +12650,9 @@ territory: geo,
         pendingByEmployee[key][bucket] += num(leave.days);
       }
     }
-    const balances = (d.employees || []).map(e => {
+    const balances = (d.employees || [])
+      .filter(e => isManager || e.id === u.id || String(e.email || '').toLowerCase() === String(u.email || '').toLowerCase() || e.name === u.name)
+      .map(e => {
       const used = approvedByEmployee[e.id] || approvedByEmployee[String(e.email || '').toLowerCase()] || approvedByEmployee[e.name] || {};
       const pendingUsed = pendingByEmployee[e.id] || pendingByEmployee[String(e.email || '').toLowerCase()] || pendingByEmployee[e.name] || {};
       const baseAnnual = num(e.leaveEntitlementAnnual || e.annualLeaveEntitlement || e.defaultAnnualLeave || 21);
@@ -12680,8 +12688,8 @@ territory: geo,
         usedUnpaid: num(used.unpaid)
       };
     });
-    const departments = [...new Set((d.employees || []).map(e => e.department).filter(Boolean))].sort();
-    const scoped = (d.leaveApplications || []).filter(inScope);
+    const departments = [...new Set((isManager ? (d.employees || []) : employees).map(e => e.department).filter(Boolean))].sort();
+    const scoped = all;
     return {
       myApplications: mine,
       allApplications: all,
@@ -12690,7 +12698,7 @@ territory: geo,
       balances,
       employees,
       leaveTypes: d.leaveTypes || [],
-      calendar: buildLeaveCalendar(d.leaveApplications || []),
+      calendar: buildLeaveCalendar(visibleLeaveRows),
       isManager,
       departments,
       stats: {
@@ -12886,13 +12894,12 @@ territory: geo,
       sourceModule: 'leaves',
       sourceId: application.id,
       sourceLabel: `${lt.name} · ${u.name}`,
-      audienceRoles: [ROLES.HR, ROLES.EXECUTIVE, ROLES.ADMIN, ROLES.DEV, ROLES.MANAGER]
+      audienceRoles: [ROLES.HR, ROLES.EXECUTIVE, ROLES.ADMIN, ROLES.DEV]
     });
     // Email HR @farmtrack + all HR/approver users
     const hrEmails = Array.from(new Set([
       'hr@farmtrack.co.ke',
-      ...hrAndApproverEmails(d),
-      ...(typeof managerEmails === 'function' ? managerEmails(d) : [])
+      ...hrAndApproverEmails(d)
     ].filter(Boolean)));
     for (const to of hrEmails) {
       deliverEmail(u, 'leave_approval_request', to, () => EmailService.sendLeaveRequestSubmitted({
@@ -12913,7 +12920,7 @@ territory: geo,
   },
   async decideLeave(user, id, decision = {}) {
     // Boss / Executive / HR / Admin
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.EXECUTIVE, ROLES.DEV);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.HR, ROLES.EXECUTIVE, ROLES.DEV);
     const d = data();
     ensureLeaveData();
     const app = (d.leaveApplications || []).find(l => l.id === id);
