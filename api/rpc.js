@@ -4342,6 +4342,7 @@ function employeeRecord(form) {
     leaveBalanceCasual: num(form.leaveBalanceCasual ?? 5),
     leaveBalanceMaternity: num(form.leaveBalanceMaternity ?? 90),
     leaveBalancePaternity: num(form.leaveBalancePaternity ?? 14),
+    leaveBalanceCompassionate: num(form.leaveBalanceCompassionate ?? 5),
     profilePhotoUrl: clean(form.profilePhotoUrl || ''),
     documents: Array.isArray(form.documents) ? form.documents : []
   };
@@ -4505,7 +4506,7 @@ function computeKenyaPayslip(emp, hours, expectedHoursPeriod, lateHours = 0) {
     : Math.round(num(emp.salary) * (Number.isFinite(attendanceFactor) ? attendanceFactor : 1));
   const grossPay = Math.max(0, Math.round(basePay + totalAllowances + overtimePay));
   const nssfEnabled = emp.applyNssf !== false && String(emp.applyNssf || 'yes').toLowerCase() !== 'no';
-  const shifEnabled = emp.applyShif !== false && String(emp.applyShif || 'yes').toLowerCase() !== 'no';
+  const shifEnabled = emp.applyShif === true || String(emp.applyShif || '').toLowerCase() === 'yes';
   const ahlEnabled = emp.applyHousingLevy !== false && String(emp.applyHousingLevy || 'yes').toLowerCase() !== 'no';
   const nssf = nssfEnabled ? calculateKenyaNssf(grossPay) : 0;
   const shif = shifEnabled ? calculateKenyaShif(grossPay) : 0;
@@ -4615,12 +4616,12 @@ function expectedWorkHoursForDate(date, employee = {}) {
   const day = new Date(date || today()).getDay();
   if (day === 0) return 0;
   if (day === 6) return 5;
-  return Math.max(1, num(employee.expectedHoursPerDay || 9));
+  return Math.max(1, num(employee.expectedHoursPerDay || 8));
 }
 
 function expectedMonthlyWorkHours(period, employee = {}) {
   const [year, month] = String(period || today().slice(0, 7)).split('-').map(Number);
-  if (!year || !month) return 50 * 4;
+  if (!year || !month) return 45 * 4;
   const last = new Date(year, month, 0).getDate();
   let total = 0;
   for (let day = 1; day <= last; day++) {
@@ -4640,8 +4641,8 @@ function attendanceStatusFromTimes(form = {}) {
   const inMins = ih * 60 + im;
   const outMins = oh * 60 + om;
   const isSaturday = new Date(form.date || today()).getDay() === 6;
-  const latestOnTime = 8 * 60 + 30;
-  const earliestNormal = 7 * 60 + 30;
+  const latestOnTime = 8 * 60 + 5;
+  const earliestNormal = 8 * 60 - 5;
   const expectedOut = isSaturday ? 13 * 60 : 17 * 60;
   if (checkIn && inMins > latestOnTime) return 'Late';
   if (checkOut && outMins < expectedOut) return 'Left Early';
@@ -6163,7 +6164,7 @@ const api = {
     };
   },
   async generateReportExport(user, filters = {}, format = 'CSV') {
-    const u = reqRole(user);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.DEV, ROLES.EXECUTIVE);
     const center = api.getReportCenterData(user, { ...filters, fullExport: true });
     const report = center.activeReport;
     const fmt = String(format || 'CSV');
@@ -11749,7 +11750,7 @@ territory: geo,
       const checkIn = clean(a.checkIn);
       if (!checkIn || a.status === 'Absent') return false;
       const [h, m] = checkIn.split(':').map(Number);
-      return (h * 60 + m) > (8 * 60 + 30);
+      return (h * 60 + m) > (8 * 60 + 5);
     }).length;
     const missingCheckouts = attendanceInPeriod.filter(a => a.checkIn && !a.checkOut && a.status !== 'Absent').length;
     // Department-wise hours aggregation (last 30 days)
@@ -11788,7 +11789,7 @@ territory: geo,
         const checkIn = clean(a.checkIn);
         if (!checkIn) return false;
         const [h, m] = checkIn.split(':').map(Number);
-        return (h * 60 + m) > (8 * 60 + 15);
+        return (h * 60 + m) > (8 * 60 + 5);
       });
       const lateMinutes = lateArrivals.reduce((sum, a) => {
         const [h, m] = String(a.checkIn).split(':').map(Number);
@@ -11838,7 +11839,7 @@ territory: geo,
       const grossPay = Math.round(basePay + totalAllowances + overtimePay);
       // Kenya statutory tax-exempt first: NSSF, SHIF, Housing Levy + custom tax-exempt
       const nssfEnabled = emp.applyNssf !== false && String(emp.applyNssf || 'yes').toLowerCase() !== 'no';
-      const shifEnabled = emp.applyShif !== false && String(emp.applyShif || emp.shifEnabled || 'yes').toLowerCase() !== 'no';
+      const shifEnabled = emp.applyShif === true || String(emp.applyShif || emp.shifEnabled || '').toLowerCase() === 'yes';
       const ahlEnabled = emp.applyHousingLevy !== false && String(emp.applyHousingLevy || 'yes').toLowerCase() !== 'no';
       const nssf = nssfEnabled ? calculateKenyaNssf(grossPay) : 0;
       const nhif = 0;
@@ -12940,8 +12941,19 @@ territory: geo,
       const lt = (d.leaveTypes || []).find(t => String(t.name).toLowerCase() === String(app.type).toLowerCase());
       const emp = (d.employees || []).find(e => e.id === app.applicantId || e.email === app.applicantEmail);
       if (emp) {
-        const balanceKey = lt?.deducts === 'sick' ? 'leaveBalanceSick' : lt?.deducts === 'casual' ? 'leaveBalanceCasual' : 'leaveBalanceAnnual';
+        const leaveName = String(app.type || '').toLowerCase();
+        const balanceKey = lt?.deducts === 'sick' ? 'leaveBalanceSick'
+          : lt?.deducts === 'casual' ? 'leaveBalanceCasual'
+          : lt?.deducts === 'annual' ? 'leaveBalanceAnnual'
+          : leaveName.includes('maternity') ? 'leaveBalanceMaternity'
+          : leaveName.includes('paternity') ? 'leaveBalancePaternity'
+          : leaveName.includes('compassionate') ? 'leaveBalanceCompassionate'
+          : leaveName.includes('unpaid') ? ''
+          : 'leaveBalanceAnnual';
+        if (!emp.leaveBalanceCompassionate && emp.leaveBalanceCompassionate !== 0) emp.leaveBalanceCompassionate = 5;
+        if (balanceKey) {
         emp[balanceKey] = Math.max(num(emp[balanceKey]) - app.days, 0);
+        }
       }
     }
     // Notify the applicant

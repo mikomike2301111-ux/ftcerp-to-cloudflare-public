@@ -2429,6 +2429,8 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                   customerId: followForm.customerId || cust?.id || '',
                   customerName: followForm.customerName || cust?.name || '',
                   phone: followForm.phone || cust?.phone || '',
+                  callName: followForm.customerName || cust?.name || '',
+                  name: followForm.customerName || cust?.name || '',
                   stage: followForm.stage || 'Follow-up',
                   followUpDate: followForm.followUpDate,
                   comments: followForm.comments || '',
@@ -2447,6 +2449,7 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                 <input list="crm-follow-customers" value={followForm.customerName} onChange={e => setFollowForm({ ...followForm, customerName: e.target.value })} placeholder="Customer name" required />
                 <datalist id="crm-follow-customers">{allCustomers.map(c => <option key={c.id} value={c.name} />)}</datalist>
               </label>
+              <label>Phone<input type="tel" inputMode="tel" value={followForm.phone} onChange={e => setFollowForm({ ...followForm, phone: e.target.value })} placeholder="Phone number for new person" /></label>
               <label>Comments<textarea value={followForm.comments} onChange={e => setFollowForm({ ...followForm, comments: e.target.value })} rows={3} placeholder="What was discussed / next action" required /></label>
               <label>Stage
                 <select value={followForm.stage} onChange={e => setFollowForm({ ...followForm, stage: e.target.value })}>
@@ -2532,13 +2535,13 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
           <Panel className="span-7" title="Reception calls" action={`${(allCalls || []).filter(r => r.recordType === 'reception' || r.stage === 'Reception').length} calls`}>
             <div className="table-wrap">
               <table>
-                <thead><tr><th>Date</th><th>Time</th><th>Number</th><th>Reason</th><th>Received by / Transfer to</th></tr></thead>
+                <thead><tr><th>Date</th><th>Time</th><th>Name</th><th>Number</th><th>Reason</th><th>Received by / Transfer to</th></tr></thead>
                 <tbody>
                   {(() => {
                     const rows = (allCalls || [])
                       .filter(r => r.recordType === 'reception' || r.stage === 'Reception')
                       .sort((a, b) => String(b.datetime || b.date || '').localeCompare(String(a.datetime || a.date || '')));
-                    if (!rows.length) return <tr><td colSpan={5}><div className="empty-state">No reception calls yet.</div></td></tr>;
+                    if (!rows.length) return <tr><td colSpan={6}><div className="empty-state">No reception calls yet.</div></td></tr>;
                     let lastDay = '';
                     const out = [];
                     rows.forEach(row => {
@@ -2547,7 +2550,7 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                         lastDay = day;
                         out.push(
                           <tr key={`day-${day}`} className="day-separator-row">
-                            <td colSpan={5} style={{ background: '#f8fafc', fontWeight: 700, color: '#334155', padding: '8px 12px' }}>{day}</td>
+                            <td colSpan={6} style={{ background: '#f8fafc', fontWeight: 700, color: '#334155', padding: '8px 12px' }}>{day}</td>
                           </tr>
                         );
                       }
@@ -2555,6 +2558,7 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                         <tr key={row.id}>
                           <td>{row.date || '—'}</td>
                           <td>{row.time || String(row.datetime || '').slice(11, 16) || '—'}</td>
+                          <td><strong>{row.callName || row.name || row.customerName || '—'}</strong></td>
                           <td><strong>{row.phone || row.customerName || '—'}</strong></td>
                           <td>{row.reason || row.comments || row.notes || '—'}</td>
                           <td>{row.receivedBy || row.transferTo || row.assignedTo || '—'}</td>
@@ -10552,13 +10556,19 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
   const [deptModal, setDeptModal] = useState(null);
   const [payrollSending, setPayrollSending] = useState(false);
   const payrollSendingRef = useRef(false);
+  const [hrSaving, setHrSaving] = useState(false);
+  const hrSavingRef = useRef(false);
   const [attForm, setAttForm] = useState({ employeeId: '', date: new Date().toISOString().slice(0, 10), checkIn: '08:00', checkOut: '17:00', breakMinutes: 0, hoursWorked: '', shiftType: 'Day Shift', workLocation: 'Office', status: 'Auto', note: '' });
   const [dirLimit, setDirLimit] = useState(50);
   const [attLimit, setAttLimit] = useState(50);
   const listStep = 50;
   const { loading, data, error } = useServer(user, 'getHrData', [{ search, period: globalPeriod }], [refreshKey, globalPeriod]);
   const handleSaveEmployee = async (form) => {
+    if (hrSavingRef.current) return;
+    hrSavingRef.current = true;
+    setHrSaving(true);
     try { await rpc('saveEmployee', [user, form]); setModal(null); setEditEmp(null); setRefreshKey(k => k + 1); } catch (err) { alert(err.message); }
+    finally { hrSavingRef.current = false; setHrSaving(false); }
   };
   const handleDeleteEmployee = async (emp) => {
     if (!confirm(`Delete employee "${emp.name}"? This cannot be undone.`)) return;
@@ -10601,7 +10611,11 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
   };
   const handleRecordAttendance = async (e) => {
     e.preventDefault();
+    if (hrSavingRef.current) return;
+    hrSavingRef.current = true;
+    setHrSaving(true);
     try { await rpc('recordAttendance', [user, attForm]); setAttForm({ ...attForm, employeeId: '', hoursWorked: '', note: '', status: 'Auto' }); setRefreshKey(k => k + 1); } catch (err) { alert(err.message); }
+    finally { hrSavingRef.current = false; setHrSaving(false); }
   };
   if (loading) return <Loading title="HR" />;
   if (error) return <ErrorState title="HR" error={error} />;
@@ -11170,8 +11184,8 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
 
       {paySlipEmp && <PaySlip user={user} rpc={rpc} employee={paySlipEmp.employee} payroll={paySlipEmp.payroll} company={data.company || {}} period={{ from: data.period?.startDate || '—', to: data.period?.endDate || '—', date: new Date().toISOString().slice(0, 10) }} onClose={() => setPaySlipEmp(null)} onPrint={(ref) => { window.print(); }} />}
 
-      {modal === 'employee' && <EmployeeFormModal user={user} departments={data.departments || []} onClose={() => setModal(null)} onSave={handleSaveEmployee} />}
-      {editEmp && <EmployeeFormModal user={user} departments={data.departments || []} initial={editEmp} onClose={() => setEditEmp(null)} onSave={handleSaveEmployee} />}
+      {modal === 'employee' && <EmployeeFormModal user={user} departments={data.departments || []} onClose={() => setModal(null)} onSave={handleSaveEmployee} saving={hrSaving} />}
+      {editEmp && <EmployeeFormModal user={user} departments={data.departments || []} initial={editEmp} onClose={() => setEditEmp(null)} onSave={handleSaveEmployee} saving={hrSaving} />}
       {modal === 'candidate' && <CandidateFormModal onClose={() => setModal(null)} onSave={handleSaveCandidate} />}
       {modal === 'review' && <ReviewFormModal employees={data.employees} onClose={() => setModal(null)} onSave={handleSaveReview} />}
       {deptModal !== null && (
@@ -11423,7 +11437,7 @@ function HREmailCenter({ user, hrEmail, employees = [], emails = [], onSent }) {
   );
 }
 
-function EmployeeFormModal({ user, onClose, onSave, initial, departments = [] }) {
+function EmployeeFormModal({ user, onClose, onSave, initial, departments = [], saving = false }) {
   const [form, setForm] = useState(initial && initial.id ? { ...initial } : {
     name: '', firstName: '', middleName: '', lastName: '', email: '', companyEmail: '', personalEmail: '', phone: '', altPhone: '',
     department: 'Sales', position: 'Officer', employmentType: 'Full-time', joinDate: new Date().toISOString().slice(0, 10), status: 'Active',
@@ -11434,7 +11448,7 @@ function EmployeeFormModal({ user, onClose, onSave, initial, departments = [] })
     houseAllowance: 0, transportAllowance: 0, medicalAllowance: 0, communicationAllowance: 0, riskAllowance: 0, mealAllowance: 0, responsibilityAllowance: 0, otherAllowances: 0,
     loanDeduction: 0, saccoDeduction: 0, otherDeductions: 0, customDeductions: [], emergencyContactName: '', emergencyContactPhone: '', emergencyContactRelation: '',
     emergencyContactEmail: '', emergencyContactAddress: '', nextOfKinName: '', nextOfKinPhone: '', nextOfKinRelation: '',
-    contractStart: '', contractEnd: '', probationEnd: '', leaveBalanceAnnual: 21, leaveBalanceSick: 10, leaveBalanceCasual: 5, leaveBalanceMaternity: 90, leaveBalancePaternity: 14
+    contractStart: '', contractEnd: '', probationEnd: '', leaveBalanceAnnual: 21, leaveBalanceSick: 10, leaveBalanceCasual: 5, leaveBalanceMaternity: 90, leaveBalancePaternity: 14, leaveBalanceCompassionate: 5
   });
   const [noteText, setNoteText] = useState('');
   const [notePrivate, setNotePrivate] = useState(false);
@@ -11603,6 +11617,7 @@ function EmployeeFormModal({ user, onClose, onSave, initial, departments = [] })
           <label>Casual Leave<input type="number" value={form.leaveBalanceCasual} onChange={e => setForm({ ...form, leaveBalanceCasual: Number(e.target.value) })} /></label>
           <label>Maternity<input type="number" value={form.leaveBalanceMaternity || 90} onChange={e => setForm({ ...form, leaveBalanceMaternity: Number(e.target.value) })} /></label>
           <label>Paternity<input type="number" value={form.leaveBalancePaternity || 14} onChange={e => setForm({ ...form, leaveBalancePaternity: Number(e.target.value) })} /></label>
+          <label>Compassionate<input type="number" value={form.leaveBalanceCompassionate || 5} onChange={e => setForm({ ...form, leaveBalanceCompassionate: Number(e.target.value) })} /></label>
         </div></fieldset>
         {isEdit && (
           <fieldset className="settings-fieldset"><legend>HR notes on this employee</legend><div>
@@ -11624,7 +11639,7 @@ function EmployeeFormModal({ user, onClose, onSave, initial, departments = [] })
             <label>Exit Reason<input value={form.exitReason || ''} onChange={e => setForm({ ...form, exitReason: e.target.value })} placeholder="Resignation, Termination, Retirement..." /></label>
           </div></fieldset>
         )}
-        <button className="primary-action" type="submit">{isEdit ? 'Update Employee' : 'Save Employee'}</button>
+        <button className="primary-action" type="submit" disabled={saving}>{saving ? 'Saving...' : (isEdit ? 'Update Employee' : 'Save Employee')}</button>
       </form>
     </ModalCard>
   );
@@ -11688,11 +11703,20 @@ function LeaveWorkspace({ user, setPage, globalPeriod = 'Month' }) {
   const [detailLeave, setDetailLeave] = useState(null);
   const [listLimit, setListLimit] = useState(50);
   const [statusFilter, setStatusFilter] = useState('All');
+  const [leaveBusy, setLeaveBusy] = useState(false);
+  const leaveBusyRef = useRef(false);
   const listStep = 50;
   const handleApply = async (form) => {
+    if (leaveBusyRef.current) return;
+    leaveBusyRef.current = true;
+    setLeaveBusy(true);
     try { await rpc('applyLeave', [user, form]); setApplyModal(false); setRefreshKey(k => k + 1); setView('requests'); } catch (err) { alert(err.message); }
+    finally { leaveBusyRef.current = false; setLeaveBusy(false); }
   };
   const handleDecision = async (id, decision) => {
+    if (leaveBusyRef.current) return;
+    leaveBusyRef.current = true;
+    setLeaveBusy(true);
     try {
       const result = await rpc('decideLeave', [user, id, { decision, note: notes[id] || '' }]);
       if (result?.emailStatus) {
@@ -11702,6 +11726,7 @@ function LeaveWorkspace({ user, setPage, globalPeriod = 'Month' }) {
       setDetailLeave(null);
       setRefreshKey(k => k + 1);
     } catch (err) { alert(err.message); }
+    finally { leaveBusyRef.current = false; setLeaveBusy(false); }
   };
   const handleCancel = async (id) => {
     if (!confirm('Cancel this leave request?')) return;
@@ -12041,7 +12066,7 @@ function LeaveWorkspace({ user, setPage, globalPeriod = 'Month' }) {
         </div>
       )}
 
-      {applyModal && <LeaveApplyModal user={user} leaveTypes={data.leaveTypes} departments={data.departments || []} balances={data.balances} employees={data.employees || []} onClose={() => setApplyModal(false)} onSave={handleApply} />}
+      {applyModal && <LeaveApplyModal user={user} leaveTypes={data.leaveTypes} departments={data.departments || []} balances={data.balances} employees={data.employees || []} onClose={() => setApplyModal(false)} onSave={handleApply} saving={leaveBusy} />}
       {detailLeave && (
         <div className="modal-backdrop" onClick={() => setDetailLeave(null)}>
           <div className="modal-card wide" onClick={e => e.stopPropagation()}>
@@ -12078,7 +12103,7 @@ function LeaveWorkspace({ user, setPage, globalPeriod = 'Month' }) {
   );
 }
 
-function LeaveApplyModal({ user, leaveTypes, departments = [], balances = [], employees = [], onClose, onSave }) {
+function LeaveApplyModal({ user, leaveTypes, departments = [], balances = [], employees = [], onClose, onSave, saving = false }) {
   const staffOptions = employees.length ? employees : balances;
   const me = balances.find(b => b.name === user.name) || {};
   const [form, setForm] = useState({
@@ -12153,7 +12178,7 @@ function LeaveApplyModal({ user, leaveTypes, departments = [], balances = [], em
           <div className="leave-calc-row total"><span>Remaining after</span><strong style={{ color: exceedsBalance ? '#d92d20' : '#101828' }}>{balanceKey === 'unpaid' ? 'Unlimited' : `${remainingAfter}d`}</strong></div>
           {exceedsBalance && <p className="leave-calc-warn">⚠ This request exceeds your available {form.type.toLowerCase()} balance. It may require manager approval.</p>}
         </div>
-        <button className="primary-action" type="submit">Submit Leave Request</button>
+        <button className="primary-action" type="submit" disabled={saving}>{saving ? 'Submitting...' : 'Submit Leave Request'}</button>
       </form>
     </ModalCard>
   );
