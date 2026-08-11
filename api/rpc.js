@@ -19,6 +19,7 @@ const ROLES = {
   RECEPTION: 'Reception',
   SALES: 'Sales Officer',
   FIELD: 'Field Officer',
+  DELIVERY: 'Delivery Officer',
   PRODUCTION: 'Production Supervisor',
   WAREHOUSE: 'Warehouse Staff',
   PROCUREMENT: 'Procurement Officer',
@@ -36,6 +37,7 @@ const PAGE_ACCESS = {
   accounts: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.ACCOUNTANT],
   production: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.PRODUCTION, ROLES.WAREHOUSE],
   customers: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD, ROLES.RECEPTION],
+  delivery: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.DELIVERY, ROLES.SALES, ROLES.RECEPTION],
   reports: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.ACCOUNTANT, ROLES.HR, ROLES.SALES],
   inputs: [ROLES.DEV, ROLES.ADMIN, ROLES.MANAGER, ROLES.RECEPTION, ROLES.SALES, ROLES.HR],
   notifications: ['*'],
@@ -174,7 +176,7 @@ const STAFF_ROSTER = [
   { name: 'Moses Miano', email: 'mosesmiano@farmtrack.co.ke', password: 'Pass2026', role: ROLES.PRODUCTION, department: 'Bacteriology' },
   { name: 'EPF Fungal', email: 'epf@farmtrack.co.ke', password: 'Epf2026!', role: ROLES.PRODUCTION, department: 'Fungal' },
   { name: 'Alex', email: 'alex@farmtrack.co.ke', password: 'Pass2026', role: ROLES.PRODUCTION, department: 'R&D' },
-  { name: 'Masharia', email: 'masharia@farmtrack.co.ke', password: 'Mash2026!', role: ROLES.CASUAL, department: 'Operations' },
+  { name: 'Macharia', email: 'macharia@farmtrack.co.ke', password: 'Pass@2026', role: ROLES.DELIVERY, department: 'Delivery' },
   { name: 'KK', email: 'kk@farmtrack.co.ke', password: 'Kk2026!', role: ROLES.CASUAL, department: 'Operations' }
 ];
 
@@ -3744,6 +3746,7 @@ function roleDepartment(role) {
     [ROLES.RECEPTION]: 'Administration',
     [ROLES.SALES]: 'Sales',
     [ROLES.FIELD]: 'Field Operations',
+    [ROLES.DELIVERY]: 'Delivery',
     [ROLES.PRODUCTION]: 'Manufacturing',
     [ROLES.WAREHOUSE]: 'Inventory',
     [ROLES.PROCUREMENT]: 'Procurement',
@@ -9767,7 +9770,7 @@ territory: geo,
     return { success: true, invoice };
   },
   confirmSalesDelivery(user, deliveryId, delivered) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.WAREHOUSE);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.RECEPTION, ROLES.DELIVERY, ROLES.WAREHOUSE);
     const delivery = data().deliveries.find(d => d.id === deliveryId);
     if (!delivery) throw new Error('Delivery not found');
     delivery.deliveredConfirmed = Boolean(delivered);
@@ -9780,7 +9783,7 @@ territory: geo,
     return { success: true, delivery };
   },
   updateSalesDeliveryStatus(user, deliveryId, status) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.WAREHOUSE);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.RECEPTION, ROLES.DELIVERY, ROLES.WAREHOUSE);
     const allowed = ['Pending Delivery', 'Picked', 'Ready for Dispatch', 'Dispatched', 'Arrived', 'Delivered'];
     if (!allowed.includes(status)) throw new Error('Invalid delivery status');
     const delivery = data().deliveries.find(d => d.id === deliveryId);
@@ -9803,7 +9806,7 @@ territory: geo,
     return { success: true, delivery };
   },
   updateDeliveryDetails(user, deliveryId, patch = {}) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.WAREHOUSE, ROLES.ACCOUNTANT, ROLES.FIELD);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.RECEPTION, ROLES.DELIVERY, ROLES.WAREHOUSE, ROLES.ACCOUNTANT, ROLES.FIELD);
     const delivery = data().deliveries.find(d => d.id === deliveryId);
     if (!delivery) throw new Error('Delivery not found');
     const allowed = ['Pending Delivery', 'Pending', 'Picked', 'Ready for Dispatch', 'Dispatched', 'In Transit', 'Arrived', 'Delivered', 'Failed', 'Returned'];
@@ -10497,7 +10500,51 @@ territory: geo,
     }), { subject: `Requisition ${req.reqNo}`, relatedModule: 'requisitions', relatedId: reqId });
     return { sent: true, to: recipient };
   },
-  getDeliveries: user => (reqRole(user), list('deliveries')),
+  getDeliveries: user => (reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.RECEPTION, ROLES.DELIVERY, ROLES.WAREHOUSE, ROLES.EXECUTIVE, ROLES.DEV), list('deliveries')),
+  getDeliveryWorkspaceData(user, filters = {}) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.RECEPTION, ROLES.DELIVERY, ROLES.WAREHOUSE, ROLES.EXECUTIVE, ROLES.DEV);
+    const d = data();
+    const range = periodRange(filters.period || 'Month');
+    const rows = (d.deliveries || []).map(delivery => {
+      const sale = (d.sales || []).find(s => s.id === delivery.saleId || s.saleNo === delivery.saleNo) || {};
+      const invoice = (d.invoices || []).find(inv => inv.id === delivery.invoiceId || inv.saleId === delivery.saleId || inv.saleNo === delivery.saleNo) || {};
+      const customer = (d.customers || []).find(c => c.id === delivery.customerId || c.name === delivery.customerName || c.id === sale.customerId || c.name === sale.customerName) || {};
+      const items = (d.deliveryItems || []).filter(item => item.deliveryId === delivery.id);
+      return {
+        ...delivery,
+        deliveryId: delivery.id,
+        date: dateOnly(delivery.date || delivery.createdAt || invoice.date || sale.date || today()),
+        saleNo: delivery.saleNo || sale.saleNo || invoice.saleNo || '',
+        invoiceNo: invoice.invNo || invoice.invoiceNo || '',
+        customerName: delivery.customerName || sale.customerName || invoice.customerName || customer.name || 'Customer',
+        name: delivery.customerName || sale.customerName || invoice.customerName || customer.name || 'Customer',
+        phone: delivery.phone || customer.phone || invoice.shipToPhone || '',
+        destination: delivery.destination || invoice.deliveryAddress || invoice.shipToLocation || customer.city || '',
+        method: delivery.deliveryMethod || delivery.method || 'Company Vehicle',
+        driver: delivery.driver || (u.role === ROLES.DELIVERY ? u.name : ''),
+        vehicle: delivery.vehicle || '',
+        notes: delivery.notes || '',
+        noteCount: Array.isArray(delivery.noteHistory) ? delivery.noteHistory.length : 0,
+        items,
+        productSummary: items.map(i => `${i.productName} x${i.quantity}`).join(', '),
+        confirmed: Boolean(delivery.deliveredConfirmed),
+        arrival: delivery.arrivalConfirmed ? 'Arrived' : delivery.status === 'Delivered' ? 'Arrived' : 'Waiting',
+        status: delivery.status || 'Pending Delivery'
+      };
+    }).filter(row => row.date >= range.startDate && row.date <= range.endDate)
+      .sort((a, b) => String(b.updatedAt || b.createdAt || b.date).localeCompare(String(a.updatedAt || a.createdAt || a.date)));
+    const openStatuses = ['Pending Delivery', 'Picked', 'Ready for Dispatch', 'Dispatched', 'In Transit', 'Arrived'];
+    return {
+      currentUser: publicUser(u),
+      deliveries: rows,
+      stats: {
+        total: rows.length,
+        open: rows.filter(r => openStatuses.includes(r.status)).length,
+        delivered: rows.filter(r => r.status === 'Delivered' || r.deliveredConfirmed).length,
+        notes: rows.reduce((sum, row) => sum + num(row.noteCount), 0)
+      }
+    };
+  },
   markDeliveryDelivered(user, id) { reqRole(user); const x = data().deliveries.find(d => d.id === id); if (x) x.status = 'Delivered'; return { success: true, message: 'OK Delivered!' }; },
   getPurchaseOrders: user => (reqRole(user), list('purchaseOrders')),
   getProcurementWorkspaceData(user, filters = {}) {

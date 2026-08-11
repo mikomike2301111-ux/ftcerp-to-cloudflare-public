@@ -451,6 +451,7 @@ const nav = [
   { id: 'accounts', label: 'Accounts', icon: Landmark },
   { id: 'production', label: 'Manufacturing', icon: Factory },
   { id: 'customers', label: 'CRM', icon: Users },
+  { id: 'delivery', label: 'Delivery', icon: Truck },
   { id: 'reports', label: 'Reports', icon: FileText },
   { id: 'inputs', label: 'Inputs', icon: Command },
   { id: 'notifications', label: 'Notifications', icon: Bell },
@@ -462,9 +463,9 @@ const nav = [
   { id: 'admin-ops', label: 'Admin Office', icon: ShieldCheck },
   { id: 'settings', label: 'Settings', icon: Settings }
 ];
-const routeAliases = { crm: 'customers', purchases: 'purchasing', manufacturing: 'production', emails: 'email-admin', leave: 'leaves' };
+const routeAliases = { crm: 'customers', purchases: 'purchasing', manufacturing: 'production', emails: 'email-admin', leave: 'leaves', deliveries: 'delivery' };
 const pageAliases = { dashboard: true };
-const routeForPage = id => id === 'customers' ? 'crm' : id === 'purchasing' ? 'purchases' : id === 'production' ? 'manufacturing' : id === 'emails' ? 'email-admin' : id === 'leave' ? 'leaves' : id;
+const routeForPage = id => id === 'customers' ? 'crm' : id === 'purchasing' ? 'purchases' : id === 'production' ? 'manufacturing' : id === 'emails' ? 'email-admin' : id === 'leave' ? 'leaves' : id === 'delivery' ? 'delivery' : id;
 const pageFromRoute = () => {
   const raw = window.location.hash.replace(/^#\/?/, '').split('/')[0] || 'dashboard';
   const page = routeAliases[raw] || raw;
@@ -978,6 +979,7 @@ function App() {
           {page === 'accounts' && <AccountsWorkspace user={user} setPage={setPage} globalPeriod={globalPeriod} />}
           {page === 'production' && <Manufacturing user={user} setPage={setPage} globalPeriod={globalPeriod} />}
           {page === 'customers' && <CRMWorkspace user={user} setPage={setPage} globalPeriod={globalPeriod} />}
+          {page === 'delivery' && <DeliveryWorkspace user={user} setPage={setPage} globalPeriod={globalPeriod} />}
           {page === 'reports' && <Reports user={user} setPage={setPage} title="Reports" globalPeriod={globalPeriod} />}
           {page === 'inputs' && <InputCenter user={user} setPage={setPage} />}
           {page === 'notifications' && <NotificationCenter user={user} setPage={setPage} />}
@@ -2269,7 +2271,7 @@ function DataPage({ user, title, icon, fn, columns }) {
 }
 
 function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
-  const tabs = ['overview', 'pipeline', 'customers', 'followups', 'leads', 'calls', 'activities', 'reports', 'analytics'];
+  const tabs = ['overview', 'pipeline', 'customers', 'delivery', 'followups', 'leads', 'calls', 'activities', 'reports', 'analytics'];
   const [refreshKey, setRefreshKey] = useState(0);
   const { loading, data, error } = useServer(user, 'getCRMWorkspaceData', [{ period: globalPeriod }], [refreshKey, globalPeriod]);
   const [view, setView] = useRouteTab('customers', tabs, 'overview');
@@ -2409,10 +2411,18 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
             <button type="button" className="primary-action" onClick={() => setModal('customer')}><Plus size={16} /> Add Customer</button>
             <button type="button" onClick={() => setView('calls')}><Phone size={16} /> Reception calls</button>
             <button type="button" onClick={() => setView('followups')}><Calendar size={16} /> Follow-up report</button>
+            <button type="button" onClick={() => setView('delivery')}><Truck size={16} /> Delivery</button>
           </div>
           <p className="crm-hint">Click any customer card to open the full detail overlay (orders, calls, deliveries, comments).</p>
           <CRMCustomersGrid customers={customers} query={query} setQuery={setQuery} onNew={() => setModal('customer')} onSelect={setSelectedCustomer} pageSize={10} />
         </>
+      )}
+      {view === 'delivery' && (
+        <div className="dashboard-grid">
+          <Panel className="span-12" title="CRM Delivery Confirmations" action={`${(data.deliveries || []).length} deliveries`}>
+            <CRMDeliveryPreview user={user} rows={data.deliveries || []} onUpdated={() => setRefreshKey(x => x + 1)} />
+          </Panel>
+        </div>
       )}
       {view === 'followups' && (
         <div className="dashboard-grid">
@@ -3411,6 +3421,79 @@ function CRMDeliveryPreview({ user, rows = [], onUpdated, compact = false }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+function DeliveryWorkspace({ user, setPage, globalPeriod = 'Month' }) {
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [selected, setSelected] = useState(null);
+  const [query, setQuery] = useState('');
+  const { loading, data, error } = useServer(user, 'getDeliveryWorkspaceData', [{ period: globalPeriod }], [refreshKey, globalPeriod]);
+  if (loading) return <Loading title="Delivery" />;
+  if (error) return <ErrorState title="Delivery" error={error} />;
+  const rows = (data.deliveries || []).filter(row => [row.deliveryNo, row.saleNo, row.invoiceNo, row.customerName, row.phone, row.destination, row.status].join(' ').toLowerCase().includes(query.toLowerCase()));
+  const stats = data.stats || {};
+  const refresh = () => setRefreshKey(x => x + 1);
+  return (
+    <section className="page-stack delivery-workspace sales-workspace">
+      <div className="sales-hero delivery-hero">
+        <div><span>Delivery desk</span><h1>Deliveries</h1><p>Confirm products from invoices and sales orders, add notes, and keep CRM and Sales updated.</p></div>
+        <HeroStats items={[[stats.open || 0, 'Open'], [stats.delivered || 0, 'Delivered'], [stats.total || 0, 'Total'], [stats.notes || 0, 'Notes']]} />
+      </div>
+      <div className="inline-actions">
+        <button type="button" className="primary-action" onClick={() => setPage?.('requisitions')}><ClipboardCheck size={16} /> Requisition</button>
+        <CreateRequisitionButton user={user} module="delivery-car" />
+        <button type="button" onClick={() => setPage?.('leaves')}><CalendarClock size={16} /> Leave Application</button>
+        <button type="button" onClick={() => setPage?.('email')}><Mail size={16} /> Email</button>
+        <button type="button" onClick={refresh}><RefreshCw size={16} /> Refresh</button>
+      </div>
+      <Panel title="Delivery Queue" action={`${rows.length} shown`}>
+        <div className="hr-search-bar" style={{ marginBottom: 10 }}>
+          <Search size={16} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search delivery, invoice, customer, phone..." />
+        </div>
+        <div className="delivery-card-list">
+          {rows.map(row => (
+            <article key={row.deliveryId || row.id} className="delivery-card" onClick={() => setSelected(row)}>
+              <div><strong>{row.deliveryNo || 'Delivery'}</strong><span>{row.customerName || row.name}</span><em>{row.invoiceNo || row.saleNo || 'No invoice ref'} · {row.phone || 'No phone'}</em></div>
+              <div>{formatCell(row.status, 'status')}<small>{row.destination || 'Destination not set'}</small></div>
+              <ActionMenu summary={row.deliveryNo} actions={[
+                { label: 'Open details', icon: <FileText size={15} />, onClick: () => setSelected(row) },
+                { label: 'Confirm delivered', icon: <CheckCircle2 size={15} />, onClick: async () => { await rpc('updateDeliveryDetails', [user, row.deliveryId || row.id, { deliveredConfirmed: true, addNote: 'Delivery confirmed from delivery page' }]); refresh(); } },
+                { label: 'Mark arrived', icon: <MapPin size={15} />, onClick: async () => { await rpc('updateDeliveryDetails', [user, row.deliveryId || row.id, { status: 'Arrived' }]); refresh(); } },
+                { label: 'Add note', icon: <FileText size={15} />, onClick: async () => { const text = window.prompt('Delivery note', ''); if (text) { await rpc('updateDeliveryDetails', [user, row.deliveryId || row.id, { addNote: text }]); refresh(); } } },
+                { label: 'Print', icon: <Printer size={15} />, onClick: () => printText(row.deliveryNo || 'Delivery', rowSummary(row)) }
+              ]} />
+            </article>
+          ))}
+          {!rows.length && <div className="empty-state">No deliveries yet. Sales invoices/orders create delivery records automatically.</div>}
+        </div>
+      </Panel>
+      <Panel title="Full Delivery Controls" action="Macharia / CRM / Sales">
+        <CRMDeliveryPreview user={user} rows={rows} onUpdated={refresh} />
+      </Panel>
+      {selected && (
+        <div className="modal-backdrop" onClick={() => setSelected(null)}>
+          <div className="modal-card wide" onClick={e => e.stopPropagation()}>
+            <header><h2>{selected.deliveryNo || 'Delivery'} · {selected.customerName}</h2><button type="button" onClick={() => setSelected(null)}><X size={18} /></button></header>
+            <div className="settings-kv-grid">
+              <article><span>Status</span><strong>{selected.status}</strong></article>
+              <article><span>Invoice</span><strong>{selected.invoiceNo || selected.saleNo || '-'}</strong></article>
+              <article><span>Phone</span><strong>{selected.phone || '-'}</strong></article>
+              <article><span>Destination</span><strong>{selected.destination || '-'}</strong></article>
+              <article><span>Method</span><strong>{selected.method || selected.deliveryMethod || '-'}</strong></article>
+              <article><span>Driver</span><strong>{selected.driver || '-'}</strong></article>
+            </div>
+            <Panel title="Products" action={`${(selected.items || []).length} lines`}><SimpleTable rows={selected.items || []} columns={['productName', 'quantity']} /></Panel>
+            <Panel title="Notes"><SimpleTable rows={(selected.noteHistory || []).map(n => ({ at: String(n.at || '').slice(0, 16).replace('T', ' '), by: n.by, text: n.text }))} columns={['at', 'by', 'text']} /></Panel>
+            <div className="inline-actions">
+              <button className="primary-action" type="button" onClick={async () => { await rpc('updateDeliveryDetails', [user, selected.deliveryId || selected.id, { deliveredConfirmed: true, addNote: 'Delivery confirmed from detail overlay' }]); setSelected(null); refresh(); }}><CheckCircle2 size={16} /> Confirm Delivered</button>
+              <button type="button" onClick={async () => { const text = window.prompt('Delivery note', ''); if (text) { await rpc('updateDeliveryDetails', [user, selected.deliveryId || selected.id, { addNote: text }]); setSelected(null); refresh(); } }}><FileText size={16} /> Add Note</button>
+              <button type="button" onClick={() => printText(selected.deliveryNo || 'Delivery', rowSummary(selected))}><Printer size={16} /> Print</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
