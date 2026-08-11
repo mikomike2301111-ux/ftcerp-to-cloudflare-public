@@ -10715,6 +10715,9 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
           <Panel className="span-6" title="HR activity timeline" action={`${(data.hrTimeline || []).length} events`}>
             <SimpleTable rows={(data.hrTimeline || []).slice(0, 8).map(t => ({ at: String(t.at || '').slice(0, 16).replace('T', ' '), action: t.action, by: t.by, description: t.description }))} columns={['at', 'action', 'by', 'description']} />
           </Panel>
+          <Panel className="span-6" title="HR audit log" action={`${(data.hrAuditLog || []).length} events`}>
+            <SimpleTable rows={(data.hrAuditLog || []).slice(0, 8).map(t => ({ at: String(t.at || '').slice(0, 16).replace('T', ' '), action: t.action, employee: t.employeeName || t.newName || t.employeeId, by: t.by }))} columns={['at', 'action', 'employee', 'by']} />
+          </Panel>
           <Panel className="span-12" title="Exports">
             <div className="inline-actions">
               <button type="button" onClick={() => downloadRowsFile('hr-employees', employees, 'CSV')}><Download size={15} /> Employees CSV</button>
@@ -10740,7 +10743,7 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
           <Panel className="span-12" title="Employee Directory" action={`${data.employees.length} records · ${data.employees.filter(e => e.status === 'Active').length} active`}>
             <div className="table-wrap">
               <table>
-                <thead><tr><th>Employee</th><th>No.</th><th>Department</th><th>Position</th><th>Email</th><th>Phone</th><th>Pay Type</th><th>Rate/Salary</th><th>Annual Leave</th><th>Status</th><th>Actions</th></tr></thead>
+                <thead><tr><th>Employee</th><th>No.</th><th>Department</th><th>Position</th><th>Email</th><th>Phone</th><th>Pay Type</th><th>Rate/Salary</th><th>Leave Balances</th><th>Status</th><th>Actions</th></tr></thead>
                 <tbody>
                   {data.employees.slice(0, dirLimit).map(emp => (
                     <tr key={emp.id} className={emp.status === 'Inactive' ? 'hr-inactive-row' : ''} style={emp.status === 'Inactive' ? { opacity: 0.5, background: '#f9fafb' } : {}}>
@@ -10752,7 +10755,12 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                       <td>{emp.phone}</td>
                       <td><span style={{ fontSize: 11, fontWeight: 600, color: emp.payType === 'Hourly' ? '#2563eb' : '#475467' }}>{emp.payType || 'Salary'}</span></td>
                       <td>{emp.payType === 'Hourly' ? `${currency(emp.hourlyRate)}/hr` : currency(emp.salary)}</td>
-                      <td>{emp.leaveBalanceAnnual}d</td>
+                      <td>
+                        <strong>{emp.leaveBalanceAnnual || 0}d annual</strong>
+                        <small style={{ display: 'block', color: '#667085' }}>
+                          Sick {emp.leaveBalanceSick || 0}d · Casual {emp.leaveBalanceCasual || 0}d · Mat {emp.leaveBalanceMaternity || 0}d · Pat {emp.leaveBalancePaternity || 0}d · Comp {emp.leaveBalanceCompassionate || 0}d
+                        </small>
+                      </td>
                       <td><span className={emp.status === 'Active' ? 'status active' : 'status cancelled'}>{emp.status}</span></td>
                       <td className="row-actions" onClick={e => e.stopPropagation()}>
                         <button className="mini-action" title="Edit" onClick={() => setEditEmp(emp)}><UserCog size={14} /></button>
@@ -10764,8 +10772,7 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                             { label: 'Copy profile', icon: <FileText size={15} />, onClick: () => copyText(rowSummary(emp)) },
                             { label: 'Print summary', icon: <Printer size={15} />, onClick: () => printText(emp.name, rowSummary(emp)) },
                             emp.status === 'Active' && { label: 'Deactivate', icon: <X size={15} />, onClick: () => handleDeleteEmployee(emp) },
-                            emp.status !== 'Active' && { label: 'Restore', icon: <CheckCircle2 size={15} />, onClick: async () => { try { await rpc('restoreEmployee', [user, emp.id]); setRefreshKey(k => k + 1); } catch (err) { alert(err.message); } } },
-                            emp.status === 'Inactive' && { label: 'Delete permanently', icon: <Trash2 size={15} />, onClick: async () => { if (confirm(`Permanently delete "${emp.name}"? This cannot be undone.`)) { try { await rpc('permanentlyDeleteEmployee', [user, emp.id]); setRefreshKey(k => k + 1); } catch (err) { alert(err.message); } } } }
+                            emp.status !== 'Active' && { label: 'Restore', icon: <CheckCircle2 size={15} />, onClick: async () => { try { await rpc('restoreEmployee', [user, emp.id]); setRefreshKey(k => k + 1); } catch (err) { alert(err.message); } } }
                           ].filter(Boolean)}
                         />
                       </td>

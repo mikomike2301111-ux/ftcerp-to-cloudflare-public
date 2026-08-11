@@ -4560,6 +4560,44 @@ function pushHrTimeline(employeeId, action, description, user) {
   if (db.hrTimeline.length > 5000) db.hrTimeline = db.hrTimeline.slice(0, 5000);
 }
 
+function cascadeEmployeeIdentity(d, employee, before = {}, user = {}) {
+  const id = employee.id;
+  const oldName = clean(before.name);
+  const newName = clean(employee.name);
+  const oldEmail = String(before.email || before.companyEmail || '').toLowerCase();
+  const newEmail = clean(employee.email || employee.companyEmail || '');
+  const patchPerson = row => {
+    if (!row) return;
+    if (row.employeeId === id || row.applicantId === id || row.userId === id || row.staffId === id || (oldEmail && String(row.employeeEmail || row.applicantEmail || row.email || '').toLowerCase() === oldEmail) || (oldName && [row.employeeName, row.applicantName, row.name, row.assignedTo, row.createdBy].some(v => clean(v) === oldName))) {
+      if ('employeeName' in row) row.employeeName = newName;
+      if ('applicantName' in row) row.applicantName = newName;
+      if ('name' in row && clean(row.name) === oldName) row.name = newName;
+      if ('employeeEmail' in row) row.employeeEmail = newEmail || row.employeeEmail;
+      if ('applicantEmail' in row) row.applicantEmail = newEmail || row.applicantEmail;
+      if ('department' in row) row.department = employee.department || row.department;
+      if ('position' in row) row.position = employee.position || row.position;
+      if ('assignedTo' in row && clean(row.assignedTo) === oldName) row.assignedTo = newName;
+      if ('createdBy' in row && clean(row.createdBy) === oldName) row.createdBy = newName;
+      row.updatedAt = row.updatedAt || new Date().toISOString();
+    }
+  };
+  ['attendance', 'leaveApplications', 'reviews', 'payrollRecords', 'payrollHistory', 'hrNotes', 'hrTimeline', 'calls', 'visits', 'salesVisits', 'leads', 'requisitions'].forEach(key => {
+    if (Array.isArray(d[key])) d[key].forEach(patchPerson);
+  });
+  d.hrAuditLog = Array.isArray(d.hrAuditLog) ? d.hrAuditLog : [];
+  d.hrAuditLog.unshift({
+    id: gid(),
+    employeeId: id,
+    action: 'Employee identity cascade',
+    oldName,
+    newName,
+    oldEmail,
+    newEmail,
+    by: user.name || 'System',
+    at: new Date().toISOString()
+  });
+}
+
 function purgeDemoTransactionalData(d) {
   if (!d) return;
   const emptyKeys = [
@@ -11768,8 +11806,11 @@ territory: geo,
       acc.annual += num(e.leaveBalanceAnnual);
       acc.sick += num(e.leaveBalanceSick);
       acc.casual += num(e.leaveBalanceCasual);
+      acc.maternity += num(e.leaveBalanceMaternity);
+      acc.paternity += num(e.leaveBalancePaternity);
+      acc.compassionate += num(e.leaveBalanceCompassionate);
       return acc;
-    }, { annual: 0, sick: 0, casual: 0 });
+    }, { annual: 0, sick: 0, casual: 0, maternity: 0, paternity: 0, compassionate: 0 });
     const activeEmployees = (d.employees || []).filter(e => e.status !== 'Inactive' && e.status !== 'Deleted');
     const salesEmployees = activeEmployees.filter(e => /sales|crm|field/i.test(`${e.department} ${e.position}`));
     const salesInPeriod = (d.sales || []).filter(s => dateOnly(s.date || s.createdAt) >= range.startDate && dateOnly(s.date || s.createdAt) <= range.endDate);
@@ -12044,6 +12085,7 @@ territory: geo,
       employeeBenefits: d.employeeBenefits || [],
       hrNotes: d.hrNotes || [],
       hrTimeline: (d.hrTimeline || []).slice(0, 100),
+      hrAuditLog: (d.hrAuditLog || []).slice(0, 100),
       hrEmails: (d.hrEmails || []).slice(0, 50),
       jobPositions: d.jobPositions || [],
       // ─── HR Reports (3 time-period views) ───────────────────────────
@@ -12176,7 +12218,9 @@ territory: geo,
         reason: clean(form.changeReason) || 'Profile update'
       });
       if (d.employeeHistory.length > 5000) d.employeeHistory = d.employeeHistory.slice(0, 5000);
+      const beforeEmployee = JSON.parse(JSON.stringify(emp));
       Object.assign(emp, employeeRecord(form), { updatedAt: new Date().toISOString() });
+      cascadeEmployeeIdentity(d, emp, beforeEmployee, u);
       // Never rewrite locked payroll rows for this employee
       pushHrTimeline(emp.id, 'Employee Updated', `Profile updated for ${emp.name} (past records unchanged)`, u);
       log(u, `Update employee ${emp.name}`, 'HR');
@@ -12268,14 +12312,22 @@ territory: geo,
     return { success: true, email: row, result };
   },
   deleteEmployee(user, id) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.HR, ROLES.DEV, ROLES.EXECUTIVE);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.DEV, ROLES.EXECUTIVE);
     const d = data();
     const emp = (d.employees || []).find(e => e.id === id);
     if (!emp) throw new Error('Employee not found');
+    emp.previousStatus = emp.status || 'Active';
     emp.status = 'Inactive';
     emp.exitDate = today();
-    emp.exitReason = clean(emp.exitReason) || 'Terminated';
-    log(u, `Deactivate employee ${emp.name}`, 'HR');
+    emp.exitReason = clean(emp.exitReason) || 'Soft deleted by HR';
+    emp.removedFromPayroll = true;
+    emp.deletedAt = new Date().toISOString();
+    emp.deletedBy = u.name;
+    d.hrAuditLog = Array.isArray(d.hrAuditLog) ? d.hrAuditLog : [];
+    d.hrAuditLog.unshift({ id: gid(), employeeId: emp.id, action: 'Employee soft deleted', employeeName: emp.name, previousStatus: emp.previousStatus, by: u.name, at: emp.deletedAt, restoreAvailable: true });
+    pushHrTimeline(emp.id, 'Employee Soft Deleted', `${emp.name} removed from active payroll and can be restored`, u);
+    log(u, `Soft delete employee ${emp.name}`, 'HR');
+    try { if (typeof saveState === 'function') Promise.resolve(saveState()).catch(() => {}); } catch {}
     return { success: true, employee: emp };
   },
   recordAttendance(user, form = {}) {
@@ -12333,14 +12385,21 @@ territory: geo,
     return { success: true, attendance: idx >= 0 ? d.attendance[idx] : record };
   },
   restoreEmployee(user, id) {
-    const u = reqRole(user, ROLES.ADMIN);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.DEV, ROLES.EXECUTIVE);
     const d = data();
     const emp = (d.employees || []).find(e => e.id === id);
     if (!emp) throw new Error('Employee not found');
-    emp.status = 'Active';
+    emp.status = emp.previousStatus && emp.previousStatus !== 'Inactive' ? emp.previousStatus : 'Active';
     emp.exitDate = '';
     emp.exitReason = '';
+    emp.removedFromPayroll = false;
+    emp.restoredAt = new Date().toISOString();
+    emp.restoredBy = u.name;
+    d.hrAuditLog = Array.isArray(d.hrAuditLog) ? d.hrAuditLog : [];
+    d.hrAuditLog.unshift({ id: gid(), employeeId: emp.id, action: 'Employee restored', employeeName: emp.name, by: u.name, at: emp.restoredAt });
+    pushHrTimeline(emp.id, 'Employee Restored', `${emp.name} restored to active HR records`, u);
     log(u, `Restore employee ${emp.name}`, 'HR');
+    try { if (typeof saveState === 'function') Promise.resolve(saveState()).catch(() => {}); } catch {}
     return { success: true, employee: emp };
   },
   permanentlyDeleteEmployee(user, id) {
@@ -12656,14 +12715,22 @@ territory: geo,
       .map(e => {
       const used = approvedByEmployee[e.id] || approvedByEmployee[String(e.email || '').toLowerCase()] || approvedByEmployee[e.name] || {};
       const pendingUsed = pendingByEmployee[e.id] || pendingByEmployee[String(e.email || '').toLowerCase()] || pendingByEmployee[e.name] || {};
-      const baseAnnual = num(e.leaveEntitlementAnnual || e.annualLeaveEntitlement || e.defaultAnnualLeave || 21);
-      const baseSick = num(e.leaveEntitlementSick || e.sickLeaveEntitlement || e.defaultSickLeave || 10);
-      const baseCasual = num(e.leaveEntitlementCasual || e.casualLeaveEntitlement || e.defaultCasualLeave || 5);
-      const baseMaternity = num(e.leaveEntitlementMaternity || e.maternityLeaveEntitlement || e.leaveBalanceMaternity || 90);
-      const basePaternity = num(e.leaveEntitlementPaternity || e.paternityLeaveEntitlement || e.leaveBalancePaternity || 14);
-      const baseCompassionate = num(e.leaveEntitlementCompassionate || e.compassionateLeaveEntitlement || 5);
+      const baseAnnual = num(e.leaveEntitlementAnnual || e.annualLeaveEntitlement || e.defaultAnnualLeave || (num(e.leaveBalanceAnnual) + num(used.annual)) || 21);
+      const baseSick = num(e.leaveEntitlementSick || e.sickLeaveEntitlement || e.defaultSickLeave || (num(e.leaveBalanceSick) + num(used.sick)) || 10);
+      const baseCasual = num(e.leaveEntitlementCasual || e.casualLeaveEntitlement || e.defaultCasualLeave || (num(e.leaveBalanceCasual) + num(used.casual)) || 5);
+      const baseMaternity = num(e.leaveEntitlementMaternity || e.maternityLeaveEntitlement || (num(e.leaveBalanceMaternity) + num(used.maternity)) || 90);
+      const basePaternity = num(e.leaveEntitlementPaternity || e.paternityLeaveEntitlement || (num(e.leaveBalancePaternity) + num(used.paternity)) || 14);
+      const baseCompassionate = num(e.leaveEntitlementCompassionate || e.compassionateLeaveEntitlement || (num(e.leaveBalanceCompassionate) + num(used.compassionate)) || 5);
       const entitlement = { annual: baseAnnual, sick: baseSick, casual: baseCasual, maternity: baseMaternity, paternity: basePaternity, compassionate: baseCompassionate, unpaid: 0 };
-      const remaining = Object.fromEntries(Object.entries(entitlement).map(([k, v]) => [k, k === 'unpaid' ? 0 : Math.max(0, num(v) - num(used[k]))]));
+      const remaining = {
+        annual: Math.max(0, num(e.leaveBalanceAnnual ?? (baseAnnual - num(used.annual)))),
+        sick: Math.max(0, num(e.leaveBalanceSick ?? (baseSick - num(used.sick)))),
+        casual: Math.max(0, num(e.leaveBalanceCasual ?? (baseCasual - num(used.casual)))),
+        maternity: Math.max(0, num(e.leaveBalanceMaternity ?? (baseMaternity - num(used.maternity)))),
+        paternity: Math.max(0, num(e.leaveBalancePaternity ?? (basePaternity - num(used.paternity)))),
+        compassionate: Math.max(0, num(e.leaveBalanceCompassionate ?? (baseCompassionate - num(used.compassionate)))),
+        unpaid: 0
+      };
       return {
         id: e.id,
         name: e.name,
