@@ -7815,7 +7815,7 @@ function AccountsQuickActions({ onOrder, onJournal, onExpense, onAccount, onBank
     ]],
     ['Team', [['Single time activity', onReports], ['Weekly timesheet', onReports]]],
     ['Other', [
-      ['Bank deposit', onBank], ['Transfer', onBank], ['Journal entry', onJournal], ['Inventory adjustment', onReports],
+      ['Bank deposit', onBank], ['Transfer', onBank], ['Create Bill', onJournal], ['Inventory adjustment', onReports],
       ['Pay down credit card', onPayment], ['Add product/service', onReports]
     ]]
   ];
