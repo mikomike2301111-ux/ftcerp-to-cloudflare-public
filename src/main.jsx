@@ -2871,6 +2871,15 @@ function CRMCallsListV2({ user, calls = [], onStageChange, onUpdated, compact = 
     if (value === null) return;
     updateCall(row, { followUpDate: value, stage: row.stage === 'Already Called' ? 'Pending Calls' : row.stage });
   }
+  async function deleteCall(row) {
+    if (!window.confirm(`Delete call record for ${row.callName || row.customerName || row.phone}? It will stay in Restore Center.`)) return;
+    try {
+      await rpc('deleteRecord', [user, 'calls', row.id]);
+      onUpdated?.();
+    } catch (err) {
+      alert(err.message || 'Could not delete call');
+    }
+  }
   return (
     <Panel className="span-12" title={compact ? 'Latest Calls' : 'Call Records'} action={`${calls.length} calls`}>
       <div className="table-wrap">
@@ -2892,6 +2901,7 @@ function CRMCallsListV2({ user, calls = [], onStageChange, onUpdated, compact = 
                     {c.phone && <a href={`https://wa.me/${String(c.phone).replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="call-btn whatsapp" title="WhatsApp"><MessageSquare size={14} /></a>}
                     {!compact && <button className="call-btn" type="button" title="Add comment" onClick={() => addComment(c)}><FileText size={14} /></button>}
                     {!compact && <button className="call-btn" type="button" title="Set follow-up" onClick={() => addFollowUp(c)}><CalendarClock size={14} /></button>}
+                    {!compact && <button className="call-btn" type="button" title="Delete call" onClick={() => deleteCall(c)}><X size={14} /></button>}
                   </div>
                 </td>
                 <td>
@@ -6045,6 +6055,18 @@ function SalesOrdersWorkspace({ user, orders, deliveries, onDone, canGenerateInv
       setBusy('');
     }
   }
+  async function deleteOrder(order) {
+    if (!window.confirm(`Delete sales order ${order.saleNo || order.id}? It will stay in Restore Center.`)) return;
+    setBusy(`${order.id}-delete`);
+    try {
+      await rpc('deleteRecord', [user, 'sales', order.id || order.saleNo]);
+      onDone?.();
+    } catch (error) {
+      alert(error.message || 'Could not delete sales order');
+    } finally {
+      setBusy('');
+    }
+  }
   const [detailOrder, setDetailOrder] = useState(null);
   function actionsFor(order) {
     const summary = rowSummary(order);
@@ -6057,7 +6079,8 @@ function SalesOrdersWorkspace({ user, orders, deliveries, onDone, canGenerateInv
       { label: liveStatus === 'Delivered' ? 'Unconfirm Delivery' : 'Confirm Delivered', icon: <CheckCircle2 size={15} />, disabled: !deliveryId, onClick: () => toggleDelivery(order, liveStatus !== 'Delivered') },
       canGenerateInvoice && { label: 'Generate Invoice', icon: <ReceiptText size={15} />, onClick: () => generateInvoice(order) },
       { label: 'Copy Details', icon: <FileText size={15} />, onClick: () => copyText(summary) },
-      { label: 'Print Summary', icon: <Printer size={15} />, onClick: () => printText(order.saleNo || 'Sales Order', summary) }
+      { label: 'Print Summary', icon: <Printer size={15} />, onClick: () => printText(order.saleNo || 'Sales Order', summary) },
+      { label: 'Delete order', icon: <X size={15} />, disabled: busy === `${order.id}-delete`, onClick: () => deleteOrder(order) }
     ];
   }
   return (
@@ -7521,6 +7544,19 @@ function InvoiceDocumentTable({ user, rows, columns, onChanged }) {
       setBusy('');
     }
   }
+  async function deleteInvoice(row) {
+    const invoiceId = invoiceIdFor(row);
+    if (!invoiceId || !window.confirm(`Delete invoice ${row.invNo || row.invoiceNo || invoiceId}? It will stay in Restore Center.`)) return;
+    setBusy(`delete-${invoiceId}`);
+    try {
+      await rpc('deleteRecord', [user, 'invoices', invoiceId]);
+      onChanged?.();
+    } catch (error) {
+      alert(error.message || 'Could not delete invoice');
+    } finally {
+      setBusy('');
+    }
+  }
   function openEdit(row) {
     setEditRow(row);
     setEditForm({
@@ -7562,7 +7598,8 @@ function InvoiceDocumentTable({ user, rows, columns, onChanged }) {
       { label: 'Download PDF', icon: <Download size={15} />, disabled: busy === `download-${invoiceId}`, onClick: () => generate(row, 'download') },
       { label: 'Email invoice', icon: <Mail size={15} />, disabled: busy === `email-${invoiceId}`, onClick: () => email(row) },
       num(row.balance || row.outstanding) > 0 && { label: 'Confirm paid', icon: <CheckCircle2 size={15} />, disabled: busy === `paid-${invoiceId}`, onClick: () => confirmPaid(row) },
-      { label: 'Copy details', icon: <FileText size={15} />, onClick: () => copyText(rowSummary(row)) }
+      { label: 'Copy details', icon: <FileText size={15} />, onClick: () => copyText(rowSummary(row)) },
+      { label: 'Delete invoice', icon: <X size={15} />, disabled: busy === `delete-${invoiceId}`, onClick: () => deleteInvoice(row) }
     ].filter(Boolean);
     return {
       ...row,
@@ -9604,6 +9641,7 @@ function SettingsPage({ user }) {
   const [testResult, setTestResult] = useState(null);
   const [emailLog, setEmailLog] = useState([]);
   const [notifRows, setNotifRows] = useState([]);
+  const [restoreRows, setRestoreRows] = useState([]);
   const { loading, data, error } = useServer(user, 'getSettingsWorkspaceData', [], [refreshKey]);
   const hasInitializedForm = useRef(false);
   useEffect(() => {
@@ -9630,6 +9668,9 @@ function SettingsPage({ user }) {
   if (error) return <ErrorState title="Settings" error={error} />;
   const refresh = () => setRefreshKey(x => x + 1);
   const flash = (msg) => setMessage(msg);
+  const loadDeleted = async () => {
+    try { setRestoreRows(await rpc('getDeletedRecords', [user])); } catch { setRestoreRows([]); }
+  };
   async function saveCompany(e) {
     e.preventDefault();
     setSaving(true);
@@ -10023,6 +10064,26 @@ function SettingsPage({ user }) {
         <div className="dashboard-grid">
           <Panel className="span-6" title="Recent Audit Trail" action={<button type="button" className="mini-action" onClick={() => downloadRowsFile('audit-trail', data.recentAudit, 'CSV')}><Download size={15} /> CSV</button>}><SimpleTable rows={data.recentAudit} columns={['userName', 'action', 'module', 'details', 'createdAt']} /></Panel>
           <Panel className="span-6" title="Business Events"><SimpleTable rows={data.recentEvents} columns={['eventType', 'aggregateType', 'aggregateId', 'status', 'createdByName', 'createdAt']} /></Panel>
+          <Panel className="span-12" title="Restore Center" action={<button type="button" className="mini-action" onClick={loadDeleted}><RefreshCw size={15} /> Load deleted</button>}>
+            <div className="table-wrap">
+              <table>
+                <thead><tr><th>Module</th><th>Record</th><th>Type</th><th>Deleted</th><th>By</th><th>Action</th></tr></thead>
+                <tbody>
+                  {restoreRows.length === 0 && <tr><td colSpan={6}><div className="empty-state">Click Load deleted to see recoverable records.</div></td></tr>}
+                  {restoreRows.map(row => (
+                    <tr key={`${row.collection}-${row.id}`}>
+                      <td>{row.module}</td>
+                      <td><strong>{row.name}</strong><small>{row.reference}</small></td>
+                      <td>{row.collection}</td>
+                      <td>{row.deletedAt ? new Date(row.deletedAt).toLocaleString() : '-'}</td>
+                      <td>{row.deletedBy || '-'}</td>
+                      <td><button type="button" className="mini-action" onClick={async () => { try { await rpc('restoreRecord', [user, row.collection, row.id]); await loadDeleted(); refresh(); } catch (err) { alert(err.message); } }}><CheckCircle2 size={15} /> Restore</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
         </div>
       )}
       {view === 'security' && (

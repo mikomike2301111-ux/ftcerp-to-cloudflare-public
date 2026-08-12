@@ -5025,6 +5025,27 @@ function restoreDeleted(name, id) {
   return { success: true };
 }
 
+const RESTORABLE_COLLECTIONS = {
+  customers: { module: 'CRM', roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.RECEPTION, ROLES.SALES, ROLES.FIELD, ROLES.DEV, ROLES.EXECUTIVE] },
+  calls: { module: 'CRM', roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.RECEPTION, ROLES.SALES, ROLES.FIELD, ROLES.DEV, ROLES.EXECUTIVE] },
+  leads: { module: 'CRM', roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.RECEPTION, ROLES.SALES, ROLES.FIELD, ROLES.DEV, ROLES.EXECUTIVE] },
+  sales: { module: 'Sales', roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD, ROLES.ACCOUNTANT, ROLES.DEV, ROLES.EXECUTIVE] },
+  invoices: { module: 'Accounts', roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT, ROLES.DEV, ROLES.EXECUTIVE] },
+  payments: { module: 'Accounts', roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT, ROLES.DEV, ROLES.EXECUTIVE] },
+  financeManualEntries: { module: 'Accounts', roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT, ROLES.DEV, ROLES.EXECUTIVE] },
+  expenses: { module: 'Accounts', roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT, ROLES.DEV, ROLES.EXECUTIVE] },
+  employees: { module: 'HR', roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.DEV, ROLES.EXECUTIVE] },
+  attendance: { module: 'HR', roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.DEV, ROLES.EXECUTIVE] },
+  leaveApplications: { module: 'Leaves', roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.DEV, ROLES.EXECUTIVE] }
+};
+
+function assertRestorableAccess(user, collection) {
+  const meta = RESTORABLE_COLLECTIONS[collection];
+  if (!meta) throw new Error('This record type is not configured for safe delete');
+  const u = reqRole(user, ...meta.roles);
+  return { u, meta };
+}
+
 async function buildNormalizedAnalytics() {
   if (!supabaseEnabled()) return null;
   try {
@@ -5275,6 +5296,44 @@ const api = {
   appHealth(user) {
     const d = data();
     return { ok: true, authOk: !!reqRole(user), persistence: supabaseReady ? 'supabase' : 'memory', users: d.users.length, customers: d.customers.length, products: d.products.length, sales: d.sales.length };
+  },
+  getDeletedRecords(user) {
+    const u = reqRole(user);
+    const privileged = [ROLES.ADMIN, ROLES.DEV, ROLES.EXECUTIVE].includes(u.role);
+    return Object.entries(RESTORABLE_COLLECTIONS)
+      .filter(([, meta]) => privileged || meta.roles.includes(u.role))
+      .flatMap(([collection, meta]) => (data()[collection] || [])
+        .filter(row => row && row.isDeleted === 'Yes')
+        .map(row => ({
+          id: row.id,
+          collection,
+          module: meta.module,
+          name: row.name || row.customerName || row.employeeName || row.applicantName || row.saleNo || row.invNo || row.invoiceNo || row.reference || row.description || row.id,
+          reference: row.saleNo || row.invNo || row.invoiceNo || row.employeeNo || row.phone || row.id,
+          deletedAt: row.deletedAt || row.updatedAt || row.createdAt || '',
+          deletedBy: row.deletedBy || row.updatedBy || ''
+        })))
+      .sort((a, b) => String(b.deletedAt).localeCompare(String(a.deletedAt)));
+  },
+  deleteRecord(user, collection, id) {
+    const { u, meta } = assertRestorableAccess(user, collection);
+    const row = (data()[collection] || []).find(x => x.id === id || x.invNo === id || x.invoiceNo === id || x.saleNo === id);
+    if (!row) throw new Error('Record not found');
+    row.isDeleted = 'Yes';
+    row.deletedAt = new Date().toISOString();
+    row.deletedBy = u.name;
+    log(u, `Delete ${collection}`, meta.module, row.name || row.customerName || row.saleNo || row.invNo || row.id);
+    return { success: true, record: row };
+  },
+  restoreRecord(user, collection, id) {
+    const { u, meta } = assertRestorableAccess(user, collection);
+    const row = (data()[collection] || []).find(x => x.id === id || x.invNo === id || x.invoiceNo === id || x.saleNo === id);
+    if (!row) throw new Error('Record not found');
+    row.isDeleted = 'No';
+    row.restoredAt = new Date().toISOString();
+    row.restoredBy = u.name;
+    log(u, `Restore ${collection}`, meta.module, row.name || row.customerName || row.saleNo || row.invNo || row.id);
+    return { success: true, record: row };
   },
   async getSupabaseIntegrationStatus(user) {
     reqRole(user, ROLES.ADMIN, ROLES.MANAGER);
