@@ -3454,17 +3454,31 @@ function CRMDeliveryPreview({ user, rows = [], onUpdated, compact = false }) {
       { label: 'Copy / Print', icon: <Printer size={15} />, onClick: () => printText(row.deliveryNo || 'Delivery', rowSummary(row)) }
     ];
   }
+  const toggleConfirmed = (row, checked) => update(row, {
+    deliveredConfirmed: checked,
+    addNote: checked ? 'Delivery confirmed by checkbox' : 'Delivery confirmation removed by checkbox'
+  });
   return (
     <div className="table-wrap crm-delivery-preview">
       <table>
         <thead>
           <tr>
-            <th>Delivery</th><th>Customer</th><th>Destination</th><th>Method</th><th>Status</th>{!compact && <th>Notes</th>}<th />
+            <th>Done</th><th>Delivery</th><th>Customer</th><th>Destination</th><th>Method</th><th>Status</th>{!compact && <th>Notes</th>}<th />
           </tr>
         </thead>
         <tbody>
           {rows.map(row => (
             <tr key={row.deliveryId || row.id}>
+              <td>
+                <input
+                  type="checkbox"
+                  checked={Boolean(row.confirmed || row.deliveredConfirmed || row.status === 'Delivered')}
+                  disabled={busy.startsWith(`${row.deliveryId || row.id}`)}
+                  onChange={e => toggleConfirmed(row, e.target.checked)}
+                  onClick={e => e.stopPropagation()}
+                  title="Confirm delivered"
+                />
+              </td>
               <td><strong>{row.deliveryNo || '-'}</strong><small>{row.saleNo || ''}</small></td>
               <td><strong>{row.name || row.customerName}</strong><small>{row.phone || ''}</small></td>
               <td>{row.destination || 'Not set'}</td>
@@ -3474,7 +3488,7 @@ function CRMDeliveryPreview({ user, rows = [], onUpdated, compact = false }) {
               <td><ActionMenu actions={actionsFor(row)} /></td>
             </tr>
           ))}
-          {!rows.length && <tr><td colSpan={compact ? 6 : 7}><div className="empty-state">No delivery records. Create a sales order/invoice to generate a delivery.</div></td></tr>}
+          {!rows.length && <tr><td colSpan={compact ? 7 : 8}><div className="empty-state">No delivery records. Create a sales order/invoice to generate a delivery.</div></td></tr>}
         </tbody>
       </table>
     </div>
@@ -3491,6 +3505,13 @@ function DeliveryWorkspace({ user, setPage, globalPeriod = 'Month' }) {
   const rows = (data.deliveries || []).filter(row => [row.deliveryNo, row.saleNo, row.invoiceNo, row.customerName, row.phone, row.destination, row.status].join(' ').toLowerCase().includes(query.toLowerCase()));
   const stats = data.stats || {};
   const refresh = () => setRefreshKey(x => x + 1);
+  const confirmDelivery = async (row, checked) => {
+    await rpc('updateDeliveryDetails', [user, row.deliveryId || row.id, {
+      deliveredConfirmed: checked,
+      addNote: checked ? 'Delivery confirmed from checkbox' : 'Delivery confirmation removed from checkbox'
+    }]);
+    refresh();
+  };
   return (
     <section className="page-stack delivery-workspace sales-workspace">
       <div className="sales-hero delivery-hero">
@@ -3511,6 +3532,13 @@ function DeliveryWorkspace({ user, setPage, globalPeriod = 'Month' }) {
         <div className="delivery-card-list">
           {rows.map(row => (
             <article key={row.deliveryId || row.id} className="delivery-card" onClick={() => setSelected(row)}>
+              <label className="delivery-confirm-check" onClick={e => e.stopPropagation()} title="Confirm delivered">
+                <input
+                  type="checkbox"
+                  checked={Boolean(row.confirmed || row.deliveredConfirmed || row.status === 'Delivered')}
+                  onChange={e => confirmDelivery(row, e.target.checked)}
+                />
+              </label>
               <div><strong>{row.deliveryNo || 'Delivery'}</strong><span>{row.customerName || row.name}</span><em>{row.invoiceNo || row.saleNo || 'No invoice ref'} · {row.phone || 'No phone'}</em></div>
               <div>{formatCell(row.status, 'status')}<small>{row.destination || 'Destination not set'}</small></div>
               <ActionMenu summary={row.deliveryNo} actions={[

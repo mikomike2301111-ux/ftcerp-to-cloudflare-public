@@ -366,7 +366,7 @@ const asCsv = rows => {
 };
 const reportColumns = rows => Array.from(new Set((Array.isArray(rows) ? rows : []).flatMap(row => Object.keys(row || {})))).slice(0, 10);
 const pdfLogoPath = path.join(process.cwd(), 'public', 'unity-erp-mark.png');
-const invoiceLogoPath = path.join(process.cwd(), 'public', 'erp-logo-black.png');
+const invoiceLogoPath = path.join(process.cwd(), 'public', 'logo-ftc.png');
 const invoiceDate = value => {
   const d = value ? new Date(value) : new Date();
   if (Number.isNaN(d.getTime())) return String(value || today());
@@ -442,7 +442,8 @@ async function taxInvoicePdfBuffer({ invoice, items, customer, settings, options
   const GREEN_DARK = '#2e7048';
   const GREEN_TINT = '#e8f3ed';
   let remoteLogoBuffer = null;
-  const configuredLogoUrl = clean(settings.invoice_logo_url || settings.company_logo_url || settings.company_qr_url || FARMTRACK_LOGO_URL);
+  const savedLogoUrl = clean(settings.invoice_logo_url || settings.company_logo_url || settings.company_qr_url || FARMTRACK_LOGO_URL);
+  const configuredLogoUrl = /logo-ftc\.webp|FTC-LOGO|postimg|erp-logo-black/i.test(savedLogoUrl) ? FARMTRACK_LOGO_URL : savedLogoUrl;
   if (/^https?:\/\//i.test(configuredLogoUrl)) {
     try {
       const res = await fetch(configuredLogoUrl);
@@ -450,7 +451,7 @@ async function taxInvoicePdfBuffer({ invoice, items, customer, settings, options
     } catch {}
   }
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ margin: 28, size: 'A4', layout: 'portrait', autoFirstPage: true });
+    const doc = new PDFDocument({ margin: 22, size: 'A4', layout: 'portrait', autoFirstPage: true });
     const chunks = [];
     doc.on('data', chunk => chunks.push(chunk));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
@@ -500,7 +501,7 @@ async function taxInvoicePdfBuffer({ invoice, items, customer, settings, options
     ].forEach((line, i) => doc.text(line, left, 44 + i * 11, { width: width * 0.52 }));
 
     // ── Logo mark (right) — green rounded square with "F" ──
-    const logoSize = 88;
+    const logoSize = 76;
     const logoX = right - logoSize;
     const logoY = 28;
     doc.save();
@@ -508,14 +509,14 @@ async function taxInvoicePdfBuffer({ invoice, items, customer, settings, options
     doc.restore();
     if (remoteLogoBuffer) {
       doc.save();
-      doc.roundedRect(right - 134, 44, 138, 60, 8).fill('#ffffff');
+      doc.roundedRect(right - 124, 42, 128, 56, 8).fill('#ffffff');
       doc.restore();
-      doc.image(remoteLogoBuffer, right - 130, 48, { fit: [130, 52], align: 'right' });
+      doc.image(remoteLogoBuffer, right - 120, 46, { fit: [120, 48], align: 'right' });
     } else if (fs.existsSync(invoiceLogoPath)) {
       doc.save();
-      doc.roundedRect(right - 134, 44, 138, 60, 8).fill('#ffffff');
+      doc.roundedRect(right - 124, 42, 128, 56, 8).fill('#ffffff');
       doc.restore();
-      doc.image(invoiceLogoPath, right - 130, 48, { fit: [130, 52], align: 'right' });
+      doc.image(invoiceLogoPath, right - 120, 46, { fit: [120, 48], align: 'right' });
     } else {
       doc.roundedRect(logoX, logoY, logoSize, logoSize, 8).fill(GREEN);
       doc.fillColor('#ffffff').fontSize(22).font('Helvetica-Bold').text('F', logoX + 2, logoY + 10, { width: logoSize, align: 'center' });
@@ -576,7 +577,7 @@ async function taxInvoicePdfBuffer({ invoice, items, customer, settings, options
     const colDesc = width - colDate - colTax - colQty - colRate - colAmount;
     const cols = [['DATE', colDate], ['DESCRIPTION', colDesc], ['TAX', colTax], ['QTY', colQty], ['RATE', colRate], ['AMOUNT', colAmount]];
     let pageNo = 1;
-    const pageBottom = () => doc.page.height - doc.page.margins.bottom - 72;
+    const pageBottom = () => doc.page.height - doc.page.margins.bottom - 50;
     const drawTableHeader = yTop => {
       doc.rect(left, yTop, width, 20).fill(GREEN_TINT);
       doc.fillColor(GREEN).fontSize(8).font('Helvetica-Bold');
@@ -610,7 +611,7 @@ async function taxInvoicePdfBuffer({ invoice, items, customer, settings, options
       const amount = num(item.total || (num(item.quantity) * num(item.unitPrice || item.rate)));
       const itemDesc = item.description || item.productName || item.name || 'Item';
       const descHeight = doc.heightOfString(String(itemDesc), { width: colDesc - 12 });
-      const rowHeight = Math.max(24, Math.ceil(descHeight + 14));
+      const rowHeight = Math.max(20, Math.ceil(descHeight + 10));
       if (y + rowHeight > pageBottom()) y = addItemsPage();
       if (index % 2 === 0) doc.rect(left, y, width, rowHeight).fill('#fafafa');
       doc.strokeColor('#f0f0f0').lineWidth(0.5).moveTo(left, y + rowHeight).lineTo(right, y + rowHeight).stroke();
@@ -624,16 +625,16 @@ async function taxInvoicePdfBuffer({ invoice, items, customer, settings, options
         { text: kesPlain(amount), w: colAmount, align: 'right', bold: false }
       ];
       values.forEach(v => {
-        doc.fillColor(v.bold ? '#2a2a2a' : '#333').font(v.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(9);
-        doc.text(String(v.text), xc + 6, y + 7, { width: v.w - 12, align: v.align });
+        doc.fillColor(v.bold ? '#2a2a2a' : '#333').font(v.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(8.2);
+        doc.text(String(v.text), xc + 5, y + 5, { width: v.w - 10, align: v.align });
         xc += v.w;
       });
       y += rowHeight;
     });
 
     // ── Footer split: bank block (left) + totals (right) ──
-    if (y + 160 > pageBottom()) y = addSummaryPage(); // only when footer truly cannot fit
-    y += 16;
+    if (y + 140 > pageBottom()) y = addSummaryPage(); // only when footer truly cannot fit
+    y += 10;
     doc.moveTo(left, y).lineTo(right, y).strokeColor('#eee').lineWidth(1).stroke();
     const bankTop = y + 10;
     const bankW = Math.round(width * 0.58);
@@ -9911,7 +9912,38 @@ territory: geo,
   },
   updateDeliveryDetails(user, deliveryId, patch = {}) {
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.RECEPTION, ROLES.DELIVERY, ROLES.WAREHOUSE, ROLES.ACCOUNTANT, ROLES.FIELD);
-    const delivery = data().deliveries.find(d => d.id === deliveryId);
+    const d = data();
+    let delivery = d.deliveries.find(d => d.id === deliveryId);
+    if (!delivery && String(deliveryId || '').startsWith('DEL-AUTO-')) {
+      const invoiceKey = String(deliveryId).replace(/^DEL-AUTO-/, '');
+      const inv = (d.invoices || []).find(i => String(i.id) === invoiceKey || String(i.invNo || i.invoiceNo) === invoiceKey);
+      if (inv) {
+        const sale = (d.sales || []).find(s => s.id === inv.saleId || s.saleNo === inv.saleNo) || {};
+        delivery = {
+          id: gid(),
+          deliveryNo: `DEL-${Date.now()}`,
+          saleId: inv.saleId || sale.id || '',
+          saleNo: inv.saleNo || sale.saleNo || '',
+          invoiceId: inv.id || '',
+          customerId: inv.customerId || sale.customerId || '',
+          customerName: inv.customerName || sale.customerName || 'Customer',
+          phone: inv.shipToPhone || sale.phone || '',
+          date: dateOnly(inv.deliveryDate || inv.dueDate || inv.date || today()),
+          destination: inv.deliveryAddress || inv.shipToLocation || sale.location || '',
+          deliveryMethod: inv.deliveryMethod || 'Company Vehicle',
+          driver: '',
+          vehicle: '',
+          status: inv.deliveryStatus || 'Pending Delivery',
+          notes: inv.notes || sale.notes || '',
+          noteHistory: [],
+          arrivalConfirmed: false,
+          deliveredConfirmed: false,
+          createdAt: new Date().toISOString(),
+          createdBy: u.name
+        };
+        d.deliveries.unshift(delivery);
+      }
+    }
     if (!delivery) throw new Error('Delivery not found');
     const allowed = ['Pending Delivery', 'Pending', 'Picked', 'Ready for Dispatch', 'Dispatched', 'In Transit', 'Arrived', 'Delivered', 'Failed', 'Returned'];
     if (patch.status && !allowed.includes(patch.status)) throw new Error('Invalid delivery status');
@@ -10667,8 +10699,10 @@ territory: geo,
         sourceModule: 'Accounts / Sales Invoice'
       };
     }).filter(Boolean);
+    const pendingRank = row => (row.status === 'Delivered' || row.deliveredConfirmed || row.confirmed) ? 1 : 0;
+    const sortStamp = row => String(row.updatedAt || row.createdAt || row.date || '');
     const rows = [...deliveryRows, ...invoiceRows].filter(row => row.date >= range.startDate && row.date <= range.endDate)
-      .sort((a, b) => String(b.updatedAt || b.createdAt || b.date).localeCompare(String(a.updatedAt || a.createdAt || a.date)));
+      .sort((a, b) => pendingRank(a) - pendingRank(b) || sortStamp(b).localeCompare(sortStamp(a)));
     const openStatuses = ['Pending Delivery', 'Picked', 'Ready for Dispatch', 'Dispatched', 'In Transit', 'Arrived'];
     return {
       currentUser: publicUser(u),
