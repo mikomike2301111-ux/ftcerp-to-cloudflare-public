@@ -90,3 +90,4 @@ export default function ReceiveMaterialModal({ user, materials, uoms, onClose, o
     </div>
   );
 }
+

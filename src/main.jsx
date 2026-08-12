@@ -3750,7 +3750,7 @@ function InventoryWorkspace({ user, setPage, globalPeriod }) {
 
       <div className="sales-filter-bar">
         <button><Calendar size={16} />{(data.filters || filters || {}).dateRange || 'All dates'}</button>
-        <button><Warehouse size={16} />{(data.filters || {}).warehouse || 'All warehouses'}</button>
+        <button><Warehouse size={16} />{(data.filters || {}).warehouse || 'All stores'}</button>
         <button><Package size={16} />{(data.filters || {}).category || 'All categories'}</button>
         <button><CheckCircle2 size={16} />{(data.filters || {}).status || 'All statuses'}</button>
         <button><CircleDollarSign size={16} />{(data.filters || {}).valuation || 'FIFO'}</button>
@@ -3845,7 +3845,7 @@ function InventoryWorkspace({ user, setPage, globalPeriod }) {
           </table>
         </div>
       </Panel>}
-      {view === 'warehouses' && <Panel title="Warehouse Management"><SimpleTable rows={data.warehouses} columns={['code', 'name', 'county', 'capacity', 'used', 'utilization', 'stockValue']} /></Panel>}
+      {view === 'warehouses' && <Panel title="Store Management"><SimpleTable rows={data.warehouses} columns={['code', 'name', 'county', 'capacity', 'used', 'utilization', 'stockValue']} /></Panel>}
       {view === 'movements' && <Panel title="Stock Movement Tracking"><SimpleTable rows={data.movements} columns={['productName', 'warehouseName', 'transactionType', 'quantity', 'unitCost', 'referenceType', 'createdBy']} /></Panel>}
       {view === 'adjustments' && <Panel title="Stock Adjustments" action="Authorized"><SimpleTable rows={data.adjustments} columns={['productName', 'warehouseName', 'adjustmentType', 'quantity', 'reason', 'approvedBy', 'date']} /></Panel>}
       {view === 'transfers' && <Panel title="Stock Transfers"><SimpleTable rows={data.transfers} columns={['transferNo', 'productName', 'fromWarehouse', 'toWarehouse', 'quantity', 'status', 'requestedBy']} /></Panel>}
@@ -4169,7 +4169,7 @@ function InventoryWorkspace({ user, setPage, globalPeriod }) {
               <label>Cost price<input type="number" value={productForm.costPrice} onChange={e => setProductForm({ ...productForm, costPrice: Number(e.target.value) })} /></label>
               <label>Selling price<input type="number" value={productForm.sellingPrice} onChange={e => setProductForm({ ...productForm, sellingPrice: Number(e.target.value) })} /></label>
               <label>Min stock<input type="number" value={productForm.minStock} onChange={e => setProductForm({ ...productForm, minStock: Number(e.target.value) })} /></label>
-              <label>Opening stock (Main Store Njiru)<input type="number" value={productForm.openingStock} onChange={e => setProductForm({ ...productForm, openingStock: Number(e.target.value) })} /></label>
+              <label>Opening stock (Njiru Store)<input type="number" value={productForm.openingStock} onChange={e => setProductForm({ ...productForm, openingStock: Number(e.target.value) })} /></label>
               <label>Supplier name<input value={productForm.supplierName} onChange={e => setProductForm({ ...productForm, supplierName: e.target.value })} placeholder="Type supplier name" /></label>
               <button type="submit" className="primary-action">Save product</button>
             </form>
@@ -4302,16 +4302,16 @@ function InventoryWorkspace({ user, setPage, globalPeriod }) {
 function InventoryAlerts({ data, user, onDone }) {
   const [busy, setBusy] = useState('');
   const [period, setPeriod] = useState('This Month');
-  const [warehouse, setWarehouse] = useState('All Warehouses');
+  const [warehouse, setWarehouse] = useState('All Stores');
   const [category, setCategory] = useState('All Categories');
   const [status, setStatus] = useState('All Statuses');
   const [sortMode, setSortMode] = useState('FIFO');
 
-  const warehouses = ['All Warehouses', ...Array.from(new Set((data.alerts || []).map(a => a.warehouseName).filter(Boolean)))];
+  const warehouses = ['All Stores', ...Array.from(new Set((data.alerts || []).map(a => a.warehouseName).filter(Boolean)))];
   const categories = ['All Categories', ...Array.from(new Set((data.stockItems || []).map(s => s.category).filter(Boolean)))];
 
   const filtered = (data.alerts || []).filter(a => {
-    if (warehouse !== 'All Warehouses' && a.warehouseName !== warehouse) return false;
+    if (warehouse !== 'All Stores' && a.warehouseName !== warehouse) return false;
     if (status !== 'All Statuses' && a.status !== status) return false;
     if (category !== 'All Categories') {
       const item = (data.stockItems || []).find(s => s.productId === a.productId || s.productName === a.productName);
@@ -4549,7 +4549,7 @@ function InventoryTransferModal({ user, items, warehouses, onClose, onSaved }) {
         <label>Stock Item<select value={form.inventoryId} onChange={e => setForm({ ...form, inventoryId: e.target.value })}>{items.map(item => <option key={item.id} value={item.id}>{item.productName} - {item.warehouseName}</option>)}</select></label>
         <div className="modal-grid">
           <label>Quantity<input type="number" min="1" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} /></label>
-          <label>To Warehouse<select value={form.toWarehouse} onChange={e => setForm({ ...form, toWarehouse: e.target.value })}>{warehouses.map(wh => <option key={wh.name}>{wh.name}</option>)}</select></label>
+          <label>To Store<select value={form.toWarehouse} onChange={e => setForm({ ...form, toWarehouse: e.target.value })}>{warehouses.map(wh => <option key={wh.name}>{wh.name}</option>)}</select></label>
         </div>
         <button className="primary-action" disabled={saving}>{saving ? 'Transferring...' : 'Complete Transfer'}</button>
       </form>
@@ -4591,7 +4591,7 @@ function ProcurementWorkspace({ user, setPage, globalPeriod }) {
       <div className="sales-filter-bar">
         <button><Calendar size={16} />{((data.filters || filters || {}).dateRange || "All dates")}</button>
         <button><Truck size={16} />{(data.filters || {}).supplier || 'All suppliers'}</button>
-        <button><Warehouse size={16} />{(data.filters || {}).warehouse || 'All warehouses'}</button>
+        <button><Warehouse size={16} />{(data.filters || {}).warehouse || 'All stores'}</button>
         <button><MapPin size={16} />{(data.filters || {}).county || 'All counties'}</button>
         <button><Package size={16} />{(data.filters || {}).product || 'All products'}</button>
       </div>
@@ -4909,13 +4909,6 @@ function SalesModule({ user, setPage, globalPeriod }) {
         <button onClick={() => { setView('quotes'); setQuoteFormOpen(true); }}><FileText size={16} /> New Quote</button>
         <button onClick={() => setView('orders')}><Truck size={16} /> Delivery Queue</button>
         <button onClick={() => setView('visits')}><MapPin size={16} /> Visits</button>
-        {!isSalesRep && <button onClick={async () => {
-          try {
-            const r = await rpc('pullAllSalesFieldData', [user, {}]);
-            alert(r?.message || `Synced visits ${r?.visitsImported || 0}, orders ${r?.ordersImported || 0}`);
-            setRefreshKey(x => x + 1);
-          } catch (e) { alert(e.message || 'Sheet sync failed'); }
-        }}><RefreshCw size={16} /> Sync Sheets</button>}
         {!isSalesRep && <button onClick={() => setView('reports')}><FileText size={16} /> Sales Reports</button>}
         <CreateRequisitionButton user={user} module="sales" />
       </div>
@@ -5083,12 +5076,10 @@ function SalesImportWorkspace({ user, products = [], onDone }) {
     <div className="dashboard-grid">
       <Panel className="span-12" title="Import Sales Orders from CSV" action={
         <div className="panel-action-row">
-          <a className="mini-action" href={SALES_SHEET_URL} target="_blank" rel="noopener noreferrer"><Upload size={14} /> Open Sales Sheet</a>
-          <button className="mini-action" onClick={syncFromSheet} disabled={syncing} title="Pull all 4 reps' form responses from Google Sheets"><RefreshCw size={14} className={syncing ? 'spin' : ''} /> {syncing ? 'Syncing...' : 'Sync from Sheet'}</button>
-          <button className="mini-action" onClick={syncToSheet} disabled={exporting} title="Push ERP sales to the reporting sheet for offline backup"><Upload size={14} /> {exporting ? 'Exporting...' : 'Sync to Sheet'}</button>
+          <button className="mini-action" onClick={downloadTemplate}><Download size={14} /> CSV Template</button>
         </div>
       }>
-        <p className="hr-payroll-note">Upload or paste sales order data (one row = one order line). Review the parsed rows, then confirm to import. Each valid row creates a sales order, invoice, and delivery — just like the New Sales Order form. Click "Sync from Sheet" to pull all 4 reps' Google Form responses automatically.</p>
+        <p className="hr-payroll-note">Upload or paste sales order data (one row = one order line). Review the parsed rows, then confirm to import. Each valid row creates a sales order, invoice, and delivery, just like the New Sales Order form.</p>
         {syncMsg && <div className={`crm-sheet-message ${/fail|error/i.test(syncMsg) ? 'warn' : ''}`}>{syncMsg}</div>}
         <div className="sales-import-actions">
           <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onFile} style={{ display: 'none' }} />
@@ -5273,12 +5264,6 @@ function SalesVisitsWorkspace({ user, visits = [], salesPeople = [], onDone }) {
     salesperson: defaultRep, shopOrCustomer: '', phone: '', productName: '', quantity: 1, unitPrice: '', paymentMethod: 'Credit', comment: ''
   });
   const list = Array.isArray(visits) ? visits : [];
-  const FIELD = [
-    { rep: 'Edna', sheet: 'https://docs.google.com/spreadsheets/d/1CvpTd26OLLOfSbVT3rLEQt62DI_SlEFE3OujFIK3m2k/edit#gid=1418179458', form: 'https://docs.google.com/forms/d/e/1FAIpQLSfpabQbCcjmPflzWccaqXR62ZNsP9-2ImEi6dBrc7zEbue4mg/viewform' },
-    { rep: 'Joseph', sheet: 'https://docs.google.com/spreadsheets/d/18PmXlxErj5t7dGc1I1fKHvk29c4tSLupZW8jU7b-4OE/edit#gid=6226406', form: 'https://docs.google.com/forms/d/e/1FAIpQLSdfgMyHbdqlRnemBQjVeLhEUXWkB6Aw1YKIGTLY2rXiUNcn1Q/viewform' },
-    { rep: 'Njoroge', sheet: 'https://docs.google.com/spreadsheets/d/1EkoTqKTp4DrBm-wE_V4lApnkIeabYC9Tot7LWykumPo/edit#gid=2009153025', form: 'https://docs.google.com/forms/d/e/1FAIpQLSfknUdFLoHPmOCpPDqWK6HslNu5KWymxG0E1QVrYLg_8zEeEw/viewform' },
-    { rep: 'Purity', sheet: 'https://docs.google.com/spreadsheets/d/1Dt_VDE4nepDmDEWRPwF48Qv3WQB6GQZMIbCPP1bdzKs/edit#gid=1073923333', form: 'https://docs.google.com/forms/d/e/1FAIpQLSdoowdRLmCaSo5lbSDsHYqVhM67l07d4_jUQGl0er2MZ6nN2g/viewform' }
-  ];
   async function syncSheets() {
     setBusy(true); setMsg(''); setSyncDetail('');
     try {
@@ -5328,12 +5313,11 @@ function SalesVisitsWorkspace({ user, visits = [], salesPeople = [], onDone }) {
     <div className="dashboard-grid">
       <Panel className="span-12" title="Field Visits" action={`${list.length} logged`}>
         <p style={{ margin: '0 0 12px', color: '#667085', fontSize: 13 }}>
-          One entry = one visit. Interested / order outcomes create CRM leads. Use the full-screen form in the field, or sync from Google Forms.
+          One entry = one visit. Interested / order outcomes create CRM leads. Use the ERP form in the field so records save directly.
         </p>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
           <button type="button" className="primary-action" onClick={() => setMode('visit')}>Log visit</button>
           <button type="button" className="secondary-action" onClick={() => setMode('order')}>Direct order</button>
-          <button type="button" className="mini-action" disabled={busy} onClick={syncSheets}>{busy ? 'Syncing…' : 'Sync from Sheets'}</button>
         </div>
         {msg && <div className="crm-sheet-message" style={{ marginBottom: 10 }}>{msg}</div>}
         {syncDetail ? <pre style={{ fontSize: 12, background: '#f9fafb', padding: 12, borderRadius: 8, whiteSpace: 'pre-wrap' }}>{syncDetail}</pre> : null}
@@ -5341,7 +5325,7 @@ function SalesVisitsWorkspace({ user, visits = [], salesPeople = [], onDone }) {
           <table>
             <thead><tr><th>Date</th><th>Salesperson</th><th>Shop / Customer</th><th>Phone</th><th>Products</th><th>Purpose</th><th>Outcome</th><th>Comment</th></tr></thead>
             <tbody>
-              {list.length === 0 && <tr><td colSpan={8}>No visits yet — log one or sync from Google Sheets</td></tr>}
+              {list.length === 0 && <tr><td colSpan={8}>No visits yet. Log one using the ERP visit form.</td></tr>}
               {list.slice(0, 25).map(v => (
                 <tr key={v.id || `${v.shopOrCustomer}-${v.date}`}>
                   <td>{String(v.date || v.createdAt || '').slice(0, 10)}</td>
@@ -5356,11 +5340,6 @@ function SalesVisitsWorkspace({ user, visits = [], salesPeople = [], onDone }) {
               ))}
             </tbody>
           </table>
-        </div>
-        <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {FIELD.map(f => (
-            <a key={f.rep} className="mini-action" href={f.form} target="_blank" rel="noreferrer">{f.rep} Google Form</a>
-          ))}
         </div>
       </Panel>
 
@@ -5599,7 +5578,7 @@ function VisitsImportOverlay({ user, salesPeople, onClose, onDone }) {
           </div>
         ) : (
           <>
-            <p className="hr-payroll-note">Paste visit rows from your Google Forms sheet, or upload a CSV. Columns: Visit Date, Salesperson, Shop / Customer, Contact Person, Phone, Email, Product Discussed, Outcome, Stock Levels, Next Appointment, Potential Value, Comments.</p>
+            <p className="hr-payroll-note">Paste visit rows or upload a CSV. Columns: Visit Date, Salesperson, Shop / Customer, Contact Person, Phone, Email, Product Discussed, Outcome, Stock Levels, Next Appointment, Potential Value, Comments.</p>
             <div className="sales-import-actions" style={{ marginTop: 12 }}>
               <input ref={fileRef} type="file" accept=".csv,text/csv" onChange={onFile} style={{ display: 'none' }} />
               <button className="panel-action-button" type="button" onClick={() => fileRef.current?.click()}><Upload size={14} /> Choose CSV File</button>
@@ -6769,7 +6748,7 @@ function ProductionOrderList({ orders, onStart, onComplete, onEdit }) {
 function RawMaterialModal({ user, materials, uoms, onClose, onSaved }) {
   const safeMaterials = (materials || []).filter(Boolean);
   const first = safeMaterials[0] || {};
-  const [form, setForm] = useState({ materialName: '', materialCode: '', category: 'Raw Material', quantity: 1, unit: 'KG', costPerUnit: 0, supplier: '', warehouse: 'Main Store Njiru', storageLocation: '', expiryDate: '' });
+  const [form, setForm] = useState({ materialName: '', materialCode: '', category: 'Raw Material', quantity: 1, unit: 'KG', costPerUnit: 0, supplier: '', warehouse: 'Njiru Store', storageLocation: '', expiryDate: '' });
   const [saving, setSaving] = useState(false);
   async function save(e) {
     e.preventDefault();
@@ -6807,7 +6786,7 @@ function ProductionOrderModal({ user, formulas, rawMaterials, formulaVersions, o
   const safeFormulaVersions = Array.isArray(formulaVersions) ? formulaVersions.filter(Boolean) : [];
   const approvedFormulas = safeFormulas.filter(f => f?.approvalStatus === 'Approved');
   const first = approvedFormulas[0] || safeFormulas[0] || {};
-  const [form, setForm] = useState({ formulaId: first?.id || '', productName: first?.productName || '', plannedQty: 1, outputUnit: first?.outputUnit || 'BAG', operator: user?.name || 'Grace Production', startDate: new Date().toISOString().slice(0, 10), endDate: '', warehouse: 'Main Store Nairobi' });
+  const [form, setForm] = useState({ formulaId: first?.id || '', productName: first?.productName || '', plannedQty: 1, outputUnit: first?.outputUnit || 'BAG', operator: user?.name || 'Grace Production', startDate: new Date().toISOString().slice(0, 10), endDate: '', warehouse: 'Njiru Store' });
   const [saving, setSaving] = useState(false);
   const [validationMsg, setValidationMsg] = useState('');
   const selectedFormula = safeFormulas.find(f => f?.id === form.formulaId) || {};
@@ -9896,7 +9875,7 @@ function SettingsPage({ user }) {
         </Panel>
       )}
       {view === 'warehouses' && (
-        <Panel title="Warehouse Settings" action={`${(data.warehouses || []).length} locations`}>
+        <Panel title="Store Settings" action={`${(data.warehouses || []).length} locations`}>
           <div className="table-wrap">
             <table>
               <thead><tr><th>Name</th><th>Location</th><th>Manager</th><th>Utilization</th><th>Status</th><th>Actions</th></tr></thead>
@@ -10739,7 +10718,7 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
         <article><span>Payroll / Talent</span><strong>{currency(s.payrollCost || 0)}</strong><em>{s.activeCandidates || 0} candidates · {s.trainingCompletion || 0}% training</em></article>
       </div>
       <div className="settings-tabs">
-        {tabs.map(t => <button key={t} type="button" className={view === t ? 'active' : ''} onClick={() => setView(t)}>{t.charAt(0).toUpperCase() + t.slice(1)}</button>)}
+        {tabs.filter(t => data.isManager || t !== 'approvals').map(t => <button key={t} type="button" className={view === t ? 'active' : ''} onClick={() => setView(t)}>{t.charAt(0).toUpperCase() + t.slice(1)}</button>)}
         {view === 'recruitment' && <button type="button" className="primary-action" onClick={() => setModal('candidate')}>+ Candidate</button>}
         {view === 'performance' && <button type="button" className="primary-action" onClick={() => setModal('review')}>+ Review</button>}
       </div>
@@ -11898,7 +11877,7 @@ function LeaveWorkspace({ user, setPage, globalPeriod = 'Month' }) {
       <div className="inline-actions">
         <button type="button" className="primary-action" onClick={() => setApplyModal(true)}><Plus size={16} /> Apply for Leave</button>
         <button type="button" onClick={() => setView('requests')}><FileText size={16} /> My Requests</button>
-        <button type="button" onClick={() => setView('approvals')}><CheckCircle2 size={16} /> Approvals{(s.pending || 0) ? ` (${s.pending})` : ''}</button>
+        {data.isManager && <button type="button" onClick={() => setView('approvals')}><CheckCircle2 size={16} /> Approvals{(s.pending || 0) ? ` (${s.pending})` : ''}</button>}
         <button type="button" onClick={() => setView('balances')}><Calendar size={16} /> Balances</button>
         <button type="button" onClick={() => setView('calendar')}><Calendar size={16} /> Calendar</button>
         <CreateRequisitionButton user={user} module="leaves" />
@@ -11932,8 +11911,8 @@ function LeaveWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                   <span>{l.type} · {l.days}d · {l.startDate}</span>
                 </div>
                 <div className="leave-approval-actions">
-                  <button type="button" className="btn-approve" onClick={() => handleDecision(l.id, 'Approved')}><CheckCircle2 size={14} /></button>
-                  <button type="button" className="btn-reject" onClick={() => handleDecision(l.id, 'Rejected')}><X size={14} /></button>
+                  <button type="button" className="btn-approve" disabled={leaveBusy} onClick={() => handleDecision(l.id, 'Approved')}><CheckCircle2 size={14} /></button>
+                  <button type="button" className="btn-reject" disabled={leaveBusy} onClick={() => handleDecision(l.id, 'Rejected')}><X size={14} /></button>
                 </div>
               </div>
             ))}
@@ -12043,7 +12022,7 @@ function LeaveWorkspace({ user, setPage, globalPeriod = 'Month' }) {
           {(data.pendingApprovals || []).slice(0, listLimit).map(l => {
             const bal = (data.balances || []).find(b => b.id === l.applicantId || b.name === l.applicantName);
             const type = (data.leaveTypes || []).find(lt => lt.name === l.type);
-            const current = type?.deducts === 'sick' ? bal?.sick : type?.deducts === 'casual' ? bal?.casual : bal?.annual;
+            const current = balanceForType(bal, type || { name: l.type }).remaining;
             return (
               <div key={l.id} className="leave-approval-card">
                 <div className="leave-approval-info">
@@ -12060,11 +12039,11 @@ function LeaveWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                     value={notes[l.id] || ''}
                     onChange={e => setNotes(prev => ({ ...prev, [l.id]: e.target.value }))}
                   />
-                  <button type="button" className="btn-approve" onClick={() => handleDecision(l.id, 'Approved')}><CheckCircle2 size={14} /> Approve</button>
+                  <button type="button" className="btn-approve" disabled={leaveBusy} onClick={() => handleDecision(l.id, 'Approved')}><CheckCircle2 size={14} /> {leaveBusy ? 'Working...' : 'Approve'}</button>
                   <button type="button" className="btn-reject" onClick={() => {
                     if (!(notes[l.id] || '').trim()) { alert('Add a short note before rejecting.'); return; }
                     handleDecision(l.id, 'Rejected');
-                  }}><X size={14} /> Reject</button>
+                  }} disabled={leaveBusy}><X size={14} /> Reject</button>
                   <ActionMenu actions={leaveActions(l)} summary={l.applicantName} />
                 </div>
               </div>
@@ -12179,8 +12158,8 @@ function LeaveWorkspace({ user, setPage, globalPeriod = 'Month' }) {
             <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
               {detailLeave.status === 'Pending' && data.isManager && (
                 <>
-                  <button type="button" className="btn-approve" onClick={() => handleDecision(detailLeave.id, 'Approved')}>Approve</button>
-                  <button type="button" className="btn-reject" onClick={() => handleDecision(detailLeave.id, 'Rejected')}>Reject</button>
+                  <button type="button" className="btn-approve" disabled={leaveBusy} onClick={() => handleDecision(detailLeave.id, 'Approved')}>{leaveBusy ? 'Working...' : 'Approve'}</button>
+                  <button type="button" className="btn-reject" disabled={leaveBusy} onClick={() => handleDecision(detailLeave.id, 'Rejected')}>Reject</button>
                 </>
               )}
               {detailLeave.status === 'Pending' && <button type="button" className="btn-reject" onClick={() => handleCancel(detailLeave.id)}>Cancel request</button>}
@@ -13149,3 +13128,4 @@ function formatCell(value, key) {
 }
 
 createRoot(document.getElementById('root')).render(<App />);
+

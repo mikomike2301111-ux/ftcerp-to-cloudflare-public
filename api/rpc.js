@@ -2089,7 +2089,7 @@ function normalizedRows() {
   const warehouseNames = Array.from(new Set([
     ...(d.inventoryWarehouses || []).map(x => x.name),
     ...inventory.map(x => x.warehouseName),
-    'Main Store Njiru'
+    'Njiru Store'
   ].filter(Boolean)));
   const productByName = new Map(products.map(p => [p.name, p]));
   const customerByName = new Map(customers.map(c => [c.name, c]));
@@ -2177,7 +2177,7 @@ function normalizedRows() {
         id: uuidFromString(`inventory:${i.id || i.productName}:${i.warehouseName}:${i.batchNo || index}`),
         tenant_id: TENANT_ID,
         product_id: uuidFromString(`product:${i.productId || p.id || p.sku || i.productName}`),
-        warehouse_id: uuidFromString(`warehouse:${i.warehouseName || 'Main Store Njiru'}`),
+        warehouse_id: uuidFromString(`warehouse:${i.warehouseName || 'Njiru Store'}`),
         sku: i.sku || p.sku || '',
         product_name: i.productName || 'Unknown Product',
         category: p.category || i.category || 'General',
@@ -2744,7 +2744,7 @@ function ensureFarmtrackCatalogue(state) {
         if (!state.inventory.find(inv => inv.productName === p.name)) {
           state.inventory.push({
             id: `INV${String(i + 1).padStart(3, '0')}`, productId: p.id, productName: p.name, sku: p.sku,
-            category: p.category, warehouseName: 'Main Store Njiru', batchNo: `FTC-BAT-${String(i + 1).padStart(3, '0')}`,
+            category: p.category, warehouseName: 'Njiru Store', batchNo: `FTC-BAT-${String(i + 1).padStart(3, '0')}`,
             quantity: 80 + (i * 7) % 120, unitCost: p.costPrice, expiryDate: '2027-12-31', receivedDate: today(),
             status: 'In Stock', createdAt: now, updatedAt: now, isDeleted: 'No'
           });
@@ -2992,7 +2992,7 @@ function ensureManufacturingData() {
     { id: 'BVH-002', formulaId: 'FORM-002', version: 'v1', action: 'create', user: 'System', timestamp: now, itemCount: 2 },
     { id: 'BVH-003', formulaId: 'FORM-003', version: 'v1', action: 'create', user: 'System', timestamp: now, itemCount: 3 }
   ];
-  db.productionOrders = (db.production || []).map(job => ({ id: job.id, orderNo: job.jobNo, productName: job.productName, productId: job.productId || 'PROD-001', formulaId: 'FORM-001', formulaVersion: 'v1', plannedQty: num(job.plannedQty || 1), outputUnit: 'BAG', status: job.status || 'Pending', operator: job.assignedTo || 'Grace Production', warehouse: 'Main Store Njiru', startDate: job.startDate || today(), endDate: job.endDate || '', createdAt: now, materialCost: 0, packagingCost: 0, consumableCost: 0, laborCost: 0, overheadCost: 0, machineCost: 0, utilityCost: 0, totalActualCost: 0, costPerUnit: 0, grossMargin: 0 }));
+  db.productionOrders = (db.production || []).map(job => ({ id: job.id, orderNo: job.jobNo, productName: job.productName, productId: job.productId || 'PROD-001', formulaId: 'FORM-001', formulaVersion: 'v1', plannedQty: num(job.plannedQty || 1), outputUnit: 'BAG', status: job.status || 'Pending', operator: job.assignedTo || 'Grace Production', warehouse: 'Njiru Store', startDate: job.startDate || today(), endDate: job.endDate || '', createdAt: now, materialCost: 0, packagingCost: 0, consumableCost: 0, laborCost: 0, overheadCost: 0, machineCost: 0, utilityCost: 0, totalActualCost: 0, costPerUnit: 0, grossMargin: 0 }));
   db.productionBatches = [];
   db.productionBatchMaterials = [];
   db.productionBatchCosts = [];
@@ -3093,7 +3093,7 @@ function ensureInventoryData() {
   if (!db || db.inventoryTransactions?.length && db.inventoryAlerts?.length && db.inventoryForecasts?.length) return;
   const now = new Date();
   const warehouses = [
-    { id: 'WH1', name: 'Main Store Njiru', code: 'MAIN-NRB', county: 'Nairobi', capacity: 12000, used: 7600 },
+    { id: 'WH1', name: 'Njiru Store', code: 'MAIN-NRB', county: 'Nairobi', capacity: 12000, used: 7600 },
     { id: 'WH2', name: 'Raw Materials Store', code: 'RAW-NRB', county: 'Nairobi', capacity: 9000, used: 5900 },
     { id: 'WH3', name: 'Cold Storage', code: 'COLD-NRB', county: 'Nairobi', capacity: 4500, used: 2600 },
     { id: 'WH4', name: 'Rift Valley Depot', code: 'RIFT-NKR', county: 'Nakuru', capacity: 8000, used: 4300 }
@@ -3350,7 +3350,7 @@ function ensureProcurementData() {
   const iso = now.toISOString();
   const suppliers = db.suppliers || [];
   const products = db.products || [];
-  const warehouses = ['Main Store Njiru', 'Raw Materials Store', 'Cold Storage'];
+  const warehouses = ['Njiru Store', 'Raw Materials Store', 'Cold Storage'];
   const departments = ['Warehouse', 'Production', 'Field Sales', 'Finance', 'Quality'];
   const statuses = ['Pending Approval', 'Approved', 'PO Created', 'Manager Approval', 'Procurement Approval'];
   db.purchaseRequests = products.slice(0, 8).map((product, index) => {
@@ -3906,9 +3906,10 @@ const LEAVE_TYPES = [
   { id: 'LT-1', name: 'Annual', deducts: 'annual', defaultDays: 21, paid: true },
   { id: 'LT-2', name: 'Sick', deducts: 'sick', defaultDays: 10, paid: true },
   { id: 'LT-3', name: 'Casual', deducts: 'casual', defaultDays: 5, paid: true },
-  { id: 'LT-4', name: 'Maternity', deducts: 'none', defaultDays: 90, paid: true },
-  { id: 'LT-5', name: 'Compassionate', deducts: 'none', defaultDays: 5, paid: true },
-  { id: 'LT-6', name: 'Unpaid', deducts: 'none', defaultDays: 0, paid: false }
+  { id: 'LT-4', name: 'Maternity', deducts: 'maternity', defaultDays: 90, paid: true, gender: 'Female' },
+  { id: 'LT-5', name: 'Paternity', deducts: 'paternity', defaultDays: 14, paid: true, gender: 'Male' },
+  { id: 'LT-6', name: 'Compassionate', deducts: 'compassionate', defaultDays: 5, paid: true },
+  { id: 'LT-7', name: 'Unpaid', deducts: 'unpaid', defaultDays: 0, paid: false }
 ];
 
 function daysBetween(a, b) {
@@ -4781,6 +4782,14 @@ function ensureLeaveData() {
   if (!db) return;
   ensureHrData();
   db.leaveTypes = db.leaveTypes?.length ? db.leaveTypes : LEAVE_TYPES;
+  const byName = Object.fromEntries(LEAVE_TYPES.map(t => [t.name.toLowerCase(), t]));
+  db.leaveTypes = db.leaveTypes.map(t => {
+    const canonical = byName[String(t.name || '').toLowerCase()];
+    return canonical ? { ...canonical, ...t, deducts: canonical.deducts, defaultDays: num(t.defaultDays || canonical.defaultDays) } : t;
+  });
+  for (const type of LEAVE_TYPES) {
+    if (!db.leaveTypes.some(t => String(t.name || '').toLowerCase() === type.name.toLowerCase())) db.leaveTypes.push(type);
+  }
   if (db.leaveApplications?.length) return;
   const me = (db.employees || []).find(e => e.email === 'miko@gmail.com');
   const mary = (db.employees || []).find(e => e.name === 'Mary Sales');
@@ -4791,6 +4800,30 @@ function ensureLeaveData() {
     { id: 'LV-2', applicantId: peter?.id || 'EMP-002', applicantEmail: peter?.email || '', applicantName: 'Peter Warehouse', department: 'Inventory', type: 'Sick', startDate: start(-2), endDate: start(-1), days: 2, reason: 'Medical review', status: 'Approved', decidedBy: 'Miko Admin', decidedAt: new Date().toISOString(), appliedAt: new Date(Date.now() - 86400000).toISOString() },
     { id: 'LV-3', applicantId: me?.id || 'EMP-006', applicantEmail: 'miko@gmail.com', applicantName: 'Miko Admin', department: 'Administrator', type: 'Casual', startDate: start(10), endDate: start(10), days: 1, reason: 'Personal errand', status: 'Pending', appliedAt: new Date().toISOString() }
   ];
+}
+
+function leaveBucketForType(leaveType, leaveTypes = []) {
+  const typeName = String(leaveType || '').toLowerCase();
+  const type = (leaveTypes || []).find(t => String(t.name || '').toLowerCase() === typeName) || {};
+  const deducts = String(type.deducts || '').toLowerCase();
+  if (['annual', 'sick', 'casual', 'maternity', 'paternity', 'compassionate', 'unpaid'].includes(deducts)) return deducts;
+  if (typeName.includes('maternity')) return 'maternity';
+  if (typeName.includes('paternity')) return 'paternity';
+  if (typeName.includes('compassionate')) return 'compassionate';
+  if (typeName.includes('sick')) return 'sick';
+  if (typeName.includes('casual')) return 'casual';
+  if (typeName.includes('unpaid')) return 'unpaid';
+  return 'annual';
+}
+
+function leaveEntitlementFor(emp = {}, bucket = 'annual', approvedUsed = 0) {
+  const defaults = { annual: 21, sick: 10, casual: 5, maternity: 90, paternity: 14, compassionate: 5, unpaid: 0 };
+  const suffix = bucket.charAt(0).toUpperCase() + bucket.slice(1);
+  const explicit = emp[`leaveEntitlement${suffix}`] ?? emp[`${bucket}LeaveEntitlement`] ?? emp[`default${suffix}Leave`];
+  if (explicit !== undefined && explicit !== null && explicit !== '') return Math.max(0, num(explicit));
+  const storedBalance = emp[`leaveBalance${suffix}`];
+  if (storedBalance !== undefined && storedBalance !== null && storedBalance !== '') return Math.max(0, num(storedBalance) + num(approvedUsed));
+  return Math.max(0, defaults[bucket] || 0);
 }
 
 function postFinanceJournal(user, { date, sourceModule, sourceId, reference, description, debitAccountName, creditAccountName, amount }) {
@@ -5988,7 +6021,7 @@ const api = {
     const scope = { ...filters, startDate, endDate };
     const sales = list('sales').filter(row => inDateRange(row, scope));
     const invoices = list('invoices').filter(row => inDateRange(row, scope));
-    const inventory = (d.inventory || []).filter(row => !scope.warehouse || scope.warehouse === 'All Warehouses' || row.warehouseName === scope.warehouse);
+    const inventory = (d.inventory || []).filter(row => !scope.warehouse || scope.warehouse === 'All Stores' || row.warehouseName === scope.warehouse);
     const purchaseOrders = (d.purchaseOrders || []).filter(row => inDateRange(row, scope));
     const customers = list('customers');
     const products = list('products');
@@ -6166,7 +6199,7 @@ const api = {
         startDate,
         endDate,
         department: filters.department || 'All Departments',
-        warehouse: filters.warehouse || 'All Warehouses',
+        warehouse: filters.warehouse || 'All Stores',
         county: filters.county || 'All Counties',
         supplier: filters.supplier || 'All Suppliers',
         customer: filters.customer || 'All Customers',
@@ -6438,7 +6471,7 @@ const api = {
         products: list('products').map(x => ({ id: x.id, name: x.name, sku: x.sku, price: num(x.sellingPrice), cost: num(x.costPrice) })),
         invoices: list('invoices').filter(x => num(x.balance) > 0).map(x => ({ id: x.id, name: `${x.invNo} - ${x.customerName} - ${money(x.balance)}` })),
         accounts: (d.financeAccounts || []).map(x => ({ id: x.id, name: `${x.code} - ${x.name}` })),
-        warehouses: (d.inventoryWarehouses || [{ name: 'Main Store Njiru' }]).map(x => ({ id: x.id || x.name, name: x.name })),
+        warehouses: (d.inventoryWarehouses || [{ name: 'Njiru Store' }]).map(x => ({ id: x.id || x.name, name: x.name })),
         uoms: (d.unitOfMeasure || []).map(x => ({ id: x.code || x.name, name: `${x.name || x.code} (${x.code || x.name})` })),
         rawMaterials: (d.rawMaterials || []).map(x => ({ id: x.id, name: `${x.materialName} - ${x.availableQuantity}${x.unitOfMeasure}` })),
         productionOrders: (d.productionOrders || []).map(x => ({ id: x.id, name: `${x.orderNo} - ${x.productName} - ${x.status}` }))
@@ -6826,7 +6859,7 @@ const api = {
           id: existing?.id || gid(),
           productName,
           sku: sheetCell(row, ['sku', 'SKU'], existing?.sku || ''),
-          warehouseName: warehouseName || existing?.warehouseName || 'Main Store Njiru',
+          warehouseName: warehouseName || existing?.warehouseName || 'Njiru Store',
           location: sheetCell(row, ['location', 'Location'], existing?.location || ''),
           batchNo: batchNo || existing?.batchNo || `SHEET-${Date.now()}`,
           quantity,
@@ -7853,7 +7886,7 @@ const api = {
     return { success: true, rows: visits.length, sheetName, spreadsheetId: targetSheetId, log: logEntry };
   },
   getProducts: user => (reqRole(user), list('products').map(p => ({ ...p, costPrice: num(p.costPrice), sellingPrice: num(p.sellingPrice), minStock: num(p.minStock), stock: data().inventory.filter(i => i.productName === p.name).reduce((s, i) => s + num(i.quantity), 0) }))),
-  saveProduct(user, row) { const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.WAREHOUSE, ROLES.PRODUCTION); const d = data(); const saved = save('products', u, row); if (saved && saved.id) { d.inventory = d.inventory || []; if (!d.inventory.some(i => i.productId === saved.id || i.productName === saved.name)) { d.inventory.unshift({ id: gid(), productId: saved.id, productName: saved.name, sku: saved.sku || '', warehouseName: 'Main Store Njiru', quantity: num(row.openingStock || 0), unitCost: num(saved.costPrice || row.costPrice), quantityReserved: 0, quantityIncoming: 0, quantityOutgoing: 0, damagedQuantity: 0, expiredQuantity: 0, quarantinedQuantity: 0, status: 'Active', createdAt: new Date().toISOString() }); try { if (typeof saveState === 'function') saveState(d); } catch (_) {} } } return saved; },
+  saveProduct(user, row) { const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.WAREHOUSE, ROLES.PRODUCTION); const d = data(); const saved = save('products', u, row); if (saved && saved.id) { d.inventory = d.inventory || []; if (!d.inventory.some(i => i.productId === saved.id || i.productName === saved.name)) { d.inventory.unshift({ id: gid(), productId: saved.id, productName: saved.name, sku: saved.sku || '', warehouseName: 'Njiru Store', quantity: num(row.openingStock || 0), unitCost: num(saved.costPrice || row.costPrice), quantityReserved: 0, quantityIncoming: 0, quantityOutgoing: 0, damagedQuantity: 0, expiredQuantity: 0, quarantinedQuantity: 0, status: 'Active', createdAt: new Date().toISOString() }); try { if (typeof saveState === 'function') saveState(d); } catch (_) {} } } return saved; },
   getInventory: user => (reqRole(user), list('inventory').map(i => ({ ...i, quantity: num(i.quantity), unitCost: num(i.unitCost) }))),
   saveInventoryItem(user, row) { const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.WAREHOUSE); return save('inventory', u, row); },
   getInventoryWorkspaceData(user, filters = {}) {
@@ -7934,7 +7967,7 @@ const api = {
       .sort((a, b) => b.movementCount - a.movementCount)
       .slice(0, 10);
     return {
-      filters: { dateRange: 'This Month', warehouse: 'All Warehouses', category: 'All Categories', status: 'All Statuses', valuation: 'FIFO' },
+      filters: { dateRange: 'This Month', warehouse: 'All Stores', category: 'All Categories', status: 'All Statuses', valuation: 'FIFO' },
       overview: {
         totalSkus: stockItems.length,
         totalStockValue: Math.round(totalValue),
@@ -7999,7 +8032,7 @@ const api = {
         },
         {
           title: 'Warehouse capacity',
-          detail: `${((d.inventoryWarehouses || []).slice().sort((a, b) => (num(b.used) / Math.max(1, num(b.capacity))) - (num(a.used) / Math.max(1, num(a.capacity))))[0] || { name: 'Main Store Njiru' }).name} has the highest capacity utilization.`,
+          detail: `${((d.inventoryWarehouses || []).slice().sort((a, b) => (num(b.used) / Math.max(1, num(b.capacity))) - (num(a.used) / Math.max(1, num(a.capacity))))[0] || { name: 'Njiru Store' }).name} has the highest capacity utilization.`,
           sources: ['inventory_warehouses', 'inventory_locations']
         }
       ]
@@ -8007,7 +8040,7 @@ const api = {
     } catch (err) {
       console.error('getInventoryWorkspaceData', err && err.message);
       return {
-        filters: { dateRange: 'This Month', warehouse: 'All Warehouses', category: 'All Categories', status: 'All Statuses', valuation: 'FIFO' },
+        filters: { dateRange: 'This Month', warehouse: 'All Stores', category: 'All Categories', status: 'All Statuses', valuation: 'FIFO' },
         overview: { totalSkus: 0, totalStockValue: 0, availableStock: 0, reservedStock: 0, lowStock: 0, inventoryAccuracy: 0, quarantined: 0, abcA: 0 },
         stock: [], stockItems: [], reorderRules: [], movements: [], adjustments: [], warehouses: [], alerts: [], reports: [], analytics: {}, ai: [], searchIndex: [], pendingProductionIssues: [],
         errorSafe: true, errorMessage: err && err.message
@@ -8248,7 +8281,7 @@ const api = {
     assertPositive(row.quantity || 1, 'Transfer quantity');
     if (num(row.quantity || 1) > num(item.quantity)) throw new Error(`Only ${num(item.quantity).toLocaleString()} ${item.productName} available in ${item.warehouseName}`);
     const qty = num(row.quantity || 1);
-    const toWarehouse = row.toWarehouse || data().inventoryWarehouses.find(wh => wh.name !== item.warehouseName)?.name || 'Main Store Njiru';
+    const toWarehouse = row.toWarehouse || data().inventoryWarehouses.find(wh => wh.name !== item.warehouseName)?.name || 'Njiru Store';
     item.quantity = Math.max(0, num(item.quantity) - qty);
     let dest = data().inventory.find(x => x.productName === item.productName && x.warehouseName === toWarehouse);
     if (!dest) {
@@ -8466,7 +8499,7 @@ const api = {
       reorderLevel: num(material.reorderLevel) || num(material.reorderPoint) || 0,
       supplier: material.supplier || '',
       supplierId: material.supplierId || '',
-      warehouse: material.warehouse || 'Main Store Njiru',
+      warehouse: material.warehouse || 'Njiru Store',
       binLocation: material.binLocation || material.storageLocation || 'A1',
       batchNumber: material.batchNumber || '',
       expiryDate: material.expiryDate || '',
@@ -8766,7 +8799,7 @@ const api = {
     const materialId = row.materialId || gid();
     let material = d.rawMaterials.find(x => (row.materialId && x.id === row.materialId) || (materialName && String(x.materialName || '').toLowerCase() === materialName.toLowerCase()));
     if (!material) {
-      material = { id: materialId, materialCode: row.materialCode || `RM-${Date.now()}`, materialName: materialName || 'New Raw Material', category: row.category || 'Raw Material', unitOfMeasure: baseUnit, currentQuantity: 0, availableQuantity: 0, reservedQuantity: 0, consumedQuantity: 0, supplier: row.supplier || '', costPerUnit: num(row.costPerUnit), warehouse: row.warehouse || 'Main Store Njiru', storageLocation: row.storageLocation || 'A1', batchNumber: row.batchNumber || `MAT-${Date.now()}`, manufactureDate: row.manufactureDate || today(), expiryDate: row.expiryDate || '', status: 'Available' };
+      material = { id: materialId, materialCode: row.materialCode || `RM-${Date.now()}`, materialName: materialName || 'New Raw Material', category: row.category || 'Raw Material', unitOfMeasure: baseUnit, currentQuantity: 0, availableQuantity: 0, reservedQuantity: 0, consumedQuantity: 0, supplier: row.supplier || '', costPerUnit: num(row.costPerUnit), warehouse: row.warehouse || 'Njiru Store', storageLocation: row.storageLocation || 'A1', batchNumber: row.batchNumber || `MAT-${Date.now()}`, manufactureDate: row.manufactureDate || today(), expiryDate: row.expiryDate || '', status: 'Available' };
       d.rawMaterials.unshift(material);
     }
     material.currentQuantity = num(material.currentQuantity) + baseQty;
@@ -8808,7 +8841,7 @@ const api = {
       outputUnit: row.outputUnit || formula.outputUnit,
       status: 'Pending',
       operator: row.assignedTo || row.operator || u.name,
-      warehouse: row.warehouse || 'Main Store Njiru',
+      warehouse: row.warehouse || 'Njiru Store',
       startDate: row.startDate || today(),
       endDate: '',
       materialCost: 0,
@@ -8873,7 +8906,7 @@ const api = {
       d.inventoryTransactions = d.inventoryTransactions || [];
       d.inventoryTransactions.unshift({
         id: gid(), transactionType: 'Reservation', productName: material.materialName, batchNo: batch?.batchNumber || '',
-        quantity: reserveBase, unit: material.unitOfMeasure, warehouse: material.warehouse || 'Main Store Njiru',
+        quantity: reserveBase, unit: material.unitOfMeasure, warehouse: material.warehouse || 'Njiru Store',
         reference: order.orderNo, date: today(), createdBy: u.name, createdAt: new Date().toISOString()
       });
     });
@@ -8937,7 +8970,7 @@ const api = {
       d.productionBatchMaterials.unshift({ id: gid(), productionBatchNo: batchNo, productionOrderId: order.id, materialId: material.id, materialName: material.materialName, batchUsed: batch?.batchNumber || material.batchNumber, quantityConsumed: consumeBase, unit: material.unitOfMeasure, costConsumed: Math.round(cost) });
       rawMaterialBatchesUsed.push({ materialName: material.materialName, batchNo: batch?.batchNumber || material.batchNumber, quantity: consumeBase, unit: material.unitOfMeasure });
       // Inventory transaction for consumption
-      d.inventoryTransactions.unshift({ id: gid(), transactionType: 'Consumption', productName: material.materialName, batchNo: batch?.batchNumber || '', quantity: consumeBase, unit: material.unitOfMeasure, warehouse: material.warehouse || 'Main Store Njiru', reference: order.orderNo, date: today(), createdBy: u.name, createdAt: new Date().toISOString() });
+      d.inventoryTransactions.unshift({ id: gid(), transactionType: 'Consumption', productName: material.materialName, batchNo: batch?.batchNumber || '', quantity: consumeBase, unit: material.unitOfMeasure, warehouse: material.warehouse || 'Njiru Store', reference: order.orderNo, date: today(), createdBy: u.name, createdAt: new Date().toISOString() });
     });
 
     const laborCost = num(formula.laborCost) || Math.round(rawMaterialCost * 0.15);
@@ -8970,7 +9003,7 @@ const api = {
     d.wasteRecords.unshift({ id: gid(), batchNo, productionOrderId: order.id, orderNo: order.orderNo, productName: order.productName, expectedWaste: finished.expectedWaste, actualWaste: waste, yieldPercent, lossPercent, scrapMaterials: waste, recoveredMaterials: 0, recordedBy: u.name, date: today() });
 
     // Inventory + product catalog sync for finished goods output
-    const warehouseName = order.warehouse || 'Main Store Njiru';
+    const warehouseName = order.warehouse || 'Njiru Store';
     const inv = d.inventory.find(x => x.productName === order.productName && x.warehouseName === warehouseName);
     if (inv) {
       inv.quantity = num(inv.quantity) + qty;
@@ -10610,7 +10643,7 @@ territory: geo,
         deliveries: rows.length,
         status: rows.some(row => row.status === 'Delayed') ? 'Delayed' : rows.some(row => row.status === 'Received') ? 'Delivered' : rows.length ? 'In Transit' : 'Pending',
         value: rows.reduce((sum, row) => sum + num(purchaseOrders.find(po => po.id === row.poId)?.total), 0),
-        warehouse: rows[0]?.warehouseName || 'Main Store Njiru'
+        warehouse: rows[0]?.warehouseName || 'Njiru Store'
       };
     });
     const reports = d.procurementReports.map(report => ({
@@ -10658,7 +10691,7 @@ territory: geo,
       filters: {
         dateRange: 'This Month',
         supplier: 'All Suppliers',
-        warehouse: 'All Warehouses',
+        warehouse: 'All Stores',
         county: 'All Counties',
         product: 'All Products'
       },
@@ -10722,7 +10755,7 @@ territory: geo,
     } catch (err) {
       console.error('getProcurementWorkspaceData', err && err.message);
       return {
-        filters: { dateRange: 'This Month', supplier: 'All Suppliers', warehouse: 'All Warehouses', county: 'All Counties', product: 'All Products' },
+        filters: { dateRange: 'This Month', supplier: 'All Suppliers', warehouse: 'All Stores', county: 'All Counties', product: 'All Products' },
         overview: { totalPOs: 0, procurementSpend: 0, outstandingSupplierBalances: 0, openRequests: 0, overdueDeliveries: 0 },
         purchaseOrders: [], requests: [], suppliers: [], deliveries: [], receiving: [], reports: [], analytics: {}, ai: [], searchIndex: [],
         errorSafe: true, errorMessage: err && err.message
@@ -10813,7 +10846,7 @@ territory: geo,
       total: subtotal + tax,
       status: 'Approved',
       paymentTerms: supplier.paymentTerms || 'Net 30',
-      warehouseName: 'Main Store Njiru',
+      warehouseName: 'Njiru Store',
       department: request.department,
       createdBy: u.name,
       createdAt: new Date().toISOString(),
@@ -10840,7 +10873,7 @@ territory: geo,
     d.inventoryWarehouses = Array.isArray(d.inventoryWarehouses) ? d.inventoryWarehouses : [];
     d.notifications = Array.isArray(d.notifications) ? d.notifications : [];
 
-    const warehouse = clean(form.warehouse) || 'Main Store Njiru';
+    const warehouse = clean(form.warehouse) || 'Njiru Store';
     const supplierName = clean(form.supplier || form.supplierName);
     const receivedDate = clean(form.receivedDate) || today();
     const items = Array.isArray(form.items) ? form.items.filter(i => clean(i.productName || i.name) && num(i.quantity) > 0) : [];
@@ -11532,7 +11565,7 @@ territory: geo,
         minStock: num(p.minStock),
         stock: d.inventory.filter(i => i.productName === p.name).reduce((sum, item) => sum + num(item.quantity), 0)
       })),
-      warehouses: [{ id: 'WH1', name: 'Main Store Njiru' }],
+      warehouses: [{ id: 'WH1', name: 'Njiru Store' }],
       users: list('users').map(u => ({ id: u.id, name: u.name, role: u.role })),
       roles: Object.values(ROLES)
     };
@@ -12730,23 +12763,12 @@ territory: geo,
       position: e.position || e.role || '',
       status: e.status || 'Active'
     }));
-    const bucketForLeave = leaveType => {
-      const type = (d.leaveTypes || []).find(t => String(t.name || '').toLowerCase() === String(leaveType || '').toLowerCase()) || {};
-      if (type.deducts === 'sick') return 'sick';
-      if (type.deducts === 'casual') return 'casual';
-      if (type.deducts === 'annual') return 'annual';
-      if (/maternity/i.test(String(leaveType || ''))) return 'maternity';
-      if (/paternity/i.test(String(leaveType || ''))) return 'paternity';
-      if (/compassionate/i.test(String(leaveType || ''))) return 'compassionate';
-      if (/unpaid/i.test(String(leaveType || ''))) return 'unpaid';
-      return '';
-    };
     const bucketTemplate = () => ({ annual: 0, sick: 0, casual: 0, maternity: 0, paternity: 0, compassionate: 0, unpaid: 0 });
     const approvedByEmployee = {};
     const pendingByEmployee = {};
     for (const leave of (d.leaveApplications || [])) {
       const key = leave.applicantId || String(leave.applicantEmail || '').toLowerCase() || leave.applicantName;
-      const bucket = bucketForLeave(leave.type);
+      const bucket = leaveBucketForType(leave.type, d.leaveTypes);
       if (!key || !bucket) continue;
       if (leave.status === 'Approved') {
         approvedByEmployee[key] ||= bucketTemplate();
@@ -12762,20 +12784,20 @@ territory: geo,
       .map(e => {
       const used = approvedByEmployee[e.id] || approvedByEmployee[String(e.email || '').toLowerCase()] || approvedByEmployee[e.name] || {};
       const pendingUsed = pendingByEmployee[e.id] || pendingByEmployee[String(e.email || '').toLowerCase()] || pendingByEmployee[e.name] || {};
-      const baseAnnual = num(e.leaveEntitlementAnnual || e.annualLeaveEntitlement || e.defaultAnnualLeave || (num(e.leaveBalanceAnnual) + num(used.annual)) || 21);
-      const baseSick = num(e.leaveEntitlementSick || e.sickLeaveEntitlement || e.defaultSickLeave || (num(e.leaveBalanceSick) + num(used.sick)) || 10);
-      const baseCasual = num(e.leaveEntitlementCasual || e.casualLeaveEntitlement || e.defaultCasualLeave || (num(e.leaveBalanceCasual) + num(used.casual)) || 5);
-      const baseMaternity = num(e.leaveEntitlementMaternity || e.maternityLeaveEntitlement || (num(e.leaveBalanceMaternity) + num(used.maternity)) || 90);
-      const basePaternity = num(e.leaveEntitlementPaternity || e.paternityLeaveEntitlement || (num(e.leaveBalancePaternity) + num(used.paternity)) || 14);
-      const baseCompassionate = num(e.leaveEntitlementCompassionate || e.compassionateLeaveEntitlement || (num(e.leaveBalanceCompassionate) + num(used.compassionate)) || 5);
+      const baseAnnual = leaveEntitlementFor(e, 'annual', used.annual);
+      const baseSick = leaveEntitlementFor(e, 'sick', used.sick);
+      const baseCasual = leaveEntitlementFor(e, 'casual', used.casual);
+      const baseMaternity = leaveEntitlementFor(e, 'maternity', used.maternity);
+      const basePaternity = leaveEntitlementFor(e, 'paternity', used.paternity);
+      const baseCompassionate = leaveEntitlementFor(e, 'compassionate', used.compassionate);
       const entitlement = { annual: baseAnnual, sick: baseSick, casual: baseCasual, maternity: baseMaternity, paternity: basePaternity, compassionate: baseCompassionate, unpaid: 0 };
       const remaining = {
-        annual: Math.max(0, num(e.leaveBalanceAnnual ?? (baseAnnual - num(used.annual)))),
-        sick: Math.max(0, num(e.leaveBalanceSick ?? (baseSick - num(used.sick)))),
-        casual: Math.max(0, num(e.leaveBalanceCasual ?? (baseCasual - num(used.casual)))),
-        maternity: Math.max(0, num(e.leaveBalanceMaternity ?? (baseMaternity - num(used.maternity)))),
-        paternity: Math.max(0, num(e.leaveBalancePaternity ?? (basePaternity - num(used.paternity)))),
-        compassionate: Math.max(0, num(e.leaveBalanceCompassionate ?? (baseCompassionate - num(used.compassionate)))),
+        annual: Math.max(0, baseAnnual - num(used.annual)),
+        sick: Math.max(0, baseSick - num(used.sick)),
+        casual: Math.max(0, baseCasual - num(used.casual)),
+        maternity: Math.max(0, baseMaternity - num(used.maternity)),
+        paternity: Math.max(0, basePaternity - num(used.paternity)),
+        compassionate: Math.max(0, baseCompassionate - num(used.compassionate)),
         unpaid: 0
       };
       return {
@@ -13012,10 +13034,7 @@ territory: geo,
       audienceRoles: [ROLES.HR, ROLES.EXECUTIVE, ROLES.ADMIN, ROLES.DEV]
     });
     // Email HR @farmtrack + all HR/approver users
-    const hrEmails = Array.from(new Set([
-      'hr@farmtrack.co.ke',
-      ...hrAndApproverEmails(d)
-    ].filter(Boolean)));
+    const hrEmails = ['hr@farmtrack.co.ke'];
     for (const to of hrEmails) {
       deliverEmail(u, 'leave_approval_request', to, () => EmailService.sendLeaveRequestSubmitted({
         to,
@@ -13052,21 +13071,18 @@ territory: geo,
     app.decidedAt = new Date().toISOString();
     app.decisionNote = clean(decision.note);
     if (outcome === 'Approved') {
-      const lt = (d.leaveTypes || []).find(t => String(t.name).toLowerCase() === String(app.type).toLowerCase());
       const emp = (d.employees || []).find(e => e.id === app.applicantId || e.email === app.applicantEmail);
       if (emp) {
-        const leaveName = String(app.type || '').toLowerCase();
-        const balanceKey = lt?.deducts === 'sick' ? 'leaveBalanceSick'
-          : lt?.deducts === 'casual' ? 'leaveBalanceCasual'
-          : lt?.deducts === 'annual' ? 'leaveBalanceAnnual'
-          : leaveName.includes('maternity') ? 'leaveBalanceMaternity'
-          : leaveName.includes('paternity') ? 'leaveBalancePaternity'
-          : leaveName.includes('compassionate') ? 'leaveBalanceCompassionate'
-          : leaveName.includes('unpaid') ? ''
-          : 'leaveBalanceAnnual';
-        if (!emp.leaveBalanceCompassionate && emp.leaveBalanceCompassionate !== 0) emp.leaveBalanceCompassionate = 5;
-        if (balanceKey) {
-        emp[balanceKey] = Math.max(num(emp[balanceKey]) - app.days, 0);
+        const bucket = leaveBucketForType(app.type, d.leaveTypes);
+        if (bucket && bucket !== 'unpaid') {
+          const suffix = bucket.charAt(0).toUpperCase() + bucket.slice(1);
+          const usedByThisEmployee = (d.leaveApplications || [])
+            .filter(l => l.id !== app.id && l.status === 'Approved' && (l.applicantId === emp.id || String(l.applicantEmail || '').toLowerCase() === String(emp.email || '').toLowerCase()))
+            .filter(l => leaveBucketForType(l.type, d.leaveTypes) === bucket)
+            .reduce((sum, l) => sum + num(l.days), 0);
+          const entitlement = leaveEntitlementFor(emp, bucket, usedByThisEmployee);
+          emp[`leaveEntitlement${suffix}`] = entitlement;
+          emp[`leaveBalance${suffix}`] = Math.max(0, entitlement - usedByThisEmployee - num(app.days));
         }
       }
     }
@@ -13085,7 +13101,8 @@ territory: geo,
     });
     emitBusinessEvent(u, outcome === 'Approved' ? 'hr.leave_approved' : 'hr.leave_rejected', 'leaveApplications', app.id, { days: app.days });
     // Email the applicant and any explicit notification email recorded on the request.
-    const decisionRecipients = Array.from(new Set([app.applicantEmail, app.notificationEmail].map(clean).filter(Boolean)));
+    const primaryRecipient = clean(app.notificationEmail || app.applicantEmail);
+    const decisionRecipients = primaryRecipient ? [primaryRecipient] : [];
     const emailResults = [];
     for (const to of decisionRecipients) {
       const emailFn = outcome === 'Approved'
@@ -13273,3 +13290,4 @@ async function handler(req, res) {
 
 module.exports = handler;
 module.exports.invokeRpc = invokeRpc;
+

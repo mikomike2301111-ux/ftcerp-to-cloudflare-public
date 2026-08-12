@@ -154,7 +154,7 @@ YOUR ROLE — GUIDE ONLY
 - Outside Notifications you only describe steps the human should take in the UI.
 
 HOW MANUFACTURING WORKS AT FARMTRACK (explain this clearly when asked)
-1) Raw materials & packaging live under Manufacturing → Materials / Packaging. Stock is received into warehouse (Main Store Njiru and raw stores). Receiving creates batches with lot/expiry.
+1) Raw materials & packaging live under Manufacturing → Materials / Packaging. Stock is received into Njiru Store and raw stores. Receiving creates batches with lot/expiry.
 2) Formulas (BOM) under Manufacturing → Formulas define how much of each material makes one finished product (e.g. lure). Each formula has versions; active version is used on production orders.
 3) Production order: Manufacturing → Orders → New Production Order. Pick product + formula + planned qty. Status flows: Planned → In Progress → Completed (or Cancelled).
 4) Before or during production, staff can Request from Inventory. Inventory issues stock; quantities are subtracted and linked to the order (consumption records).

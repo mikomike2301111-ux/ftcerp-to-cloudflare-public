@@ -17,7 +17,7 @@ export default function ProductionExecutionModal({ user, order, rawMaterials, fo
     completedQty: order?.plannedQty || 1,
     wastageQty: 0,
     operator: order?.operator || user?.name || '',
-    warehouse: order?.warehouse || 'Main Store Nairobi',
+    warehouse: order?.warehouse || 'Njiru Store',
     notes: ''
   });
   const [qc, setQc] = useState({
@@ -264,3 +264,4 @@ export default function ProductionExecutionModal({ user, order, rawMaterials, fo
     </div>
   );
 }
+

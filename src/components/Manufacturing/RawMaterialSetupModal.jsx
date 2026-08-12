@@ -39,7 +39,7 @@ export default function RawMaterialSetupModal({ user, material: editMaterial, on
         reorderLevel: editMaterial.reorderLevel || editMaterial.reorderPoint || 0,
         leadTime: editMaterial.leadTime || editMaterial.leadTimeDays || 0,
         binLocation: editMaterial.binLocation || editMaterial.storageLocation || 'A1',
-        warehouse: editMaterial.warehouse || 'Main Warehouse',
+        warehouse: editMaterial.warehouse || 'Njiru Store',
         status: editMaterial.status || 'Active'
       };
     }
@@ -57,7 +57,7 @@ export default function RawMaterialSetupModal({ user, material: editMaterial, on
       averageCost: 0,
       lastPurchasePrice: 0,
       supplier: '',
-      warehouse: 'Main Warehouse',
+      warehouse: 'Njiru Store',
       binLocation: 'A1',
       minStockLevel: 0,
       maxStockLevel: 0,

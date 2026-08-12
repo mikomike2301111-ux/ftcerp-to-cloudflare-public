@@ -148,7 +148,7 @@ const generateCycleCountSheet = (stockItems) => {
   return {
     sheetId: `CC-${today}`,
     date: today,
-    warehouse: 'Main Store Nairobi',
+    warehouse: 'Njiru Store',
     counter: '_________________',
     verifier: '_________________',
     items: selected.map((s, i) => ({

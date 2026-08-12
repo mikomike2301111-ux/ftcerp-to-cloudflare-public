@@ -17,7 +17,7 @@ function ModalCard({ title, onClose, children, wide }) {
 
 export function ReceiveStockModal({ user, warehouses = [], suppliers = [], products = [], onClose, onSave }) {
   const warehouseOptions = Array.from(new Set([
-    'Main Store Njiru', 'Finished Goods Store', 'Raw Materials Store',
+    'Njiru Store', 'Finished Goods Store', 'Raw Materials Store',
     ...((warehouses || []).map(w => w?.name).filter(Boolean))
   ]));
   const supplierOptions = Array.from(new Set((suppliers || []).map(s => s?.name).filter(Boolean))).sort();
@@ -26,7 +26,7 @@ export function ReceiveStockModal({ user, warehouses = [], suppliers = [], produ
   }));
   const emptyLine = () => ({ productName: '', sku: '', quantity: 1, unitCost: 0, batchNo: '', expiryDate: '', condition: 'Good', notes: '' });
   const [form, setForm] = useState({
-    poNo: '', supplier: '', warehouse: 'Main Store Njiru', deliveryNote: '',
+    poNo: '', supplier: '', warehouse: 'Njiru Store', deliveryNote: '',
     receivedDate: new Date().toISOString().slice(0, 10), notes: '', items: [emptyLine()]
   });
   const [saving, setSaving] = useState(false);
@@ -89,8 +89,8 @@ export function ReceiveStockModal({ user, warehouses = [], suppliers = [], produ
                 <input list="receive-supplier-list" value={form.supplier} onChange={e => setForm({ ...form, supplier: e.target.value })} placeholder="Type or select supplier" />
                 <datalist id="receive-supplier-list">{supplierOptions.map(s => <option key={s} value={s} />)}</datalist>
               </label>
-              <label>Warehouse / Store
-                <input list="receive-warehouse-list" value={form.warehouse} onChange={e => setForm({ ...form, warehouse: e.target.value })} placeholder="Main Store Njiru" required />
+              <label>Store
+                <input list="receive-warehouse-list" value={form.warehouse} onChange={e => setForm({ ...form, warehouse: e.target.value })} placeholder="Njiru Store" required />
                 <datalist id="receive-warehouse-list">{warehouseOptions.map(w => <option key={w} value={w} />)}</datalist>
               </label>
               <label>Delivery Note #<input value={form.deliveryNote} onChange={e => setForm({ ...form, deliveryNote: e.target.value })} placeholder="DN-..." /></label>
@@ -125,7 +125,7 @@ export function ReceiveStockModal({ user, warehouses = [], suppliers = [], produ
                 </div>
               ))}
             </div>
-            <p style={{ fontSize: 12, color: '#667085', marginTop: 8 }}>Stock posts into the selected store (default Main Store Njiru). New product names are added to the catalogue and appear under Inventory.</p>
+            <p style={{ fontSize: 12, color: '#667085', marginTop: 8 }}>Stock posts into the selected store (default Njiru Store). New product names are added to the catalogue and appear under Inventory.</p>
           </fieldset>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="button" className="secondary-action" onClick={onClose}>Cancel</button>
@@ -160,7 +160,7 @@ export function DispatchModal({ user, customers, warehouses, onClose, onSave }) 
             <option value="">Select customer...</option>
             {customers?.map(c => <option key={c.id || c.name} value={c.name}>{c.name}</option>)}
           </select></label>
-          <label>Dispatch Warehouse<select value={form.warehouse} onChange={e => setForm({ ...form, warehouse: e.target.value })} required>
+          <label>Dispatch Store<select value={form.warehouse} onChange={e => setForm({ ...form, warehouse: e.target.value })} required>
             {warehouses?.map(w => <option key={w.id || w.name} value={w.name}>{w.name}</option>)}
           </select></label>
           <label>Delivery Date<input type="date" value={form.deliveryDate} onChange={e => setForm({ ...form, deliveryDate: e.target.value })} /></label>
@@ -497,7 +497,7 @@ export function CrossDockModal({ user, warehouses, onClose, onSave }) {
     <ModalCard title="Cross-Docking Transfer" onClose={onClose} wide>
       <form className="settings-form-grid" onSubmit={e => { e.preventDefault(); onSave(form); }}>
         <fieldset className="settings-fieldset"><legend>Cross-Dock Routing</legend><div>
-          <label>Receiving Warehouse<select value={form.receivingWarehouse} onChange={e => setForm({ ...form, receivingWarehouse: e.target.value })} required>
+          <label>Receiving Store<select value={form.receivingWarehouse} onChange={e => setForm({ ...form, receivingWarehouse: e.target.value })} required>
             <option value="">Select receiving...</option>
             {warehouses?.map(w => <option key={w.id || w.name} value={w.name}>{w.name}</option>)}
           </select></label>
