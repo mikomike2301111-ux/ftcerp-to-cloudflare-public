@@ -285,7 +285,7 @@ const businessDaysBetween = (startDate, endDate) => {
   const cur = new Date(start);
   while (cur <= end) {
     const day = cur.getDay();
-    if (day !== 0 && day !== 6) days += 1;
+    if (day !== 0) days += 1;
     cur.setDate(cur.getDate() + 1);
   }
   return Math.max(days, 1);
@@ -1632,7 +1632,8 @@ function AnalyticsCenter({ user, setPage, globalPeriod = 'Month' }) {
   const executiveActions = [
     { title: 'Review CRM follow-ups', detail: `${data.customerIntelligence?.filter(c => c.health !== 'Healthy').length || 0} customer risk signals`, page: 'customers', icon: Users },
     { title: 'Check inventory risk', detail: `${data.inventoryIntelligence?.low || 0} low stock items`, page: 'inventory', icon: Package },
-    { title: 'Open finance reports', detail: `${data.financialIntelligence?.arRisk || 0} receivable risk items`, page: 'reports', icon: Wallet },
+    { title: 'Open finance reports', detail: `${currency(data.financialIntelligence?.accountsReceivable || 0)} receivable`, page: 'accounts', icon: Wallet },
+    { title: 'HR approvals', detail: `${data.hrIntelligence?.pendingLeaves || 0} pending leave, ${data.hrIntelligence?.headcount || 0} staff`, page: 'hr', icon: UserCog },
     { title: 'Procurement action', detail: `${data.procurementIntelligence?.length || 0} supplier scorecards`, page: 'purchasing', icon: Truck }
   ];
   const colors = ['#050505', '#6d4aff', '#377dff', '#101828', '#ffac33', '#f64e4e'];
@@ -1734,6 +1735,23 @@ function AnalyticsCenter({ user, setPage, globalPeriod = 'Month' }) {
             </div>
           </div>
           <AnalyticsSourcePanel source={data.dataSource} hero={data.hero} />
+
+          <div className="analytics-kpi-row executive-decision-kpis">
+            {[
+              ['Receivables', currency(data.financialIntelligence?.accountsReceivable || 0), 'Open customer money'],
+              ['Payables', currency(data.financialIntelligence?.accountsPayable || 0), 'Supplier money due'],
+              ['Bank cash', currency(data.financialIntelligence?.bankCash || 0), 'Available bank balance'],
+              ['Payroll', currency(data.financialIntelligence?.payrollCost || 0), 'Posted payroll cost'],
+              ['Leave applicants', data.hrIntelligence?.applicants || 0, `${data.hrIntelligence?.pendingLeaves || 0} pending`],
+              ['Approved leave days', data.hrIntelligence?.approvedLeaveDays || 0, 'Sunday excluded, Saturday counted']
+            ].map(([labelText, value, note]) => (
+              <article key={labelText}>
+                <span>{labelText}</span>
+                <strong>{value}</strong>
+                <small>{note}</small>
+              </article>
+            ))}
+          </div>
 
           <div className="analytics-kpi-row">
             {active.kpis.map(kpi => {
@@ -12242,7 +12260,7 @@ function LeaveApplyModal({ user, leaveTypes, departments = [], balances = [], em
           <div className="leave-calc-row"><span>Entitlement</span><strong>{balanceKey === 'unpaid' ? 'Open' : `${entitlement}d`}</strong></div>
           <div className="leave-calc-row"><span>Current balance</span><strong>{balanceKey === 'unpaid' ? 'Unlimited' : `${balance}d`}</strong></div>
           <div className="leave-calc-row"><span>Requested days</span><strong style={{ color: exceedsBalance ? '#d92d20' : '#101828' }}>{days}d</strong></div>
-          <div className="leave-calc-row"><span>Calculation</span><strong>Business days only</strong></div>
+          <div className="leave-calc-row"><span>Calculation</span><strong>Monday to Saturday; Sunday excluded</strong></div>
           <div className="leave-calc-row"><span>Period</span><strong>{form.startDate} → {form.endDate}</strong></div>
           <div className="leave-calc-row total"><span>Remaining after</span><strong style={{ color: exceedsBalance ? '#d92d20' : '#101828' }}>{balanceKey === 'unpaid' ? 'Unlimited' : `${remainingAfter}d`}</strong></div>
           {exceedsBalance && <p className="leave-calc-warn">⚠ This request exceeds your available {form.type.toLowerCase()} balance. It may require manager approval.</p>}

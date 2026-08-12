@@ -9009,6 +9009,18 @@ select {
 .analytics-exec-chip:hover { border-color: #d0d5dd; background: #fafafa; }
 .analytics-exec-chip strong { display: block; font-size: 13px; color: #101828; }
 .analytics-exec-chip em { display: block; font-size: 12px; color: #667085; font-style: normal; margin-top: 2px; }
+.analytics-page { font-size: 15px; line-height: 1.55; }
+.analytics-page .panel h2,
+.analytics-page .panel-title,
+.analytics-page .analytics-story-card strong { line-height: 1.25; }
+.analytics-page .analytics-hero h1 { font-size: clamp(30px, 3.3vw + 18px, 48px); line-height: 1.12; }
+.analytics-page .analytics-hero p { font-size: 15px; line-height: 1.65; }
+.analytics-page .analytics-tabs button { min-height: 38px; font-size: 13px; }
+.analytics-page .analytics-kpi-row article { min-height: 116px; }
+.analytics-page .analytics-kpi-row span { font-size: 13px; line-height: 1.35; }
+.analytics-page .analytics-kpi-row strong { font-size: clamp(20px, 1.7vw, 28px); line-height: 1.18; }
+.analytics-page .analytics-kpi-row small { font-size: 13px; line-height: 1.4; }
+.executive-decision-kpis { margin-top: 12px; }
 
 @media (max-width: 900px) {
   .topbar-profile-name { display: none; }

@@ -54,7 +54,7 @@ function roleCanAccessPage(role, pageId) {
   const allowed = PAGE_ACCESS[pageId];
   if (!allowed) return false;
   if (allowed.includes('*')) return true;
-  if (role === ROLES.ADMIN || role === ROLES.DEV) return true;
+  if (role === ROLES.ADMIN || role === ROLES.DEV || role === ROLES.EXECUTIVE) return true;
   return allowed.includes(role);
 }
 
@@ -164,9 +164,10 @@ const OFFICE_ADMIN_PASSWORD = String(process.env.OFFICE_ADMIN_PASSWORD || 'Admin
 
 const STAFF_ROSTER = [
   { name: 'Miko Admin', email: 'miko@gmail.com', password: 'MM@29315122', role: ROLES.DEV, department: 'Executive' },
+  { name: 'Samuel Muchemi', email: 'smuchemi@gmail.com', password: 'Pass@2026', role: ROLES.EXECUTIVE, department: 'Executive' },
   { name: 'Samuel', email: 'farmtrackbiosciencesltd@gmail.com', password: 'Boss2026!', role: ROLES.EXECUTIVE, department: 'Executive' },
   { name: 'Office Admin', email: OFFICE_ADMIN_EMAIL, password: OFFICE_ADMIN_PASSWORD, role: ROLES.ADMIN, department: 'Administration' },
-  { name: 'HR Officer', email: 'hr@farmtrack.co.ke', password: 'Hr2026!', role: ROLES.HR, department: 'HR' },
+  { name: 'Shila HR', email: 'hr@farmtrack.co.ke', password: 'Hr2026!', role: ROLES.HR, department: 'HR' },
   { name: 'Accounts Officer', email: 'accounts@farmtrack.co.ke', password: 'Acc2026!', role: ROLES.ACCOUNTANT, department: 'Finance' },
   { name: 'Reception', email: 'reception@farmtrack.co.ke', password: 'Rec2026!', role: ROLES.RECEPTION, department: 'Administration' },
   { name: 'Edna', email: 'edna@farmtrack.co.ke', password: 'SalesEdna1!', role: ROLES.SALES, department: 'Sales' },
@@ -3921,7 +3922,7 @@ function leaveBusinessDays(start, end) {
   const last = new Date(end);
   while (cur <= last) {
     const day = cur.getDay();
-    if (day !== 0 && day !== 6) count++;
+    if (day !== 0) count++;
     cur.setDate(cur.getDate() + 1);
   }
   return count;
@@ -4350,6 +4351,14 @@ function employeeRecord(form) {
     profilePhotoUrl: clean(form.profilePhotoUrl || ''),
     documents: Array.isArray(form.documents) ? form.documents : []
   };
+}
+
+function mergedEmployeeForm(existing = {}, form = {}) {
+  const merged = { ...existing, ...form };
+  if (!clean(form.name) && (clean(form.firstName) || clean(form.middleName) || clean(form.lastName))) {
+    merged.name = [form.firstName, form.middleName, form.lastName].map(clean).filter(Boolean).join(' ');
+  }
+  return merged;
 }
 function candidateRecord(form) {
   return {
@@ -5472,6 +5481,12 @@ const api = {
     const safeSuppliers = (d.suppliers || []).filter(Boolean);
     const safeQuotations = (d.quotations || []).filter(Boolean);
     const safeInvoices = (d.invoices || []).filter(Boolean);
+    const safeEmployees = (d.employees || []).filter(Boolean);
+    const safeLeaves = (d.leaveApplications || []).filter(Boolean);
+    const safePayroll = (d.payrollRecords || d.payroll || []).filter(Boolean);
+    const safePayments = (d.payments || []).filter(Boolean);
+    const safePayables = (d.accountsPayable || []).filter(Boolean);
+    const bankCash = (d.bankAccounts || []).reduce((sum, row) => sum + num(row.balance || row.currentBalance), 0);
     const revenue = safeSales.reduce((sum, s) => sum + num(s.total), 0);
     const discounts = Math.round(revenue * 0.035);
     const returns = Math.round(revenue * 0.018);
@@ -5579,7 +5594,20 @@ const api = {
         cash60: Math.round(revenue * 0.29),
         cash90: Math.round(revenue * 0.41),
         arRisk: safeInvoices.filter(i => num(i.balance) > 0).length,
-        profitability: Math.round((netProfit / Math.max(1, revenue)) * 100)
+        profitability: Math.round((netProfit / Math.max(1, revenue)) * 100),
+        accountsReceivable: Math.round(safeInvoices.reduce((sum, i) => sum + num(i.balance || i.balanceDue || i.outstanding), 0)),
+        accountsPayable: Math.round(safePayables.reduce((sum, p) => sum + num(p.outstandingBalance || p.balance || p.amountDue), 0)),
+        bankCash: Math.round(bankCash),
+        paymentsReceived: Math.round(safePayments.reduce((sum, p) => sum + num(p.amount), 0)),
+        payrollCost: Math.round(safePayroll.reduce((sum, p) => sum + num(p.grossPay || p.basicSalary), 0))
+      },
+      hrIntelligence: {
+        headcount: safeEmployees.length,
+        activeEmployees: safeEmployees.filter(e => String(e.status || 'Active') === 'Active').length,
+        pendingLeaves: safeLeaves.filter(l => l.status === 'Pending').length,
+        approvedLeaveDays: safeLeaves.filter(l => l.status === 'Approved').reduce((sum, l) => sum + num(l.days), 0),
+        applicants: Array.from(new Set(safeLeaves.map(l => l.applicantName || l.applicantEmail).filter(Boolean))).length,
+        payrollRows: safePayroll.length
       },
       aiIntelligence: [
         {
@@ -5597,6 +5625,14 @@ const api = {
           confidence: 'High',
           action: 'Reorder',
           actionPage: 'purchasing'
+        },
+        {
+          question: 'What should management review today?',
+          answer: `${safeLeaves.filter(l => l.status === 'Pending').length} leave approval(s), ${safeInvoices.filter(i => num(i.balance || i.balanceDue || i.outstanding) > 0).length} receivable item(s), and ${lowStock.length} stock risk item(s) need attention.`,
+          records: ['leaveApplications', 'invoices', 'inventory', 'accountsPayable', 'payrollRecords'],
+          confidence: 'High',
+          action: 'Open reports',
+          actionPage: 'reports'
         }
       ],
       warRoom: {
@@ -12299,7 +12335,7 @@ territory: geo,
       });
       if (d.employeeHistory.length > 5000) d.employeeHistory = d.employeeHistory.slice(0, 5000);
       const beforeEmployee = JSON.parse(JSON.stringify(emp));
-      Object.assign(emp, employeeRecord(form), { updatedAt: new Date().toISOString() });
+      Object.assign(emp, employeeRecord(mergedEmployeeForm(emp, form)), { updatedAt: new Date().toISOString() });
       cascadeEmployeeIdentity(d, emp, beforeEmployee, u);
       // Never rewrite locked payroll rows for this employee
       pushHrTimeline(emp.id, 'Employee Updated', `Profile updated for ${emp.name} (past records unchanged)`, u);
@@ -12779,7 +12815,27 @@ territory: geo,
         pendingByEmployee[key][bucket] += num(leave.days);
       }
     }
-    const balances = (d.employees || [])
+    const employeeBalanceSource = (() => {
+      const byKey = new Map();
+      (d.employees || []).forEach(e => {
+        const key = e.id || String(e.email || '').toLowerCase() || e.name;
+        if (key) byKey.set(key, e);
+      });
+      (d.leaveApplications || []).forEach(l => {
+        const key = l.applicantId || String(l.applicantEmail || '').toLowerCase() || l.applicantName;
+        if (!key || byKey.has(key)) return;
+        byKey.set(key, {
+          id: l.applicantId || key,
+          name: l.applicantName || l.applicantEmail || 'Leave applicant',
+          email: l.applicantEmail || '',
+          department: l.department || '',
+          position: l.applicantRole || 'Employee',
+          status: 'Active'
+        });
+      });
+      return Array.from(byKey.values());
+    })();
+    const balances = employeeBalanceSource
       .filter(e => isManager || e.id === u.id || String(e.email || '').toLowerCase() === String(u.email || '').toLowerCase() || e.name === u.name)
       .map(e => {
       const used = approvedByEmployee[e.id] || approvedByEmployee[String(e.email || '').toLowerCase()] || approvedByEmployee[e.name] || {};
