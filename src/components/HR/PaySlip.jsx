@@ -1,6 +1,6 @@
 import React, { useRef, useState, useMemo } from 'react';
 
-const LOGO = 'https://erpftc.vercel.app/logo-ftc.webp';
+const LOGO = 'https://erpftc.vercel.app/logo-ftc.png';
 const GREEN = '#3b8c5a';
 const LIME = '#c8e86c';
 

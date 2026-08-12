@@ -28,9 +28,9 @@ const ROLES = {
 
 /** Page-level access matrix (module ids match frontend nav) */
 const PAGE_ACCESS = {
-  dashboard: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.HR, ROLES.ACCOUNTANT, ROLES.RECEPTION, ROLES.SALES, ROLES.FIELD, ROLES.WAREHOUSE, ROLES.PROCUREMENT, ROLES.CASUAL],
+  dashboard: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.ACCOUNTANT],
   analytics: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.ACCOUNTANT, ROLES.HR, ROLES.SALES],
-  sales: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD, ROLES.RECEPTION],
+  sales: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD],
   purchasing: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.PROCUREMENT, ROLES.ACCOUNTANT, ROLES.WAREHOUSE],
   inventory: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.WAREHOUSE, ROLES.PRODUCTION, ROLES.PROCUREMENT, ROLES.ACCOUNTANT],
   finance: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.ACCOUNTANT],
@@ -442,7 +442,7 @@ async function taxInvoicePdfBuffer({ invoice, items, customer, settings, options
   const GREEN_DARK = '#2e7048';
   const GREEN_TINT = '#e8f3ed';
   let remoteLogoBuffer = null;
-  const configuredLogoUrl = clean(settings.invoice_logo_url || settings.company_logo_url || settings.company_qr_url || 'https://erpftc.vercel.app/logo-ftc.webp');
+  const configuredLogoUrl = clean(settings.invoice_logo_url || settings.company_logo_url || settings.company_qr_url || FARMTRACK_LOGO_URL);
   if (/^https?:\/\//i.test(configuredLogoUrl)) {
     try {
       const res = await fetch(configuredLogoUrl);
@@ -2684,7 +2684,7 @@ async function syncNormalizedSupabase(options = {}) {
   }
 }
 
-const FARMTRACK_LOGO_URL = 'https://erpftc.vercel.app/logo-ftc.webp';
+const FARMTRACK_LOGO_URL = 'https://erpftc.vercel.app/logo-ftc.png';
 const FARMTRACK_PRODUCT_NAMES = [
   'Bactrolure', 'Cue Lure Plug', 'Cera-Lure', 'Torula/Bait Track', 'FCM Lure', 'TutaLure', 'FAW Lure',
   'Duponttrack Lure', 'Helitrack Lure', 'Supa Track Lure', 'Spodotrack Lure', 'Metatrack Plus',
@@ -2847,9 +2847,9 @@ function seed() {
       mpesa_paybill: '',
       mpesa_account: '',
       invoice_footer: 'Thank you for your business.',
-      invoice_logo_url: 'https://erpftc.vercel.app/logo-ftc.webp',
-      company_logo_url: 'https://erpftc.vercel.app/logo-ftc.webp',
-      company_qr_url: 'https://erpftc.vercel.app/logo-ftc.webp',
+      invoice_logo_url: FARMTRACK_LOGO_URL,
+      company_logo_url: FARMTRACK_LOGO_URL,
+      company_qr_url: FARMTRACK_LOGO_URL,
       default_currency: 'KES',
       default_timezone: 'Africa/Nairobi',
       demo_data_disabled: true
@@ -5004,7 +5004,19 @@ function validateRecord(name, row = {}) {
 
 function softDelete(name, id) {
   const x = data()[name].find(r => r.id === id);
-  if (x) x.isDeleted = 'Yes';
+  if (x) {
+    x.isDeleted = 'Yes';
+    x.deletedAt = new Date().toISOString();
+  }
+  return { success: true };
+}
+
+function restoreDeleted(name, id) {
+  const x = (data()[name] || []).find(r => r.id === id);
+  if (x) {
+    x.isDeleted = 'No';
+    x.restoredAt = new Date().toISOString();
+  }
   return { success: true };
 }
 
@@ -7231,8 +7243,8 @@ const api = {
       website: 'https://erpftc.vercel.app',
       business_registration_no: 'FTBIO-2024-KE',
       vat_number: 'VAT-FTB-001',
-      invoice_logo_url: 'https://erpftc.vercel.app/logo-ftc.webp',
-      company_logo_url: 'https://erpftc.vercel.app/logo-ftc.webp',
+      invoice_logo_url: FARMTRACK_LOGO_URL,
+      company_logo_url: FARMTRACK_LOGO_URL,
       invoice_comment: '',
       invoice_terms: 'Goods once sold are not returnable',
       product_default_markup_percent: '35',
@@ -7657,7 +7669,18 @@ const api = {
     }
     return save('customers', u, payload);
   },
-  deleteCustomer: (user, id) => (reqRole(user, ROLES.ADMIN, ROLES.MANAGER), softDelete('customers', id)),
+  deleteCustomer: (user, id) => {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.RECEPTION, ROLES.SALES, ROLES.FIELD);
+    const result = softDelete('customers', id);
+    log(u, `Delete customer ${id}`, 'CRM');
+    return result;
+  },
+  restoreCustomer: (user, id) => {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.RECEPTION, ROLES.SALES, ROLES.FIELD);
+    const result = restoreDeleted('customers', id);
+    log(u, `Restore customer ${id}`, 'CRM');
+    return result;
+  },
   getCustomerHistory: (user, id) => (reqRole(user), { customer: data().customers.find(c => c.id === id), sales: data().sales.filter(s => s.customerId === id), payments: data().payments.filter(p => p.customerId === id), calls: data().calls.filter(c => c.customerId === id) }),
   getSuppliers: user => (reqRole(user), list('suppliers')),
   saveSupplier(user, row) { const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.PROCUREMENT); return save('suppliers', u, row); },
@@ -7710,6 +7733,18 @@ const api = {
     return save('calls', u, payload);
   },
   updateCallStage(user, id, stage) { reqRole(user); const c = data().calls.find(x => x.id === id); if (c) c.stage = stage; return { success: true }; },
+  deleteCall: (user, id) => {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.RECEPTION, ROLES.SALES, ROLES.FIELD);
+    const result = softDelete('calls', id);
+    log(u, `Delete CRM call ${id}`, 'CRM');
+    return result;
+  },
+  restoreCall: (user, id) => {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.RECEPTION, ROLES.SALES, ROLES.FIELD);
+    const result = restoreDeleted('calls', id);
+    log(u, `Restore CRM call ${id}`, 'CRM');
+    return result;
+  },
   getVisits(user, filters = {}) {
     reqRole(user);
     const d = data();
@@ -10574,7 +10609,7 @@ territory: geo,
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.RECEPTION, ROLES.DELIVERY, ROLES.WAREHOUSE, ROLES.EXECUTIVE, ROLES.DEV);
     const d = data();
     const range = periodRange(filters.period || 'Month');
-    const rows = (d.deliveries || []).map(delivery => {
+    const deliveryRows = (d.deliveries || []).map(delivery => {
       const sale = (d.sales || []).find(s => s.id === delivery.saleId || s.saleNo === delivery.saleNo) || {};
       const invoice = (d.invoices || []).find(inv => inv.id === delivery.invoiceId || inv.saleId === delivery.saleId || inv.saleNo === delivery.saleNo) || {};
       const customer = (d.customers || []).find(c => c.id === delivery.customerId || c.name === delivery.customerName || c.id === sale.customerId || c.name === sale.customerName) || {};
@@ -10600,7 +10635,39 @@ territory: geo,
         arrival: delivery.arrivalConfirmed ? 'Arrived' : delivery.status === 'Delivered' ? 'Arrived' : 'Waiting',
         status: delivery.status || 'Pending Delivery'
       };
-    }).filter(row => row.date >= range.startDate && row.date <= range.endDate)
+    });
+    const existingKeys = new Set(deliveryRows.map(row => [row.invoiceNo, row.saleNo, row.invoiceId, row.saleId].filter(Boolean).join('|')).filter(Boolean));
+    const invoiceRows = (d.invoices || []).filter(inv => !['Void', 'Cancelled'].includes(inv.status)).map(inv => {
+      const sale = (d.sales || []).find(s => s.id === inv.saleId || s.saleNo === inv.saleNo) || {};
+      const key = [inv.invNo || inv.invoiceNo, inv.saleNo, inv.id, inv.saleId].filter(Boolean).join('|');
+      if (existingKeys.has(key)) return null;
+      const customer = (d.customers || []).find(c => c.id === inv.customerId || c.name === inv.customerName || c.id === sale.customerId || c.name === sale.customerName) || {};
+      return {
+        id: `DEL-AUTO-${inv.id || inv.invNo || gid()}`,
+        deliveryId: '',
+        invoiceId: inv.id || '',
+        saleId: inv.saleId || sale.id || '',
+        date: dateOnly(inv.deliveryDate || inv.dueDate || inv.date || today()),
+        saleNo: inv.saleNo || sale.saleNo || '',
+        invoiceNo: inv.invNo || inv.invoiceNo || '',
+        customerName: inv.customerName || sale.customerName || customer.name || 'Customer',
+        name: inv.customerName || sale.customerName || customer.name || 'Customer',
+        phone: inv.shipToPhone || customer.phone || sale.phone || '',
+        destination: inv.deliveryAddress || inv.shipToLocation || sale.location || customer.city || '',
+        method: inv.deliveryMethod || 'Company Vehicle',
+        driver: u.role === ROLES.DELIVERY ? u.name : '',
+        vehicle: '',
+        notes: inv.notes || sale.notes || '',
+        noteCount: 0,
+        items: (d.saleItems || []).filter(item => item.saleId === inv.saleId || item.invoiceId === inv.id),
+        productSummary: (d.saleItems || []).filter(item => item.saleId === inv.saleId || item.invoiceId === inv.id).map(i => `${i.productName} x${i.quantity}`).join(', '),
+        confirmed: false,
+        arrival: 'Waiting',
+        status: inv.deliveryStatus || 'Pending Delivery',
+        sourceModule: 'Accounts / Sales Invoice'
+      };
+    }).filter(Boolean);
+    const rows = [...deliveryRows, ...invoiceRows].filter(row => row.date >= range.startDate && row.date <= range.endDate)
       .sort((a, b) => String(b.updatedAt || b.createdAt || b.date).localeCompare(String(a.updatedAt || a.createdAt || a.date)));
     const openStatuses = ['Pending Delivery', 'Picked', 'Ready for Dispatch', 'Dispatched', 'In Transit', 'Arrived'];
     return {

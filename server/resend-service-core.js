@@ -27,7 +27,7 @@ const SENDERS = {
 const PLATFORM_NAME = 'FarmTrack ERP';
 const PLATFORM_URL = 'https://erpftc.vercel.app';
 const FARMTRACK_CONTACT_PHONE = '+254 711 495 522';
-const FARMTRACK_LOGO_URL = `${PLATFORM_URL}/logo-ftc.webp`;
+const FARMTRACK_LOGO_URL = `${PLATFORM_URL}/logo-ftc.png`;
 const ACTION_SECRET = String(
   process.env.LEAVE_ACTION_SECRET ||
   process.env.SUPABASE_SERVICE_KEY ||

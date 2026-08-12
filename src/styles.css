@@ -11151,3 +11151,126 @@ svg.sparkline path {
     grid-template-columns: 1fr !important;
   }
 }
+.crm-card-actions {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+}
+
+.crm-card-grid article {
+  position: relative;
+  padding-right: 50px;
+}
+
+@media (max-width: 760px) {
+  .app-shell,
+  .main-shell,
+  .content-grid {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    margin-left: 0 !important;
+    overflow-x: hidden;
+  }
+
+  .sidebar,
+  aside.sidebar,
+  .sidebar-collapsed .sidebar {
+    width: min(86vw, 320px) !important;
+    max-width: 86vw !important;
+    height: 100dvh !important;
+    transform: translateX(-105%);
+    z-index: 4000 !important;
+    overflow-y: auto;
+  }
+
+  .sidebar.open {
+    transform: translateX(0) !important;
+  }
+
+  .topbar {
+    display: grid !important;
+    grid-template-columns: 40px minmax(0, 1fr) auto !important;
+    align-items: center !important;
+    gap: 6px !important;
+    min-height: 58px !important;
+    padding: 8px 10px !important;
+    overflow: visible !important;
+  }
+
+  .topbar > *,
+  .topbar-actions > * {
+    min-width: 0 !important;
+  }
+
+  .topbar-actions {
+    display: flex !important;
+    justify-content: flex-end !important;
+    align-items: center !important;
+    gap: 4px !important;
+    max-width: 48vw !important;
+    flex-wrap: nowrap !important;
+    overflow: visible !important;
+  }
+
+  .topbar-period {
+    display: none !important;
+  }
+
+  .topbar-email-btn,
+  .topbar-profile-btn,
+  .topbar-brand-chip {
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    padding: 0 !important;
+  }
+
+  .topbar-profile-name,
+  .topbar-email-btn span {
+    display: none !important;
+  }
+
+  .topbar-profile-menu,
+  .notify-dropdown,
+  .email-quick-dropdown,
+  .action-menu-popover {
+    position: fixed !important;
+    top: 62px !important;
+    right: 8px !important;
+    left: auto !important;
+    width: min(92vw, 360px) !important;
+    max-width: calc(100vw - 16px) !important;
+    z-index: 5000 !important;
+  }
+
+  .content-grid {
+    padding: 8px 10px 24px !important;
+  }
+
+  .inline-actions,
+  .settings-tabs,
+  .sales-tabs,
+  .hr-toolbar,
+  .crm-directory-toolbar {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    min-width: 0 !important;
+  }
+
+  .inline-actions button,
+  .settings-tabs button,
+  .sales-tabs button,
+  .hr-toolbar button,
+  .crm-directory-actions button {
+    min-height: 38px !important;
+    white-space: normal !important;
+    flex: 1 1 140px !important;
+  }
+
+  .crm-card-grid article {
+    padding-right: 44px !important;
+  }
+}

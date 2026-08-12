@@ -882,9 +882,35 @@ function AdminOpsWorkspace({ user, setPage }) {
 
 
 function App() {
+  const sessionWeekKey = () => {
+    const d = new Date();
+    const day = d.getDay();
+    const mondayOffset = day === 0 ? -6 : 1 - day;
+    const monday = new Date(d.getFullYear(), d.getMonth(), d.getDate() + mondayOffset);
+    return monday.toISOString().slice(0, 10);
+  };
+  const logoutSavedSession = () => {
+    localStorage.removeItem('farmtrack-user');
+  };
   const [user, setUser] = useState(() => {
     const raw = localStorage.getItem('farmtrack-user');
-    return raw ? JSON.parse(raw) : null;
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed?.sessionWeek && parsed.sessionWeek !== sessionWeekKey()) {
+        logoutSavedSession();
+        return null;
+      }
+      if (!parsed?.sessionWeek) {
+        const upgraded = { ...parsed, sessionWeek: sessionWeekKey() };
+        localStorage.setItem('farmtrack-user', JSON.stringify(upgraded));
+        return upgraded;
+      }
+      return parsed;
+    } catch {
+      logoutSavedSession();
+      return null;
+    }
   });
   const [page, setPageState] = useState(pageFromRoute);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -954,19 +980,20 @@ function App() {
   }, [user?.id]);
 
   if (!user) return <Login onLogin={u => {
-    localStorage.setItem('farmtrack-user', JSON.stringify(u));
-    setUser(u);
+    const sessionUser = { ...u, sessionWeek: sessionWeekKey() };
+    localStorage.setItem('farmtrack-user', JSON.stringify(sessionUser));
+    setUser(sessionUser);
   }} />;
 
   return (
     <div className={`app-shell ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
       <Sidebar page={page} setPage={setPage} open={sidebarOpen} setOpen={setSidebarOpen} collapsed={sidebarCollapsed} setCollapsed={setSidebarCollapsed} user={user} onLogout={() => {
-        localStorage.removeItem('farmtrack-user');
+        logoutSavedSession();
         setUser(null);
       }} />
       <main className="main-shell">
         <Topbar user={user} setPage={setPage} page={page} period={globalPeriod} setPeriod={changeGlobalPeriod} onMenu={() => setSidebarOpen(true)} onToggleSidebar={() => setSidebarCollapsed(v => !v)} sidebarCollapsed={sidebarCollapsed} onNew={() => setInputOpen(true)} onLogout={() => {
-          localStorage.removeItem('farmtrack-user');
+          logoutSavedSession();
           setUser(null);
         }} />
         <div className="content-grid" key={`${page}-${dataVersion}-${globalPeriod}`}>
@@ -1099,7 +1126,7 @@ function Login({ onLogin }) {
       <div className="login-card-v2">
         <aside className="login-hero-v2" aria-hidden="true">
           <div className="login-hero-mark">
-            <img src="/logo-ftc.webp" alt="" />
+            <img src="/logo-ftc.png" alt="" />
           </div>
           <div className="login-hero-copy">
             <p className="login-hero-kicker">FarmTrack BioSciences</p>
@@ -1173,7 +1200,7 @@ function Sidebar({ page, setPage, open, setOpen, collapsed, setCollapsed, user, 
     <>
       <aside className={`sidebar ${open ? 'open' : ''}`}>
         <div className="sidebar-brand">
-          <img src="/logo-ftc.webp" alt="Farmtrack Biosciences logo" className="sidebar-logo-img" />
+          <img src="/logo-ftc.png" alt="Farmtrack Biosciences logo" className="sidebar-logo-img" />
           <div className="sidebar-brand-text">
             <strong>Farmtrack</strong>
             <small>Biosciences</small>
@@ -1192,7 +1219,7 @@ function Sidebar({ page, setPage, open, setOpen, collapsed, setCollapsed, user, 
             const allowed = Array.isArray(user?.allowedPages) ? user.allowedPages : [];
             if (allowed.includes(item.id)) return true;
             // Shared modules
-            if (['dashboard', 'notifications', 'email', 'leaves', 'requisitions'].includes(item.id)) return true;
+            if (['notifications', 'email', 'leaves', 'requisitions'].includes(item.id)) return true;
             return false;
           }).map(item => {
             const Icon = item.icon;
@@ -1363,7 +1390,7 @@ function Topbar({ user, onMenu, onToggleSidebar, sidebarCollapsed, onNew, onLogo
       </div>
       <div className="topbar-actions">
         <div className="topbar-brand-chip" title="Farmtrack Biosciences Ltd">
-          <img src="/logo-ftc.webp" alt="FTC" />
+          <img src="/logo-ftc.png" alt="FTC" />
         </div>
         <button><Sparkles size={20} /></button>
         <div className="notify-dropdown-wrap">
@@ -2407,7 +2434,7 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
               <CRMDeliveryPreview user={user} rows={(data.deliveries || []).slice(0, 6)} onUpdated={() => setRefreshKey(x => x + 1)} compact />
             </Panel>
           </div>
-          <CRMCustomersGrid customers={customers} query={query} setQuery={setQuery} title="Customers and Accounts" onNew={() => setModal('customer')} onSelect={setSelectedCustomer} pageSize={6} />
+          <CRMCustomersGrid customers={customers} query={query} setQuery={setQuery} title="Customers and Accounts" onNew={() => setModal('customer')} onSelect={setSelectedCustomer} onEdit={customer => setModal({ type: 'customer', preset: customer })} onChanged={() => setRefreshKey(x => x + 1)} user={user} pageSize={6} />
         </>
       )}
 
@@ -2432,7 +2459,7 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
             <button type="button" onClick={() => setView('delivery')}><Truck size={16} /> Delivery</button>
           </div>
           <p className="crm-hint">Click any customer card to open the full detail overlay (orders, calls, deliveries, comments).</p>
-          <CRMCustomersGrid customers={customers} query={query} setQuery={setQuery} onNew={() => setModal('customer')} onSelect={setSelectedCustomer} pageSize={10} />
+          <CRMCustomersGrid customers={customers} query={query} setQuery={setQuery} onNew={() => setModal('customer')} onSelect={setSelectedCustomer} onEdit={customer => setModal({ type: 'customer', preset: customer })} onChanged={() => setRefreshKey(x => x + 1)} user={user} pageSize={10} />
         </>
       )}
       {view === 'delivery' && (
@@ -2882,7 +2909,7 @@ function CRMCallsListV2({ user, calls = [], onStageChange, onUpdated, compact = 
   );
 }
 
-function CRMCustomersGrid({ customers, query, setQuery, title = 'Customer Directory', onNew, onSelect, pageSize = 10 }) {
+function CRMCustomersGrid({ customers, query, setQuery, title = 'Customer Directory', onNew, onSelect, onEdit, onChanged, user, pageSize = 10 }) {
   const [page, setPage] = useState(0);
   const totalPages = Math.max(1, Math.ceil(customers.length / pageSize));
   const currentPage = Math.min(page, totalPages - 1);
@@ -2914,6 +2941,18 @@ function CRMCustomersGrid({ customers, query, setQuery, title = 'Customer Direct
             <span className="crm-owner-tag" title="Sales person who owns this customer" style={{ display: 'inline-block', marginTop: 6, background: '#eef2ff', color: '#3730a3', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 700 }}>
               {customer.salesOwner || customer.salesPerson ? `Sales: ${customer.salesOwner || customer.salesPerson}` : 'Sales: Unassigned'}
             </span>
+            <div className="crm-card-actions" onClick={e => e.stopPropagation()}>
+              <ActionMenu
+                summary={customer.name}
+                actions={[
+                  { label: 'Open details', icon: <FileText size={15} />, onClick: () => onSelect?.(customer) },
+                  { label: 'Edit customer', icon: <UserCog size={15} />, onClick: () => onEdit?.(customer) },
+                  customer.isDeleted === 'Yes'
+                    ? { label: 'Restore customer', icon: <CheckCircle2 size={15} />, onClick: async () => { try { await rpc('restoreCustomer', [user, customer.id]); onChanged?.(); } catch (err) { alert(err.message); } } }
+                    : { label: 'Delete customer', icon: <X size={15} />, onClick: async () => { if (!confirm(`Delete ${customer.name}? It can be restored from audit.`)) return; try { await rpc('deleteCustomer', [user, customer.id]); onChanged?.(); } catch (err) { alert(err.message); } } }
+                ]}
+              />
+            </div>
             <mark>{customer.health || customer.status || 'Active'}</mark>
           </article>
         ))}
@@ -3537,7 +3576,7 @@ function CRMInputModal({ user, type, customers, onClose, onSaved, preset }) {
   };
   const [form, setForm] = useState(() => {
     if (preset && type === 'call') return { ...defaults.call, customerId: preset.id || '', customerName: preset.name || '', phone: preset.phone || '', whatsapp: preset.phone || '' };
-    if (preset && type === 'customer') return { ...defaults.customer, name: preset.name || '', email: preset.email || '', phone: preset.phone || '', city: preset.city || '', type: preset.type || 'Farm', salesOwner: preset.salesOwner || preset.salesPerson || user?.name || '' };
+    if (preset && type === 'customer') return { ...defaults.customer, id: preset.id || '', name: preset.name || '', email: preset.email || '', phone: preset.phone || '', city: preset.city || '', type: preset.type || 'Farm', salesOwner: preset.salesOwner || preset.salesPerson || user?.name || '' };
     return defaults[type];
   });
   const [externalText, setExternalText] = useState('');
@@ -11817,7 +11856,11 @@ function LeaveWorkspace({ user, setPage, globalPeriod = 'Month' }) {
   };
   const handleCancel = async (id) => {
     if (!confirm('Cancel this leave request?')) return;
+    if (leaveBusyRef.current) return;
+    leaveBusyRef.current = true;
+    setLeaveBusy(true);
     try { await rpc('cancelLeave', [user, id]); setDetailLeave(null); setRefreshKey(k => k + 1); } catch (err) { alert(err.message); }
+    finally { leaveBusyRef.current = false; setLeaveBusy(false); }
   };
   if (loading) return <Loading title="Leaves" />;
   if (error) return <ErrorState title="Leaves" error={error} />;
@@ -12002,6 +12045,7 @@ function LeaveWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                 <button key={st} type="button" className={statusFilter === st ? 'primary-action' : 'mini-action'} onClick={() => setStatusFilter(st)}>{st}</button>
               ))}
               <button type="button" className="mini-action" onClick={() => downloadRowsFile('my-leave-requests', filteredMine, 'CSV')}><Download size={15} /> CSV</button>
+              <button type="button" className="mini-action" onClick={() => printText('My Leave Requests', filteredMine.map(rowSummary).join('\n\n'))}><Printer size={15} /> PDF</button>
             </div>
           </div>
           <div className="table-wrap">
@@ -12096,7 +12140,7 @@ function LeaveWorkspace({ user, setPage, globalPeriod = 'Month' }) {
       )}
 
       {view === 'balances' && (
-        <Panel title="Leave Balances" action={`${(data.balances || []).length} employees`}>
+        <Panel title="Leave Balances" action={<button type="button" className="mini-action" onClick={() => printText('Leave Balances', (data.balances || []).map(rowSummary).join('\n\n'))}><Printer size={15} /> PDF</button>}>
           <div className="table-wrap">
             <table>
               <thead><tr><th>Employee</th><th>Department</th><th>Annual</th><th>Sick</th><th>Casual</th><th>Maternity</th><th>Paternity</th><th>Compassionate</th><th>Pending</th><th>Actions</th></tr></thead>

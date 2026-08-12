@@ -57,7 +57,7 @@ async function sendEmail({ to, subject, html, text, replyTo, cc, bcc, from } = {
 
 /* ─── Template helpers ─── */
 
-const FARMTRACK_LOGO_URL = process.env.COMPANY_LOGO_URL || 'https://erpftc.vercel.app/logo-ftc.webp';
+const FARMTRACK_LOGO_URL = process.env.COMPANY_LOGO_URL || 'https://erpftc.vercel.app/logo-ftc.png';
 
 function emailShell({ title, subtitle, bodyHtml, actionLabel, actionUrl, footerNote }) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title></head><body style="margin:0;padding:0;background:#f4f6f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#101828;">

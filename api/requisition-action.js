@@ -6,7 +6,7 @@ function htmlPage({ ok, title, message }) {
   <body style="margin:0;background:#f8f9f8;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
     <main style="min-height:100vh;display:grid;place-items:center;padding:24px;">
       <section style="width:min(620px,100%);background:#fff;border:1px solid #e0e8e0;border-radius:16px;box-shadow:0 10px 28px rgba(0,0,0,.06);padding:32px;">
-        <span style="display:inline-block;background:#fff;border:1px solid #e6eee6;border-radius:14px;padding:12px 16px;margin-bottom:24px;"><img src="https://erpftc.vercel.app/logo-ftc.webp" alt="FarmTrack BioSciences" width="170" style="display:block;background:#fff;border:0;outline:none;"></span>
+        <span style="display:inline-block;background:#fff;border:1px solid #e6eee6;border-radius:14px;padding:12px 16px;margin-bottom:24px;"><img src="https://erpftc.vercel.app/logo-ftc.png" alt="FarmTrack BioSciences" width="170" style="display:block;background:#fff;border:0;outline:none;"></span>
         <p style="margin:0 0 8px;color:${color};font-weight:800;text-transform:uppercase;letter-spacing:.08em;font-size:12px;">Requisition Action</p>
         <h1 style="margin:0 0 12px;font-size:28px;line-height:1.15;color:#111827;">${title}</h1>
         <p style="margin:0 0 22px;font-size:15px;line-height:1.6;color:#4b5563;">${message}</p>
