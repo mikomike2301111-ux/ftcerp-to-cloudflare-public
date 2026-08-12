@@ -462,7 +462,7 @@ async function taxInvoicePdfBuffer({ invoice, items, customer, settings, options
     const kesPlain = value => Number(value || 0).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const company = {
       name: settings.company_name || 'Farmtrack Biosciences Ltd',
-      pin: settings.kra_pin || 'P051426669R',
+      pin: FARMTRACK_KRA_PIN,
       addressLine1: settings.company_address_line1 || settings.company_address || 'Nairobi',
       city: settings.company_city || 'Nairobi',
       postal: settings.company_postal || '00100',
@@ -2686,6 +2686,7 @@ async function syncNormalizedSupabase(options = {}) {
 }
 
 const FARMTRACK_LOGO_URL = 'https://erpftc.vercel.app/logo-ftc.png';
+const FARMTRACK_KRA_PIN = 'P051426669R';
 const FARMTRACK_PRODUCT_NAMES = [
   'Bactrolure', 'Cue Lure Plug', 'Cera-Lure', 'Torula/Bait Track', 'FCM Lure', 'TutaLure', 'FAW Lure',
   'Duponttrack Lure', 'Helitrack Lure', 'Supa Track Lure', 'Spodotrack Lure', 'Metatrack Plus',
@@ -2698,11 +2699,14 @@ function ensureFarmtrackCatalogue(state) {
   if (!state) return false;
   let changed = false;
   state.settings = state.settings || {};
-  if (!state.settings.invoice_logo_url || !String(state.settings.invoice_logo_url).includes('logo-ftc') || String(state.settings.invoice_logo_url).includes('FTC-LOGO')) {
+  if (state.settings.invoice_logo_url !== FARMTRACK_LOGO_URL || state.settings.company_logo_url !== FARMTRACK_LOGO_URL || state.settings.company_qr_url !== FARMTRACK_LOGO_URL) {
     state.settings.invoice_logo_url = FARMTRACK_LOGO_URL;
     state.settings.company_logo_url = FARMTRACK_LOGO_URL;
-    state.settings.company_name = 'Farmtrack Biosciences Ltd';
     state.settings.company_qr_url = FARMTRACK_LOGO_URL;
+    changed = true;
+  }
+  if (state.settings.kra_pin !== FARMTRACK_KRA_PIN) {
+    state.settings.kra_pin = FARMTRACK_KRA_PIN;
     changed = true;
   }
   if (!state.settings.company_name) {
@@ -2842,7 +2846,7 @@ function seed() {
       company_address: 'Nairobi, Nairobi 00100 KE',
       company_phone: '+2540711495522',
       company_email: 'farmtrack.consulting@gmail.com',
-      kra_pin: '',
+      kra_pin: FARMTRACK_KRA_PIN,
       bank_name: '',
       bank_account: '',
       mpesa_paybill: '',
@@ -6632,8 +6636,28 @@ const api = {
       .slice(0, 28)
       .map(({ score: _s, ...row }) => row);
   },
-  getSettings: user => (reqRole(user), data().settings),
-  saveSettings(user, settings) { reqRole(user, ROLES.ADMIN, ROLES.MANAGER); data().settings = { ...data().settings, ...settings }; return { success: true }; },
+  getSettings: user => {
+    reqRole(user);
+    ensureFarmtrackCatalogue(data());
+    return data().settings;
+  },
+  saveSettings(user, settings) {
+    reqRole(user, ROLES.ADMIN, ROLES.MANAGER);
+    data().settings = { ...data().settings, ...settings, kra_pin: FARMTRACK_KRA_PIN, invoice_logo_url: FARMTRACK_LOGO_URL, company_logo_url: FARMTRACK_LOGO_URL, company_qr_url: FARMTRACK_LOGO_URL };
+    return { success: true };
+  },
+  forceFarmtrackSettings(user) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.DEV, ROLES.EXECUTIVE);
+    const d = data();
+    ensureFarmtrackCatalogue(d);
+    d.settings.company_name = 'Farmtrack Biosciences Ltd';
+    d.settings.kra_pin = FARMTRACK_KRA_PIN;
+    d.settings.invoice_logo_url = FARMTRACK_LOGO_URL;
+    d.settings.company_logo_url = FARMTRACK_LOGO_URL;
+    d.settings.company_qr_url = FARMTRACK_LOGO_URL;
+    log(u, 'Force Farmtrack settings', 'Settings', FARMTRACK_KRA_PIN);
+    return { success: true, settings: d.settings };
+  },
   purgeDemoData(user) {
     const u = reqRole(user, ROLES.ADMIN);
     const d = data();
@@ -7235,6 +7259,7 @@ const api = {
 
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER);
     const d = data();
+    ensureFarmtrackCatalogue(d);
     const settings = {
       default_currency: 'KSh',
       default_language: 'English',
@@ -7254,6 +7279,10 @@ const api = {
       product_default_unit: 'unit',
       ...d.settings
     };
+    settings.kra_pin = FARMTRACK_KRA_PIN;
+    settings.invoice_logo_url = FARMTRACK_LOGO_URL;
+    settings.company_logo_url = FARMTRACK_LOGO_URL;
+    settings.company_qr_url = FARMTRACK_LOGO_URL;
     const roles = Object.values(ROLES).concat(['Finance Manager', 'Sales Manager', 'Inventory Manager', 'Production Manager', 'HR Manager', 'CRM Officer', 'Auditor', 'Viewer', 'Custom Role']);
     const modules = ['Dashboard', 'Analytics', 'Sales', 'Purchases', 'Inventory', 'Finance', 'Manufacturing', 'CRM', 'Reports', 'Settings'];
     const permissionActions = ['View', 'Create', 'Edit', 'Approve', 'Export', 'Delete', 'Manage'];
@@ -7418,6 +7447,7 @@ const api = {
     const d = data();
     if (key === 'company' || key === 'products' || key === 'security') {
       d.settings = { ...d.settings, ...payload };
+      ensureFarmtrackCatalogue(d);
     } else if (key === 'notifications' && Array.isArray(payload.items)) {
       d.settingsAdmin ||= {};
       d.settingsAdmin.notifications = { items: payload.items, updatedAt: new Date().toISOString(), updatedBy: u.name };
@@ -7432,6 +7462,7 @@ const api = {
     }
     emitBusinessEvent(u, `settings.${key}.updated`, 'settings', key, payload);
     log(u, 'Update Settings', 'Settings', key);
+    ensureFarmtrackCatalogue(d);
     return { success: true, settings: d.settings, section: key };
   },
   saveSettingsUser(user, payload = {}) {
