@@ -26,6 +26,8 @@ const SENDERS = {
 
 const PLATFORM_NAME = 'FarmTrack ERP';
 const PLATFORM_URL = 'https://erpftc.vercel.app';
+const FARMTRACK_CONTACT_PHONE = '+254 711 495 522';
+const FARMTRACK_LOGO_URL = `${PLATFORM_URL}/logo-ftc.webp`;
 const ACTION_SECRET = String(
   process.env.LEAVE_ACTION_SECRET ||
   process.env.SUPABASE_SERVICE_KEY ||
@@ -105,6 +107,7 @@ async function logEmail({ to, from, subject, module, referenceType, referenceId,
  * Update email tracking status (opens, clicks)
  */
 async function updateEmailTracking(trackingId, updates) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY || !trackingId) return;
   try {
     const url = `${SUPABASE_URL}/rest/v1/email_tracking?id=eq.${trackingId}`;
     await fetch(url, {
@@ -189,7 +192,7 @@ async function sendRawEmail({ to, subject, html, text, replyTo, cc, bcc, from, a
 /**
  * Complete email shell template with tracking pixel and link wrapping
  */
-function emailShell({ title, subtitle, bodyHtml, actionLabel, actionUrl, actions = [], footerNote, trackingPixelUrl, trackingId, category, recipientName = 'Team', senderName = 'FarmTrack ERP', senderRole = 'ERP Notification', senderPhone = '+254 700 000 000', senderEmail = 'erpintergration@gmail.com', profileImageUrl = 'https://erpftc.vercel.app/logo-ftc.webp' }) {
+function emailShell({ title, subtitle, bodyHtml, actionLabel, actionUrl, actions = [], footerNote, trackingPixelUrl, trackingId, category, recipientName = 'Team', senderName = 'FarmTrack ERP', senderRole = 'ERP Notification', senderPhone = FARMTRACK_CONTACT_PHONE, senderEmail = 'erpintergration@gmail.com', profileImageUrl = FARMTRACK_LOGO_URL }) {
   const wrappedActionUrl = actionUrl && trackingId
     ? PLATFORM_URL + '/api/email-track/click?tracking_id=' + trackingId + '&redirect=' + encodeURIComponent(actionUrl)
     : actionUrl;
@@ -201,7 +204,7 @@ function emailShell({ title, subtitle, bodyHtml, actionLabel, actionUrl, actions
   })).filter(action => action.label && action.url);
   const trackingPixel = trackingPixelUrl ? '<img src="' + trackingPixelUrl + '" alt="" width="1" height="1" style="display:none;" />' : '';
   const c = category || 'ERP Notification';
-  const logoUrl = 'https://erpftc.vercel.app/logo-ftc.webp';
+  const logoUrl = FARMTRACK_LOGO_URL;
   const actionButtons = wrappedActions.length
     ? '<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:24px 0 8px;"><tr>' + wrappedActions.map(action => {
         const bg = action.tone === 'danger' ? '#dc2626' : action.tone === 'light' ? '#ffffff' : '#078236';
@@ -215,7 +218,7 @@ function emailShell({ title, subtitle, bodyHtml, actionLabel, actionUrl, actions
     + '<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">' + title + ' - FarmTrack BioSciences ERP Notification</div>'
     + '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f3f7f3;"><tr><td style="padding:32px 16px;">'
     + '<table role="presentation" width="680" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #dde8dd;border-radius:16px;overflow:hidden;box-shadow:0 2px 12px rgba(0,80,0,.07);">'
-    + '<tr><td style="padding:26px 36px 0;background:#ffffff;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td style="vertical-align:middle;"><span style="display:inline-block;background:#ffffff;border:1px solid #edf2ed;border-radius:12px;padding:10px 14px;"><img src="' + logoUrl + '" width="190" alt="FarmTrack BioSciences" style="display:block;height:auto;max-width:190px;background:#ffffff;"></span></td><td style="vertical-align:middle;text-align:right;"><span style="font-size:11px;color:#078236;letter-spacing:.04em;font-weight:800;text-transform:uppercase;">' + c + '</span></td></tr></table></td></tr>'
+    + '<tr><td style="padding:26px 36px 0;background:#ffffff;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td style="vertical-align:middle;"><span style="display:inline-block;background:#ffffff;border:1px solid #edf2ed;border-radius:12px;padding:12px 16px;"><img src="' + logoUrl + '" width="190" alt="FarmTrack BioSciences" style="display:block;height:auto;max-width:190px;background:#ffffff;border:0;outline:none;text-decoration:none;"></span></td><td style="vertical-align:middle;text-align:right;"><span style="font-size:11px;color:#078236;letter-spacing:.04em;font-weight:800;text-transform:uppercase;">' + c + '</span></td></tr></table></td></tr>'
     + '<tr><td style="padding:18px 36px 0;"><div style="height:3px;background:linear-gradient(90deg,#078236 0%,#078236 60%,#078236 100%);border-radius:3px;"></div></td></tr>'
     + '<tr><td style="padding:28px 36px 8px;"><p style="margin:0 0 6px;font-size:11px;color:#688268;letter-spacing:.06em;font-weight:800;text-transform:uppercase;">' + c + '</p><p style="margin:0 0 12px;font-size:16px;line-height:26px;color:#111111;font-weight:700;">Hi ' + recipientName + ',</p>'
     + (subtitle ? '<p style="margin:0 0 22px;font-size:14px;line-height:25px;color:#555555;">' + subtitle + '</p>' : '')
@@ -225,7 +228,7 @@ function emailShell({ title, subtitle, bodyHtml, actionLabel, actionUrl, actions
     + '<p style="margin:22px 0 4px;font-size:14px;line-height:25px;color:#555555;">Best regards,</p><p style="margin:0 0 28px;font-size:15px;line-height:25px;color:#111111;font-weight:700;">' + senderName + '</p></td></tr>'
     + '<tr><td style="padding:0 36px;"><div style="height:1px;background:#e4ede4;"></div></td></tr><tr><td style="padding:0;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr>'
     + '<td style="padding:26px 24px 26px 36px;vertical-align:top;width:58%;"><p style="margin:0 0 2px;font-size:24px;line-height:30px;color:#111111;font-weight:800;letter-spacing:-.02em;">' + senderName + '</p><p style="margin:0 0 12px;font-size:12px;color:#666666;font-weight:500;">FarmTrack BioSciences</p><span style="display:inline-block;background:#078236;color:#ffffff;border-radius:999px;padding:5px 14px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;margin-bottom:14px;">' + senderRole + '</span><p style="margin:6px 0 0;font-size:13px;line-height:22px;color:#333333;">Phone: ' + senderPhone + '<br>Email: <a href="mailto:' + senderEmail + '" style="color:#078236;text-decoration:none;font-weight:700;">' + senderEmail + '</a><br>Web: <a href="https://www.farmtrack.co.ke" style="color:#078236;text-decoration:none;font-weight:700;">www.farmtrack.co.ke</a><br>Njiru, Nairobi, Kenya</p><p style="margin:14px 0 0;font-size:11px;color:#078236;font-style:italic;line-height:18px;">Organic Biopesticides &amp; Sustainable Agriculture Solutions</p></td>'
-    + '<td style="padding:20px 20px;background:#ffffff;vertical-align:middle;text-align:center;width:42%;"><span style="display:inline-block;background:#ffffff;border:1px solid #edf2ed;border-radius:14px;padding:12px;"><img src="' + (profileImageUrl || logoUrl) + '" width="150" alt="FarmTrack" style="display:block;margin:0 auto;height:auto;max-width:150px;background:#ffffff;"></span></td></tr></table></td></tr>'
+    + '<td style="padding:20px 20px;background:#ffffff;vertical-align:middle;text-align:center;width:42%;"><span style="display:inline-block;background:#ffffff;border:1px solid #edf2ed;border-radius:14px;padding:14px;"><img src="' + (profileImageUrl || logoUrl) + '" width="150" alt="FarmTrack" style="display:block;margin:0 auto;height:auto;max-width:150px;background:#ffffff;border:0;outline:none;text-decoration:none;"></span></td></tr></table></td></tr>'
     + '<tr><td style="height:5px;background:linear-gradient(90deg,#078236 0%,#078236 50%,#078236 100%);"></td></tr></table>'
     + '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:680px;margin:14px auto 0;"><tr><td style="text-align:center;padding:0 16px;"><p style="margin:0;font-size:11px;color:#999999;line-height:20px;">' + (footerNote || 'This is an automated notification from FarmTrack BioSciences ERP System.') + '<br><a href="' + PLATFORM_URL + '" style="color:#078236;text-decoration:none;">' + PLATFORM_URL + '</a> - <a href="' + PLATFORM_URL + '/email-preferences?tracking_id=' + (trackingId || '') + '" style="color:#078236;text-decoration:none;">Manage preferences</a></p></td></tr></table>'
     + '</td></tr></table>' + trackingPixel + '</body></html>';
@@ -324,16 +327,14 @@ async function sendWithTracking({ to, from, subject, html, text, replyTo, cc, bc
 // =============================================
 
 async function sendLeaveRequestSubmitted({ to, employeeName, department, leaveType, startDate, endDate, days, reason, leaveId, managerEmail }) {
-  const primaryManagerEmail = String(managerEmail || '').split(',').map(s => s.trim()).filter(Boolean)[0] || '';
+  const managerEmails = Array.from(new Set(String(managerEmail || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)));
   const expiresAt = Date.now() + (14 * 24 * 60 * 60 * 1000);
-  const approveUrl = signedLeaveActionUrl({ leaveId, action: 'approve', email: primaryManagerEmail, exp: expiresAt });
-  const rejectUrl = signedLeaveActionUrl({ leaveId, action: 'reject', email: primaryManagerEmail, exp: expiresAt });
   const bodyHtml = `
     <table width="100%" cellpadding="0" cellspacing="0" style="margin:12px 0 16px;">
       <thead>${tableHead(['Detail', 'Information'])}</thead>
       <tbody>
         ${row(['Employee', `<strong>${employeeName}</strong>`])}
-        ${row(['Department', department || '—'])}
+        ${row(['Department', department || '-'])}
         ${row(['Leave Type', `<strong>${leaveType}</strong>`])}
         ${row(['Start Date', startDate])}
         ${row(['End Date', endDate])}
@@ -343,43 +344,23 @@ async function sendLeaveRequestSubmitted({ to, employeeName, department, leaveTy
     </table>
     <p style="font-size:13px;color:#475467;margin:12px 0 0;">Please review and take action on this leave request.</p>`;
 
-  // Send confirmation to employee
   const employeeHtml = emailShell({
-    title: 'Leave Request Submitted ✓',
+    title: 'Leave Request Submitted',
     subtitle: `Hi ${employeeName}, your ${leaveType} leave request has been submitted for approval.`,
     bodyHtml: `<table width="100%" cellpadding="0" cellspacing="0" style="margin:12px 0 16px;">
       ${row(['Leave Type', `<strong>${leaveType}</strong>`])}
-      ${row(['Duration', `${startDate} → ${endDate} (${days} day${days === 1 ? '' : 's'})`])}
+      ${row(['Duration', `${startDate} to ${endDate} (${days} day${days === 1 ? '' : 's'})`])}
       ${row(['Status', '<strong style="color:#175cd3;">Pending Approval</strong>'])}
     </table>`,
+    profileImageUrl: FARMTRACK_LOGO_URL,
     footerNote: 'You will be notified once your leave is approved or rejected.'
   });
 
-  // Send notification to manager
-  const managerHtml = emailShell({
-    title: `Leave Approval Required — ${employeeName}`,
-    subtitle: `${employeeName} (${department || '—'}) is requesting ${leaveType} leave.`,
-    bodyHtml,
-    category: 'Leave Application',
-    recipientName: 'HR / Manager',
-    senderName: employeeName || 'FarmTrack ERP',
-    senderRole: department || 'Employee',
-    senderEmail: to,
-    actions: [
-      { label: 'Approve', url: approveUrl },
-      { label: 'Reject', url: rejectUrl, tone: 'danger' },
-      { label: 'View in ERP', url: PLATFORM_URL + '/#/leaves/approvals', tone: 'light' }
-    ],
-    footerNote: 'This request can be approved from email or from FarmTrack ERP. The secure email action link expires in 14 days.'
-  });
-
   const results = [];
-  
-  // Send to employee
   const empResult = await sendWithTracking({
     to,
     from: SENDERS.leave,
-    subject: `Leave Request Submitted — ${leaveType} (${days}d)`,
+    subject: `Leave Request Submitted - ${leaveType} (${days}d)`,
     html: employeeHtml,
     module: 'leaves',
     referenceType: 'leave',
@@ -387,12 +368,31 @@ async function sendLeaveRequestSubmitted({ to, employeeName, department, leaveTy
   });
   results.push(empResult);
 
-  // Send to manager(s)
-  if (managerEmail) {
+  for (const approverEmail of managerEmails) {
+    const approveUrl = signedLeaveActionUrl({ leaveId, action: 'approve', email: approverEmail, exp: expiresAt });
+    const rejectUrl = signedLeaveActionUrl({ leaveId, action: 'reject', email: approverEmail, exp: expiresAt });
+    const isBoss = approverEmail === 'smuchemi@gmail.com';
+    const managerHtml = emailShell({
+      title: `Leave Approval Required - ${employeeName}`,
+      subtitle: `${employeeName} (${department || '-'}) is requesting ${leaveType} leave.`,
+      bodyHtml,
+      category: 'Leave Application',
+      recipientName: isBoss ? 'Samuel Muchemi' : 'HR / Manager',
+      senderName: employeeName || 'FarmTrack ERP',
+      senderRole: department || 'Employee',
+      senderEmail: to,
+      profileImageUrl: FARMTRACK_LOGO_URL,
+      actions: [
+        { label: 'Approve', url: approveUrl },
+        { label: 'Reject', url: rejectUrl, tone: 'danger' },
+        { label: 'View in ERP', url: PLATFORM_URL + '/#/leaves/approvals', tone: 'light' }
+      ],
+      footerNote: 'This request can be approved from email or from FarmTrack ERP. The secure email action link expires in 14 days.'
+    });
     const mgrResult = await sendWithTracking({
-      to: managerEmail,
+      to: approverEmail,
       from: SENDERS.leave,
-      subject: `Leave Approval Required — ${employeeName} (${leaveType})`,
+      subject: `Leave Approval Required - ${employeeName} (${leaveType})`,
       html: managerHtml,
       module: 'leaves',
       referenceType: 'leave',
@@ -402,7 +402,7 @@ async function sendLeaveRequestSubmitted({ to, employeeName, department, leaveTy
     results.push(mgrResult);
   }
 
-  return results;
+  return { sent: results.some(r => r && r.sent !== false), results };
 }
 
 async function sendLeaveApproved({ to, employeeName, leaveType, startDate, endDate, days, leaveId, approvedBy }) {

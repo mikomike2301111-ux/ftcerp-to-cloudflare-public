@@ -442,7 +442,7 @@ async function taxInvoicePdfBuffer({ invoice, items, customer, settings, options
   const GREEN_DARK = '#2e7048';
   const GREEN_TINT = '#e8f3ed';
   let remoteLogoBuffer = null;
-  const configuredLogoUrl = clean(settings.invoice_logo_url || settings.company_logo_url || settings.company_qr_url || 'https://i.postimg.cc/CM9BdKbH/logo-ftc.png');
+  const configuredLogoUrl = clean(settings.invoice_logo_url || settings.company_logo_url || settings.company_qr_url || 'https://erpftc.vercel.app/logo-ftc.webp');
   if (/^https?:\/\//i.test(configuredLogoUrl)) {
     try {
       const res = await fetch(configuredLogoUrl);
@@ -2684,7 +2684,7 @@ async function syncNormalizedSupabase(options = {}) {
   }
 }
 
-const FARMTRACK_LOGO_URL = 'https://i.postimg.cc/CM9BdKbH/logo-ftc.png';
+const FARMTRACK_LOGO_URL = 'https://erpftc.vercel.app/logo-ftc.webp';
 const FARMTRACK_PRODUCT_NAMES = [
   'Bactrolure', 'Cue Lure Plug', 'Cera-Lure', 'Torula/Bait Track', 'FCM Lure', 'TutaLure', 'FAW Lure',
   'Duponttrack Lure', 'Helitrack Lure', 'Supa Track Lure', 'Spodotrack Lure', 'Metatrack Plus',
@@ -2847,9 +2847,9 @@ function seed() {
       mpesa_paybill: '',
       mpesa_account: '',
       invoice_footer: 'Thank you for your business.',
-      invoice_logo_url: 'https://i.postimg.cc/CM9BdKbH/logo-ftc.png',
-      company_logo_url: 'https://i.postimg.cc/CM9BdKbH/logo-ftc.png',
-      company_qr_url: 'https://i.postimg.cc/CM9BdKbH/logo-ftc.png',
+      invoice_logo_url: 'https://erpftc.vercel.app/logo-ftc.webp',
+      company_logo_url: 'https://erpftc.vercel.app/logo-ftc.webp',
+      company_qr_url: 'https://erpftc.vercel.app/logo-ftc.webp',
       default_currency: 'KES',
       default_timezone: 'Africa/Nairobi',
       demo_data_disabled: true
@@ -7231,8 +7231,8 @@ const api = {
       website: 'https://erpftc.vercel.app',
       business_registration_no: 'FTBIO-2024-KE',
       vat_number: 'VAT-FTB-001',
-      invoice_logo_url: 'https://i.postimg.cc/CM9BdKbH/logo-ftc.png',
-      company_logo_url: 'https://i.postimg.cc/CM9BdKbH/logo-ftc.png',
+      invoice_logo_url: 'https://erpftc.vercel.app/logo-ftc.webp',
+      company_logo_url: 'https://erpftc.vercel.app/logo-ftc.webp',
       invoice_comment: '',
       invoice_terms: 'Goods once sold are not returnable',
       product_default_markup_percent: '35',
@@ -13089,24 +13089,22 @@ territory: geo,
       sourceLabel: `${lt.name} · ${u.name}`,
       audienceRoles: [ROLES.HR, ROLES.EXECUTIVE, ROLES.ADMIN, ROLES.DEV]
     });
-    // Email HR @farmtrack + all HR/approver users
-    const hrEmails = ['hr@farmtrack.co.ke'];
-    for (const to of hrEmails) {
-      deliverEmail(u, 'leave_approval_request', to, () => EmailService.sendLeaveRequestSubmitted({
-        to,
-        employeeName: u.name,
-        department: application.department,
-        leaveType: lt.name,
-        startDate: start,
-        endDate: end,
-        days,
-        reason: application.reason,
-        leaveId: application.id,
-        managerEmail: to
-      }), { subject: `Leave approval needed — ${u.name} (${lt.name})`, relatedModule: 'leaves', relatedId: application.id }).catch(() => {});
-    }
-    log(u, `Apply for ${lt.name} leave`, 'Leaves', `${days} days · ${u.role}`);
-    return { success: true, application, notified: hrEmails };
+    const approverEmails = Array.from(new Set(['hr@farmtrack.co.ke', 'smuchemi@gmail.com'].map(clean).filter(Boolean)));
+    const applicantTo = clean(application.notificationEmail || application.applicantEmail || u.email);
+    deliverEmail(u, 'leave_approval_request', [applicantTo, ...approverEmails], () => EmailService.sendLeaveRequestSubmitted({
+      to: applicantTo,
+      employeeName: u.name,
+      department: application.department,
+      leaveType: lt.name,
+      startDate: start,
+      endDate: end,
+      days,
+      reason: application.reason,
+      leaveId: application.id,
+      managerEmail: approverEmails.join(',')
+    }), { subject: `Leave approval needed - ${u.name} (${lt.name})`, relatedModule: 'leaves', relatedId: application.id }).catch(() => {});
+    log(u, `Apply for ${lt.name} leave`, 'Leaves', `${days} days - ${u.role}`);
+    return { success: true, application, notified: approverEmails, applicantNotified: applicantTo };
   },
   async decideLeave(user, id, decision = {}) {
     // Boss / Executive / HR / Admin
