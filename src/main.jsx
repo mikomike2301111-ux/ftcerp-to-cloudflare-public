@@ -5789,7 +5789,7 @@ function SalesTrendChart({ data, metric }) {
           <XAxis dataKey="month" tick={{ fill: '#667085', fontSize: 12 }} />
           <YAxis tick={{ fill: '#667085', fontSize: 12 }} />
           <Tooltip formatter={value => typeof value === 'number' && value > 999 ? currency(value) : value} />
-          <Line type="monotone" dataKey={metric} stroke="#050505" strokeWidth={3} dot={{ r: 4 }} />
+          <Line type="monotone" dataKey={metric} stroke="#050505" strokeWidth={3} dot={{ r: 4 }} isAnimationActive={false} />
         </ReLineChart>
       </ResponsiveContainer>
     </div>
@@ -5808,10 +5808,10 @@ function MultiMetricTrendChart({ data = [], metrics = [], compareData, compareLa
           <YAxis tick={{ fill: '#667085', fontSize: 12 }} />
           <Tooltip formatter={value => typeof value === 'number' && Math.abs(value) > 999 ? currency(value) : value} />
           {metrics.map((metric, index) => (
-            <Line key={metric} type="monotone" dataKey={metric} stroke={colors[index % colors.length]} strokeWidth={2.4} dot={{ r: 3 }} />
+            <Line key={metric} type="monotone" dataKey={metric} stroke={colors[index % colors.length]} strokeWidth={2.4} dot={{ r: 3 }} isAnimationActive={false} />
           ))}
           {compareData && compareLabel && metrics.map((metric, index) => (
-            <Line key={'c-' + metric} type="monotone" dataKey={'prev_' + metric} stroke={compareColors[index % compareColors.length]} strokeWidth={1.8} dot={{ r: 2 }} strokeDasharray="5 5" />
+            <Line key={'c-' + metric} type="monotone" dataKey={'prev_' + metric} stroke={compareColors[index % compareColors.length]} strokeWidth={1.8} dot={{ r: 2 }} strokeDasharray="5 5" isAnimationActive={false} />
           ))}
         </ReLineChart>
       </ResponsiveContainer>
@@ -6040,9 +6040,9 @@ function ActionMenu({ actions = [], align = 'right', summary, quickActions = 0 }
 
   if (!usable.length) return null;
   return (
-    <div className={`row-action-menu ${open ? 'is-open' : ''}`} ref={ref} onClick={e => e.stopPropagation()}>
+    <div className={`row-action-menu ${open ? 'is-open' : ''}`} ref={ref} onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
       {quick.map(action => (
-        <button key={action.label} type="button" className="row-quick-action" disabled={action.disabled} onClick={async e => { e.stopPropagation(); await action.onClick?.(); }} title={action.label}>
+        <button key={action.label} type="button" className="row-quick-action" disabled={action.disabled} onMouseDown={e => e.stopPropagation()} onClick={async e => { e.stopPropagation(); await action.onClick?.(); }} title={action.label}>
           {action.icon}
         </button>
       ))}
@@ -6054,6 +6054,10 @@ function ActionMenu({ actions = [], align = 'right', summary, quickActions = 0 }
             className="row-action-trigger"
             aria-haspopup="menu"
             aria-expanded={open}
+            onMouseDown={e => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
             onClick={e => {
               e.preventDefault();
               e.stopPropagation();
@@ -6069,6 +6073,7 @@ function ActionMenu({ actions = [], align = 'right', summary, quickActions = 0 }
               ref={panelRef}
               className={`row-action-panel fixed-panel ${align}`}
               role="menu"
+              onMouseDown={e => e.stopPropagation()}
               style={{
                 position: 'fixed',
                 top: coords.top,
@@ -6086,6 +6091,7 @@ function ActionMenu({ actions = [], align = 'right', summary, quickActions = 0 }
                   role="menuitem"
                   disabled={action.disabled}
                   className={focusedIndex === idx ? 'focused' : ''}
+                  onMouseDown={event => event.stopPropagation()}
                   onClick={async event => {
                     event.preventDefault();
                     event.stopPropagation();
@@ -7245,7 +7251,7 @@ function AccountsWorkspace({ user, setPage, globalPeriod }) {
       </div>
       <FinanceHealthStrip data={data || {}} />
       <div className="accounts-command-strip">
-        <button onClick={() => setOrderOpen(true)}><Plus size={16} /> Create Order</button>
+        <button onClick={() => setOrderOpen(true)}><Plus size={16} /> Invoice</button>
         <button onClick={() => setPaymentOpen(true)}><CheckCircle2 size={16} /> Confirm Paid</button>
         <button onClick={() => setExpenseOpen(true)}><ReceiptText size={16} /> Balance Expense</button>
         <button type="button" className="primary-action" onClick={() => setNonPoOpen(true)}><FileText size={16} /> Non-PO Invoice</button>
@@ -7311,6 +7317,7 @@ function AccountsWorkspace({ user, setPage, globalPeriod }) {
                 onPayment={() => setPaymentOpen(true)}
                 onReports={() => setView('reports')}
                 onAudit={() => setView('reconciliation')}
+                onProduct={() => setPage('inventory')}
               />
             </Panel>
             <Panel className="span-12" title="Accounts Action Board"><SimpleTable rows={riskRows} columns={['area', 'amount', 'focus', 'action']} /></Panel>
@@ -7328,6 +7335,16 @@ function AccountsWorkspace({ user, setPage, globalPeriod }) {
             </Panel>
             <Panel className="span-6" title="Customer Credit Base" action="Top balances"><SimpleTable rows={data.customerFinance || []} columns={['customerName', 'paymentTerms', 'creditLimit', 'totalPurchases', 'dueBalance', 'overdueBalance', 'riskStatus']} /></Panel>
             <Panel className="span-6" title="Payment Terms Exposure" action="Due risks"><SimpleTable rows={data.paymentTermsSummary || []} columns={['paymentTerms', 'customers', 'dueBalance', 'overdueBalance']} /></Panel>
+            <Panel className="span-12" title="Product / Service Price List" action={<button className="mini-action" onClick={() => setPage('inventory')}><Plus size={15} /> Add product/service</button>}>
+              <SimpleTable rows={(data.products || []).map(product => ({
+                sku: product.sku,
+                name: product.name,
+                category: product.category,
+                sellingPrice: num(product.sellingPrice || product.price),
+                costPrice: num(product.costPrice || product.cost),
+                stock: (data.inventory || []).filter(item => item.productId === product.id || item.productName === product.name).reduce((sum, item) => sum + num(item.quantity), 0)
+              }))} columns={['sku', 'name', 'category', 'sellingPrice', 'costPrice', 'stock']} />
+            </Panel>
             <Panel className="span-6" title="Receivables Risk" action={<button className="mini-action" onClick={() => downloadRowsFile('accounts-receivable', data.receivables, 'CSV')}><Download size={15} /> CSV</button>}><InvoiceDocumentTable user={user} rows={data.receivables} columns={['invNo', 'customerName', 'balance', 'agingBucket', 'risk', 'status']} onChanged={refresh} /></Panel>
             <Panel className="span-6" title="Payables Risk" action={<button className="mini-action" onClick={() => downloadRowsFile('accounts-payable', data.payables, 'CSV')}><Download size={15} /> CSV</button>}><SimpleTable rows={data.payables} columns={['invoiceNo', 'supplierName', 'outstandingBalance', 'agingBucket', 'risk', 'paymentStatus']} /></Panel>
             <Panel className="span-6" title="Trial Balance Snapshot"><div className="metric-stack">
@@ -8100,7 +8117,7 @@ function FinanceQuickActions({ onJournal, onExpense, onPayment }) {
   );
 }
 
-function AccountsQuickActions({ onOrder, onJournal, onExpense, onAccount, onBank, onPayment, onReports, onAudit }) {
+function AccountsQuickActions({ onOrder, onJournal, onExpense, onAccount, onBank, onPayment, onReports, onAudit, onProduct }) {
   const groups = [
     ['Customers', [
       ['Invoice', onOrder], ['Receive payment', onPayment], ['Statement', onReports], ['Estimate', onOrder], ['Sales order', onOrder],
@@ -8112,13 +8129,13 @@ function AccountsQuickActions({ onOrder, onJournal, onExpense, onAccount, onBank
     ]],
     ['Team', [['Single time activity', onReports], ['Weekly timesheet', onReports]]],
     ['Other', [
-      ['Bank deposit', onBank], ['Transfer', onBank], ['Create Bill', onJournal], ['Inventory adjustment', onReports],
-      ['Pay down credit card', onPayment], ['Add product/service', onReports]
+      ['Task', onReports], ['Bank deposit', onBank], ['Transfer', onBank], ['Journal entry', onJournal], ['Inventory adjustment', onReports],
+      ['Pay down credit card', onPayment], ['Add product/service', onProduct || onReports]
     ]]
   ];
   return (
     <div className="finance-action-stack">
-      <button onClick={onOrder}><ShoppingCart size={17} /><span>Create customer order</span><em>Creates order, invoice, delivery, and CRM purchase record</em></button>
+      <button onClick={onOrder}><ShoppingCart size={17} /><span>Invoice</span><em>Creates invoice, delivery, and CRM purchase record</em></button>
       <button onClick={onJournal}><Plus size={17} /><span>Post journal</span><em>Balanced debit and credit entry</em></button>
       <button onClick={onExpense}><ReceiptText size={17} /><span>Record expense</span><em>Subtract operating cost and post finance movement</em></button>
       <button onClick={onAccount}><Landmark size={17} /><span>New account</span><em>Add chart-of-accounts control account</em></button>
@@ -9098,7 +9115,7 @@ function CustomerStatementModal({ user, customers = [], onClose, onSaved }) {
               <thead><tr><th>Customer</th><th>Phone</th><th>Balance</th><th></th></tr></thead>
               <tbody>
                 {sorted.slice(0, 40).map(c => {
-                  const id = c.customerId || c.id;
+                  const id = c.customerId || c.id || c.customerName || c.name;
                   const name = c.customerName || c.name;
                   return (
                     <tr key={id} className={customerId === id ? 'row-selected' : ''} style={{ cursor: 'pointer' }} onClick={() => generate(id)}>

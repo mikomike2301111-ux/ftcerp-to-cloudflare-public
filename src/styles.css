@@ -10143,6 +10143,53 @@ aside.sidebar {
 }
 .topbar-brand-chip { width: 42px !important; height: 42px !important; }
 .topbar-brand-chip img { padding: 2px !important; }
+
+/* Accounts/Sales/Delivery mobile stability: keep top controls usable without overlaps. */
+@media (max-width: 700px) {
+  .row-action-panel.fixed-panel {
+    position: fixed !important;
+    min-width: min(220px, calc(100vw - 16px)) !important;
+    max-width: calc(100vw - 16px) !important;
+    z-index: 12000 !important;
+  }
+
+  .sales-workspace .accounts-command-strip,
+  .delivery-workspace .accounts-command-strip,
+  .sales-workspace .inline-actions,
+  .delivery-workspace .inline-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    overflow: visible !important;
+  }
+
+  .sales-workspace .accounts-command-strip button,
+  .delivery-workspace .accounts-command-strip button,
+  .sales-workspace .inline-actions button,
+  .delivery-workspace .inline-actions button {
+    width: 100% !important;
+    min-width: 0 !important;
+    justify-content: center !important;
+    white-space: normal !important;
+    line-height: 1.15 !important;
+    padding-inline: 10px !important;
+  }
+
+  .sales-workspace .accounts-command-strip button:nth-of-type(n+7),
+  .delivery-workspace .accounts-command-strip button:nth-of-type(n+7) {
+    display: none !important;
+  }
+
+  .quickbooks-action-board section > div {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .quickbooks-action-board button {
+    min-height: 36px !important;
+    padding: 8px !important;
+    white-space: normal !important;
+  }
+}
 .sidebar-logo-img { width: 48px !important; height: 48px !important; object-fit: contain; }
 
 @media print {

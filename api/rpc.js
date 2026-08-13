@@ -1421,6 +1421,9 @@ const REPORT_TEMPLATE_REGISTRY = {
     }, { layout: 'cash-flow', sections: ['Operating Inflows', 'Operating Outflows', 'Net Cash Movement'], aliases: ['Cashflow Statement', 'Cash Flow Report'] }),
     template('Financial', 'financial-vat-summary', 'VAT Summary', ['period', 'invoiceTax', 'purchaseTax', 'netVat', 'status'], (d, scope) => [{ period: `${scope.startDate} to ${scope.endDate}`, invoiceTax: reportInvoiceRows(d, scope).reduce((s, inv) => s + num(inv.tax), 0), purchaseTax: (d.purchaseOrders || []).filter(row => inDateRange(row, scope)).reduce((s, po) => s + num(po.tax), 0), netVat: reportInvoiceRows(d, scope).reduce((s, inv) => s + num(inv.tax), 0) - (d.purchaseOrders || []).filter(row => inDateRange(row, scope)).reduce((s, po) => s + num(po.tax), 0), status: 'Review' }], { layout: 'tax-summary', aliases: ['Tax Report'] }),
     template('Financial', 'financial-expense-report', 'Expense Report', ['date', 'expNo', 'category', 'description', 'paymentMethod', 'amount', 'status'], (d, scope) => reportExpenseRows(d, scope).map(row => ({ date: row.date, expNo: row.expNo, category: row.category, description: row.description, paymentMethod: row.paymentMethod, amount: num(row.amount), status: row.status || 'Posted' })), { layout: 'expense-register' }),
+    template('Financial', 'financial-product-service-price-list', 'Product / Service Price List', ['sku', 'name', 'category', 'type', 'sellingPrice', 'costPrice', 'stock', 'supplier'], (d) => (d.products || []).map(product => ({ sku: product.sku, name: product.name, category: product.category, type: product.type || product.itemType || 'Product', sellingPrice: num(product.sellingPrice || product.price), costPrice: num(product.costPrice || product.cost), stock: (d.inventory || []).filter(item => item.productName === product.name || item.productId === product.id).reduce((sum, item) => sum + num(item.quantity), 0), supplier: product.supplierName || product.preferredSupplier || '' })), { layout: 'price-list', aliases: ['Products and Services', 'Product Service List', 'Price List'] }),
+    template('Financial', 'financial-account-list', 'Account List', ['code', 'name', 'type', 'parent', 'description', 'balance', 'status'], (d) => (d.financeAccounts || []).map(row => ({ code: row.code, name: row.name, type: row.type, parent: row.parent || row.subtype || row.type, description: row.description || '', balance: num(row.balance), status: row.status || 'Active' })), { layout: 'account-list', aliases: ['Chart of Accounts', 'Accounts List'] }),
+    template('Financial', 'financial-supplier-list', 'Supplier List', ['supplierNo', 'name', 'companyName', 'phone', 'email', 'openBalance', 'status'], (d) => (d.suppliers || []).map(row => ({ supplierNo: row.supplierNo, name: row.name, companyName: row.companyName || '', phone: row.phone || '', email: row.email || '', openBalance: num(row.openBalance || row.balance), status: row.status || 'Active' })), { layout: 'supplier-list', aliases: ['Supplier Database'] }),
     template('Financial', 'financial-budget-variance', 'Budget Variance Report', ['department', 'budget', 'actual', 'variance', 'forecast', 'status'], (d) => (d.budgets || []).map(row => ({ department: row.department, budget: num(row.budget), actual: num(row.actual), variance: num(row.variance || num(row.budget) - num(row.actual)), forecast: num(row.forecast), status: row.status })), { layout: 'variance' }),
     template('Financial', 'financial-department-performance', 'Department Performance Report', ['department', 'manager', 'revenue', 'cost', 'profitability'], (d) => (d.costCenters || []).map(row => ({ department: row.department, manager: row.manager, revenue: num(row.revenue), cost: num(row.cost), profitability: num(row.profitability) })), { layout: 'department-performance' }),
     template('Financial', 'financial-customer-report', 'Customer Financial Report', ['customerName', 'creditLimit', 'totalPurchases', 'totalPaid', 'dueBalance', 'overdueBalance', 'lastPayment', 'riskStatus'], customerBaseRows, { layout: 'customer-finance' })
@@ -11398,6 +11401,222 @@ territory: geo,
     log(u, 'Record Supplier Payment', 'Procurement', invoice.invoiceNo);
     return { success: true, invoice };
   },
+  async importAccountingBundle(user, bundle = {}) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT, ROLES.EXECUTIVE);
+    const d = data();
+    ensureFinanceData();
+    ['customers','suppliers','products','inventory','sales','invoices','payments','expenses','financeAccounts','supplierInvoices','accountsPayable','activity','notifications'].forEach(key => {
+      if (!Array.isArray(d[key])) d[key] = [];
+    });
+    const now = new Date().toISOString();
+    const stats = {
+      customers: { created: 0, updated: 0 },
+      suppliers: { created: 0, updated: 0 },
+      products: { created: 0, updated: 0 },
+      inventory: { created: 0, updated: 0 },
+      accounts: { created: 0, updated: 0 },
+      expenses: { created: 0, skipped: 0 },
+      invoices: { created: 0, updated: 0 },
+      payments: { created: 0, skipped: 0 },
+      sales: { created: 0, updated: 0 },
+      payables: { created: 0, updated: 0 }
+    };
+    const key = value => clean(value).toLowerCase();
+    const rowDate = row => clean(row.date || row.Date || row.transactionDate || today()).slice(0, 10) || today();
+    const findCustomer = row => {
+      const name = clean(row.name || row.customerName || row.customer || row.Name || row.Customer);
+      const email = clean(row.email || row.Email);
+      const phone = clean(row.phone || row.Phone);
+      if (!name) return null;
+      let customer = d.customers.find(c =>
+        (email && key(c.email) === key(email)) ||
+        (phone && clean(c.phone) === phone) ||
+        key(c.name) === key(name)
+      );
+      const payload = {
+        name,
+        companyName: clean(row.companyName || row['Company name']),
+        phone,
+        email,
+        streetAddress: clean(row.streetAddress || row.address || row['Street Address']),
+        city: clean(row.city || row.City || row.location),
+        state: clean(row.state || row.State),
+        country: clean(row.country || row.Country),
+        zip: clean(row.zip || row.Zip),
+        openBalance: num(row.openBalance || row.balance || row['Open balance']),
+        balance: num(row.openBalance || row.balance || row['Open balance']),
+        type: clean(row.type) || 'Customer',
+        status: clean(row.status) || 'Active',
+        updatedAt: now,
+        isDeleted: 'No'
+      };
+      if (customer) {
+        Object.assign(customer, Object.fromEntries(Object.entries(payload).filter(([, v]) => v !== '' && v !== 0)));
+        customer.updatedAt = now;
+        stats.customers.updated += 1;
+      } else {
+        customer = { ...payload, id: gid(), customerNo: `CUST-${String(d.customers.length + 1).padStart(5, '0')}`, createdAt: now, createdBy: u.id || u.email };
+        d.customers.unshift(customer);
+        stats.customers.created += 1;
+      }
+      return customer;
+    };
+    const findSupplier = row => {
+      const name = clean(row.name || row.supplierName || row.supplier || row.Supplier);
+      const email = clean(row.email || row.Email);
+      const phone = clean(row.phone || row.Phone);
+      if (!name) return null;
+      let supplier = d.suppliers.find(s => (email && key(s.email) === key(email)) || (phone && clean(s.phone) === phone) || key(s.name) === key(name));
+      const payload = {
+        name,
+        companyName: clean(row.companyName || row['Company name']),
+        phone,
+        email,
+        streetAddress: clean(row.streetAddress || row.address || row['Street Address']),
+        city: clean(row.city || row.City),
+        state: clean(row.state || row.State),
+        country: clean(row.country || row.Country),
+        zip: clean(row.zip || row.Zip),
+        currency: clean(row.currency || row.Currency) || 'KES',
+        openBalance: num(row.openBalance || row.balance || row['Open Balance']),
+        status: clean(row.status) || 'Active',
+        updatedAt: now,
+        isDeleted: 'No'
+      };
+      if (supplier) {
+        Object.assign(supplier, Object.fromEntries(Object.entries(payload).filter(([, v]) => v !== '' && v !== 0)));
+        supplier.updatedAt = now;
+        stats.suppliers.updated += 1;
+      } else {
+        supplier = { ...payload, id: gid(), supplierNo: `SUP-${String(d.suppliers.length + 1).padStart(5, '0')}`, createdAt: now, createdBy: u.id || u.email };
+        d.suppliers.unshift(supplier);
+        stats.suppliers.created += 1;
+      }
+      return supplier;
+    };
+    const findProduct = row => {
+      const name = clean(row.name || row.productName || row['Product/Service Name']);
+      if (!name) return null;
+      const sku = clean(row.sku || row.SKU) || `SKU-${name.toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 28) || Date.now()}`;
+      let product = d.products.find(p => (sku && key(p.sku) === key(sku)) || key(p.name) === key(name));
+      const payload = {
+        name,
+        sku,
+        category: clean(row.category || row.Category) || 'Products / Services',
+        type: clean(row.type || row.itemType || row['Item type']) || 'Product',
+        unit: clean(row.unit) || 'unit',
+        sellingPrice: num(row.sellingPrice || row.price || row.Price || row['Sales price includes tax']),
+        costPrice: num(row.costPrice || row.cost || row.Cost || row['Purchase cost includes tax']),
+        incomeAccount: clean(row.incomeAccount || row['Income Account']),
+        expenseAccount: clean(row.expenseAccount || row['Expense Account']),
+        inventoryAssetAccount: clean(row.inventoryAssetAccount || row['Inventory asset account']),
+        description: clean(row.description || row['Sales Description'] || row['Purchase Description']),
+        minStock: num(row.reorderPoint || row['Reorder Point']),
+        preferredSupplier: clean(row.preferredSupplier || row['Preferred Supplier']),
+        status: clean(row.status) || 'Active',
+        updatedAt: now,
+        isDeleted: 'No'
+      };
+      if (product) {
+        Object.assign(product, { ...payload, sellingPrice: payload.sellingPrice || product.sellingPrice, costPrice: payload.costPrice || product.costPrice });
+        product.updatedAt = now;
+        stats.products.updated += 1;
+      } else {
+        product = { ...payload, id: gid(), createdAt: now, createdBy: u.id || u.email };
+        d.products.unshift(product);
+        stats.products.created += 1;
+      }
+      const qty = num(row.quantityOnHand || row['Quantity on hand']);
+      if (qty) {
+        let inv = d.inventory.find(item => (item.productId === product.id || item.productName === product.name) && item.warehouseName === 'Njiru Store' && item.isDeleted !== 'Yes');
+        if (inv) {
+          inv.quantity = qty;
+          inv.unitCost = payload.costPrice || inv.unitCost;
+          inv.updatedAt = now;
+          stats.inventory.updated += 1;
+        } else {
+          d.inventory.unshift({ id: gid(), productId: product.id, productName: product.name, sku: product.sku, warehouseName: 'Njiru Store', batchNo: 'QBO-IMPORT', quantity: qty, unitCost: payload.costPrice, receivedDate: today(), status: 'In Stock', createdAt: now, updatedAt: now, isDeleted: 'No' });
+          stats.inventory.created += 1;
+        }
+      }
+      return product;
+    };
+    const importAccounts = rows => {
+      rows.forEach((row, index) => {
+        const name = clean(row.name || row.fullName || row.accountName || row['Full name'] || row['Account name']);
+        const type = clean(row.type || row.accountType || row['Account type']);
+        if (!name || !type) return;
+        const code = clean(row.code) || `QBO-${String(index + 1).padStart(4, '0')}`;
+        const existing = d.financeAccounts.find(a => key(a.name) === key(name) || key(a.code) === key(code));
+        const record = { code, name, type, parent: clean(row.subtype || row['Account subtype'] || row.detailType || row['Detail type']) || type, description: clean(row.description || row.Description), balance: num(row.balance || row['Total balance']), status: 'Active', updatedAt: now };
+        if (existing) { Object.assign(existing, record); stats.accounts.updated += 1; }
+        else { d.financeAccounts.push({ ...record, id: gid(), createdAt: now }); stats.accounts.created += 1; }
+      });
+    };
+    (bundle.customers || []).forEach(findCustomer);
+    (bundle.suppliers || []).forEach(findSupplier);
+    (bundle.products || []).forEach(findProduct);
+    importAccounts([...(bundle.accounts || []), ...(bundle.accountTypes || [])]);
+    (bundle.expenses || []).forEach((row, index) => {
+      const amount = num(row.amount || row.total || row.Total || row['Total before sales tax']);
+      const payee = clean(row.payee || row.Payee);
+      const date = rowDate(row);
+      if (!amount || !payee) { stats.expenses.skipped += 1; return; }
+      const reference = clean(row.no || row.No || row.expNo) || `QBO-EXP-${date}-${index}`;
+      if (d.expenses.find(exp => exp.expNo === reference || (exp.date === date && key(exp.payee) === key(payee) && num(exp.amount) === amount))) { stats.expenses.skipped += 1; return; }
+      d.expenses.unshift({ id: gid(), expNo: reference, date, payee, category: clean(row.category || row.Category) || 'QuickBooks Expense', description: clean(row.description || row.memo || row.Memo || row.type || row.Type), paymentMethod: 'QuickBooks Import', amount, tax: num(row.tax || row['Sales tax']), status: clean(row.status || row.Status) || 'Posted', createdAt: now, updatedAt: now, createdBy: u.id || u.email, isDeleted: 'No' });
+      stats.expenses.created += 1;
+    });
+    (bundle.salesTransactions || []).forEach((row, index) => {
+      const type = clean(row.type || row.Type).toLowerCase();
+      const customerName = clean(row.customerName || row.customer || row.Customer || row.name);
+      const amount = num(row.amount || row.Amount || row.total || row.Total);
+      const date = rowDate(row);
+      if (!customerName || !amount) return;
+      const customer = findCustomer({ name: customerName });
+      const ref = clean(row.no || row.No || row.invoiceNo || row.invNo) || `QBO-${date}-${index}`;
+      if (type.includes('payment')) {
+        if (d.payments.find(pay => pay.paymentNo === ref || (pay.customerName === customer.name && pay.date === date && num(pay.amount) === amount))) { stats.payments.skipped += 1; return; }
+        d.payments.unshift({ id: gid(), paymentNo: ref, date, customerId: customer.id, customerName: customer.name, amount, method: 'QuickBooks Import', reference: ref, status: clean(row.status || row.Status) || 'Completed', cashier: u.name, notes: clean(row.memo || row.Memo), createdAt: now, updatedAt: now, isDeleted: 'No' });
+        stats.payments.created += 1;
+        return;
+      }
+      const existingInvoice = d.invoices.find(inv => inv.invNo === ref || inv.invoiceNo === ref);
+      const dueDate = clean(row.dueDate) || new Date(new Date(date).getTime() + 30 * 86400000).toISOString().slice(0, 10);
+      if (type.includes('invoice') || type.includes('sales') || type.includes('receipt')) {
+        const invoice = {
+          invNo: ref, invoiceNo: ref, date, dueDate, customerId: customer.id, customerName: customer.name,
+          total: amount, paid: type.includes('receipt') ? amount : 0, balance: type.includes('receipt') ? 0 : amount,
+          status: clean(row.status || row.Status) || (type.includes('receipt') ? 'Paid' : 'Open'),
+          notes: clean(row.memo || row.Memo), createdAt: existingInvoice?.createdAt || now, updatedAt: now, isDeleted: 'No'
+        };
+        if (existingInvoice) { Object.assign(existingInvoice, invoice); stats.invoices.updated += 1; }
+        else { d.invoices.unshift({ ...invoice, id: gid(), createdBy: u.id || u.email }); stats.invoices.created += 1; }
+        let sale = d.sales.find(s => s.saleNo === ref || s.orderNo === ref);
+        const salePayload = { saleNo: ref, orderNo: ref, date, customerId: customer.id, customerName: customer.name, total: amount, paid: invoice.paid, balance: invoice.balance, status: invoice.status, deliveryStatus: 'Pending', createdAt: sale?.createdAt || now, updatedAt: now, isDeleted: 'No' };
+        if (sale) { Object.assign(sale, salePayload); stats.sales.updated += 1; }
+        else { d.sales.unshift({ ...salePayload, id: gid(), createdBy: u.id || u.email }); stats.sales.created += 1; }
+      }
+    });
+    (bundle.unpaidBills || []).forEach((row, index) => {
+      const supplierName = clean(row.supplierName || row.supplier || row.Supplier || row.Payee);
+      const amount = num(row.outstandingBalance || row.balance || row.amount || row.Amount || row.Total);
+      if (!supplierName || !amount) return;
+      const supplier = findSupplier({ name: supplierName });
+      const invoiceNo = clean(row.invoiceNo || row.No || row.no) || `QBO-BILL-${index + 1}`;
+      const existing = d.accountsPayable.find(ap => ap.invoiceNo === invoiceNo || (ap.supplierName === supplier.name && num(ap.outstandingBalance) === amount));
+      const payload = { invoiceNo, supplierId: supplier.id, supplierName: supplier.name, dueDate: clean(row.dueDate || row.DueDate) || today(), invoiceAmount: amount, paidAmount: 0, outstandingBalance: amount, paymentStatus: clean(row.status || row.Status) || 'Open', paymentTerms: clean(row.paymentTerms) || 'Net 30', agingBucket: 'Current', updatedAt: now, isDeleted: 'No' };
+      if (existing) { Object.assign(existing, payload); stats.payables.updated += 1; }
+      else { d.accountsPayable.unshift({ ...payload, id: gid(), supplierInvoiceId: gid(), createdAt: now }); stats.payables.created += 1; }
+    });
+    d.notifications.unshift({ id: gid(), title: 'Accounting data imported', body: `QuickBooks import merged ${stats.customers.created + stats.customers.updated} customers, ${stats.products.created + stats.products.updated} products, ${stats.invoices.created + stats.invoices.updated} invoices.`, module: 'Accounts', type: 'success', read: false, createdAt: now, roles: ['Administrator', 'Accountant', 'Executive'] });
+    log(u, 'Import QuickBooks accounting bundle', 'Accounts', JSON.stringify(stats));
+    await syncNormalizedSupabase({ silent: true }).catch(error => {
+      d.spreadsheetSyncLogs ||= [];
+      d.spreadsheetSyncLogs.unshift({ id: gid(), module: 'Accounts', sheetName: 'QuickBooks Import', direction: 'Import', rowsProcessed: 0, status: 'Warning', message: error.message, createdAt: now });
+    });
+    return { success: true, stats };
+  },
   getExpenses: user => (reqRole(user), list('expenses').map(e => ({ ...e, amount: num(e.amount) }))),
   saveExpense(user, row) { const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT); return save('expenses', u, { ...row, expNo: row.expNo || 'EXP-' + Date.now() }); },
   getTasks: user => (reqRole(user), list('tasks')),
@@ -11544,8 +11763,13 @@ territory: geo,
       const lastPayment = payments.map(pay => pay.date).filter(Boolean).sort().at(-1) || '';
       const creditLimit = num(customer.creditLimit);
       return {
+        id: customer.id,
+        customerId: customer.id,
+        name: customer.name,
         customerName: customer.name,
         phone: customer.phone || '',
+        email: customer.email || '',
+        customerEmail: customer.email || '',
         location: customer.city || '',
         paymentTerms: customer.paymentTerms || 'Net 30',
         creditLimit,
@@ -11601,6 +11825,8 @@ territory: geo,
       bankAccounts,
       bankTransactions: generatedBankTransactions,
       expenses: d.expenses,
+      products: d.products || [],
+      inventory: d.inventory || [],
       payroll: d.payrollRecords,
       taxes: d.taxRecords,
       assets: d.fixedAssets,
@@ -13593,6 +13819,7 @@ const SYNC_AFTER_RPC = {
   updateQuotationStatus: ['Sales', 'Quotations', 'Dashboard', 'Activity'],
   recordPayment: ['Payments', 'Invoices', 'Finance', 'Accounts', 'Dashboard', 'Activity'],
   generateCustomerStatement: ['Accounts', 'Customers', 'Finance', 'Dashboard', 'Activity'],
+  importAccountingBundle: ['Accounts', 'Customers', 'Products', 'Suppliers', 'Sales', 'Inventory', 'Finance', 'Dashboard', 'Reports', 'Activity'],
   getAuditTrail: ['Administrator', 'Audit', 'Dashboard', 'Activity']
 };
 
