@@ -287,7 +287,9 @@ function pageSlice(rows, limit = 25) {
 
 function canSeeAllSalesData(user) {
   const role = user?.role;
-  return [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.ACCOUNTANT, ROLES.HR, ROLES.RECEPTION].includes(role);
+  const normalized = String(role || '').trim().toLowerCase();
+  return [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.ACCOUNTANT, ROLES.HR, ROLES.RECEPTION].includes(role)
+    || ['administrator', 'admin', 'boss', 'owner', 'executive', 'manager', 'accounts', 'accountant', 'finance', 'hr', 'reception'].includes(normalized);
 }
 
 /** Match record ownership for a sales person (name / email local-part) */
@@ -11422,6 +11424,11 @@ territory: geo,
       payables: { created: 0, updated: 0 }
     };
     const key = value => clean(value).toLowerCase();
+    const moneyValue = value => {
+      if (typeof value === 'number') return value;
+      const cleaned = clean(value).replace(/[^\d.-]/g, '');
+      return num(cleaned);
+    };
     const rowDate = row => clean(row.date || row.Date || row.transactionDate || today()).slice(0, 10) || today();
     const findCustomer = row => {
       const name = clean(row.name || row.customerName || row.customer || row.Name || row.Customer);
@@ -11443,8 +11450,8 @@ territory: geo,
         state: clean(row.state || row.State),
         country: clean(row.country || row.Country),
         zip: clean(row.zip || row.Zip),
-        openBalance: num(row.openBalance || row.balance || row['Open balance']),
-        balance: num(row.openBalance || row.balance || row['Open balance']),
+        openBalance: moneyValue(row.openBalance || row.balance || row['Open balance']),
+        balance: moneyValue(row.openBalance || row.balance || row['Open balance']),
         type: clean(row.type) || 'Customer',
         status: clean(row.status) || 'Active',
         updatedAt: now,
@@ -11478,7 +11485,7 @@ territory: geo,
         country: clean(row.country || row.Country),
         zip: clean(row.zip || row.Zip),
         currency: clean(row.currency || row.Currency) || 'KES',
-        openBalance: num(row.openBalance || row.balance || row['Open Balance']),
+        openBalance: moneyValue(row.openBalance || row.balance || row['Open Balance']),
         status: clean(row.status) || 'Active',
         updatedAt: now,
         isDeleted: 'No'
@@ -11505,13 +11512,13 @@ territory: geo,
         category: clean(row.category || row.Category) || 'Products / Services',
         type: clean(row.type || row.itemType || row['Item type']) || 'Product',
         unit: clean(row.unit) || 'unit',
-        sellingPrice: num(row.sellingPrice || row.price || row.Price || row['Sales price includes tax']),
-        costPrice: num(row.costPrice || row.cost || row.Cost || row['Purchase cost includes tax']),
+        sellingPrice: moneyValue(row.sellingPrice || row.price || row.Price || row['Sales price includes tax']),
+        costPrice: moneyValue(row.costPrice || row.cost || row.Cost || row['Purchase cost includes tax']),
         incomeAccount: clean(row.incomeAccount || row['Income Account']),
         expenseAccount: clean(row.expenseAccount || row['Expense Account']),
         inventoryAssetAccount: clean(row.inventoryAssetAccount || row['Inventory asset account']),
         description: clean(row.description || row['Sales Description'] || row['Purchase Description']),
-        minStock: num(row.reorderPoint || row['Reorder Point']),
+        minStock: moneyValue(row.reorderPoint || row['Reorder Point']),
         preferredSupplier: clean(row.preferredSupplier || row['Preferred Supplier']),
         status: clean(row.status) || 'Active',
         updatedAt: now,
@@ -11526,7 +11533,7 @@ territory: geo,
         d.products.unshift(product);
         stats.products.created += 1;
       }
-      const qty = num(row.quantityOnHand || row['Quantity on hand']);
+      const qty = moneyValue(row.quantityOnHand || row['Quantity on hand']);
       if (qty) {
         let inv = d.inventory.find(item => (item.productId === product.id || item.productName === product.name) && item.warehouseName === 'Njiru Store' && item.isDeleted !== 'Yes');
         if (inv) {
@@ -11548,7 +11555,7 @@ territory: geo,
         if (!name || !type) return;
         const code = clean(row.code) || `QBO-${String(index + 1).padStart(4, '0')}`;
         const existing = d.financeAccounts.find(a => key(a.name) === key(name) || key(a.code) === key(code));
-        const record = { code, name, type, parent: clean(row.subtype || row['Account subtype'] || row.detailType || row['Detail type']) || type, description: clean(row.description || row.Description), balance: num(row.balance || row['Total balance']), status: 'Active', updatedAt: now };
+        const record = { code, name, type, parent: clean(row.subtype || row['Account subtype'] || row.detailType || row['Detail type']) || type, description: clean(row.description || row.Description), balance: moneyValue(row.balance || row['Total balance']), status: 'Active', updatedAt: now };
         if (existing) { Object.assign(existing, record); stats.accounts.updated += 1; }
         else { d.financeAccounts.push({ ...record, id: gid(), createdAt: now }); stats.accounts.created += 1; }
       });
@@ -11558,19 +11565,19 @@ territory: geo,
     (bundle.products || []).forEach(findProduct);
     importAccounts([...(bundle.accounts || []), ...(bundle.accountTypes || [])]);
     (bundle.expenses || []).forEach((row, index) => {
-      const amount = num(row.amount || row.total || row.Total || row['Total before sales tax']);
+      const amount = moneyValue(row.amount || row.total || row.Total || row['Total before sales tax']);
       const payee = clean(row.payee || row.Payee);
       const date = rowDate(row);
       if (!amount || !payee) { stats.expenses.skipped += 1; return; }
       const reference = clean(row.no || row.No || row.expNo) || `QBO-EXP-${date}-${index}`;
       if (d.expenses.find(exp => exp.expNo === reference || (exp.date === date && key(exp.payee) === key(payee) && num(exp.amount) === amount))) { stats.expenses.skipped += 1; return; }
-      d.expenses.unshift({ id: gid(), expNo: reference, date, payee, category: clean(row.category || row.Category) || 'QuickBooks Expense', description: clean(row.description || row.memo || row.Memo || row.type || row.Type), paymentMethod: 'QuickBooks Import', amount, tax: num(row.tax || row['Sales tax']), status: clean(row.status || row.Status) || 'Posted', createdAt: now, updatedAt: now, createdBy: u.id || u.email, isDeleted: 'No' });
+      d.expenses.unshift({ id: gid(), expNo: reference, date, payee, category: clean(row.category || row.Category) || 'QuickBooks Expense', description: clean(row.description || row.memo || row.Memo || row.type || row.Type), paymentMethod: 'QuickBooks Import', amount, tax: moneyValue(row.tax || row['Sales tax']), status: clean(row.status || row.Status) || 'Posted', createdAt: now, updatedAt: now, createdBy: u.id || u.email, isDeleted: 'No' });
       stats.expenses.created += 1;
     });
     (bundle.salesTransactions || []).forEach((row, index) => {
       const type = clean(row.type || row.Type).toLowerCase();
       const customerName = clean(row.customerName || row.customer || row.Customer || row.name);
-      const amount = num(row.amount || row.Amount || row.total || row.Total);
+      const amount = moneyValue(row.amount || row.Amount || row.total || row.Total);
       const date = rowDate(row);
       if (!customerName || !amount) return;
       const customer = findCustomer({ name: customerName });
@@ -11599,8 +11606,8 @@ territory: geo,
       }
     });
     (bundle.unpaidBills || []).forEach((row, index) => {
-      const supplierName = clean(row.supplierName || row.supplier || row.Supplier || row.Payee);
-      const amount = num(row.outstandingBalance || row.balance || row.amount || row.Amount || row.Total);
+      const supplierName = clean(row.supplierName || row.supplier || row.Supplier || row.Payee || row['Location full name']) || 'QuickBooks Supplier';
+      const amount = moneyValue(row.outstandingBalance || row.balance || row.amount || row.Amount || row.Total || row['Open balance'] || row['Open Balance']);
       if (!supplierName || !amount) return;
       const supplier = findSupplier({ name: supplierName });
       const invoiceNo = clean(row.invoiceNo || row.No || row.no) || `QBO-BILL-${index + 1}`;
