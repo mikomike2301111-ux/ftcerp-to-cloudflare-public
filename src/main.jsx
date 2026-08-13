@@ -24,6 +24,7 @@ import {
   FileText,
   Filter,
   FastForward,
+  FlaskConical,
   Gauge,
   Hourglass,
   Landmark,
@@ -1731,7 +1732,7 @@ function AnalyticsCenter({ user, setPage, globalPeriod = 'Month' }) {
         {tabs.map(([id, name]) => <button key={id} className={activeTab === id ? 'active' : ''} onClick={() => setActiveTab(id)}>{name}</button>)}
       </div>
       <label className="analytics-tab-select">View
-        <select value={activeTab} onChange={e => setActiveTab(e.target.value)}>
+        <select value={activeTab} onChange={e => setReportTab(e.target.value)}>
           {tabs.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
         </select>
       </label>
@@ -4898,6 +4899,90 @@ function ManufacturingAi({ insights }) {
   );
 }
 
+function RNDTrialModal({ user, initial, materials = [], onClose, onSaved }) {
+  const [form, setForm] = useState(() => ({
+    trialName: initial?.trialName || '',
+    productName: initial?.productName || '',
+    section: initial?.section || 'Field Trial',
+    location: initial?.location || '',
+    trialDate: initial?.trialDate || new Date().toISOString().slice(0, 10),
+    leadResearcher: initial?.leadResearcher || user?.name || '',
+    objective: initial?.objective || '',
+    method: initial?.method || '',
+    observations: initial?.observations || '',
+    outcome: initial?.outcome || '',
+    status: initial?.status || 'Planned',
+    priority: initial?.priority || 'Medium',
+    consumptions: [{ item: '', quantity: 1, unit: 'PCS', source: 'Store', purpose: '' }],
+    procurementItems: [{ item: '', quantity: 1, unit: 'PCS', estimatedPrice: 0, description: '' }],
+    procurementReason: ''
+  }));
+  const [busy, setBusy] = useState(false);
+  const updateLine = (key, index, patch) => {
+    const rows = [...(form[key] || [])];
+    rows[index] = { ...rows[index], ...patch };
+    setForm({ ...form, [key]: rows });
+  };
+  const addLine = key => setForm({ ...form, [key]: [...(form[key] || []), key === 'consumptions' ? { item: '', quantity: 1, unit: 'PCS', source: 'Store', purpose: '' } : { item: '', quantity: 1, unit: 'PCS', estimatedPrice: 0, description: '' }] });
+  async function save(e) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await rpc('saveRNDTrial', [user, form]);
+      onSaved?.();
+    } catch (err) {
+      alert(err.message || 'Could not save R&D trial');
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <ModalCard title="R&D Trial" onClose={onClose} wide>
+      <form className="settings-form-grid" onSubmit={save}>
+        <label>Trial name<input value={form.trialName} onChange={e => setForm({ ...form, trialName: e.target.value })} required /></label>
+        <label>Product / target<input value={form.productName} onChange={e => setForm({ ...form, productName: e.target.value })} placeholder="Product, lure, formulation, crop..." /></label>
+        <label>Section<select value={form.section} onChange={e => setForm({ ...form, section: e.target.value })}>{['Field Trial', 'Lab Trial', 'Formulation', 'Packaging', 'QC Validation', 'B2B Demo', 'Third Party Trial'].map(x => <option key={x}>{x}</option>)}</select></label>
+        <label>Location<input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} /></label>
+        <label>Date<input type="date" value={form.trialDate} onChange={e => setForm({ ...form, trialDate: e.target.value })} /></label>
+        <label>Lead researcher<input value={form.leadResearcher} onChange={e => setForm({ ...form, leadResearcher: e.target.value })} /></label>
+        <label>Priority<select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })}>{['Low', 'Medium', 'High', 'Urgent'].map(x => <option key={x}>{x}</option>)}</select></label>
+        <label>Status<select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>{['Planned', 'In Progress', 'Procurement Requested', 'Completed', 'On Hold'].map(x => <option key={x}>{x}</option>)}</select></label>
+        <label>Objective<textarea rows={2} value={form.objective} onChange={e => setForm({ ...form, objective: e.target.value })} /></label>
+        <label>Method<textarea rows={2} value={form.method} onChange={e => setForm({ ...form, method: e.target.value })} /></label>
+        <label>Observations<textarea rows={2} value={form.observations} onChange={e => setForm({ ...form, observations: e.target.value })} /></label>
+        <label>Outcome<textarea rows={2} value={form.outcome} onChange={e => setForm({ ...form, outcome: e.target.value })} /></label>
+
+        <fieldset className="settings-fieldset"><legend>Goods consumed in trial</legend>
+          {(form.consumptions || []).map((line, index) => (
+            <div key={index} className="modal-grid">
+              <label>Item<input list="rnd-materials" value={line.item} onChange={e => updateLine('consumptions', index, { item: e.target.value })} /></label>
+              <label>Qty<input type="number" step="any" value={line.quantity} onChange={e => updateLine('consumptions', index, { quantity: e.target.value })} /></label>
+              <label>Unit<input value={line.unit} onChange={e => updateLine('consumptions', index, { unit: e.target.value })} /></label>
+              <label>Purpose<input value={line.purpose} onChange={e => updateLine('consumptions', index, { purpose: e.target.value })} /></label>
+            </div>
+          ))}
+          <button type="button" className="mini-action" onClick={() => addLine('consumptions')}>+ Add consumed item</button>
+        </fieldset>
+
+        <fieldset className="settings-fieldset"><legend>Procurement request to Admin</legend>
+          <label>Reason<textarea rows={2} value={form.procurementReason} onChange={e => setForm({ ...form, procurementReason: e.target.value })} /></label>
+          {(form.procurementItems || []).map((line, index) => (
+            <div key={index} className="modal-grid">
+              <label>Item<input value={line.item} onChange={e => updateLine('procurementItems', index, { item: e.target.value })} /></label>
+              <label>Qty<input type="number" step="any" value={line.quantity} onChange={e => updateLine('procurementItems', index, { quantity: e.target.value })} /></label>
+              <label>Unit<input value={line.unit} onChange={e => updateLine('procurementItems', index, { unit: e.target.value })} /></label>
+              <label>Est. price<input type="number" value={line.estimatedPrice} onChange={e => updateLine('procurementItems', index, { estimatedPrice: e.target.value })} /></label>
+            </div>
+          ))}
+          <button type="button" className="mini-action" onClick={() => addLine('procurementItems')}>+ Add procurement item</button>
+        </fieldset>
+        <datalist id="rnd-materials">{materials.map(m => <option key={m.id || m.materialName} value={m.materialName} />)}</datalist>
+        <button type="submit" className="primary-action" disabled={busy}>{busy ? 'Saving...' : 'Save R&D trial'}</button>
+      </form>
+    </ModalCard>
+  );
+}
+
 function SalesModule({ user, setPage, globalPeriod }) {
   const salesRole = String(user?.role || '').toLowerCase();
   const isSalesRep = salesRole.includes('sales') || salesRole.includes('field');
@@ -6472,7 +6557,7 @@ function RouteList({ routes }) {
 }
 
 function Manufacturing({ user, setPage, globalPeriod }) {
-  const tabs = ['dashboard', 'materials', 'packaging', 'formulas', 'orders', 'production', 'consumption', 'traceability', 'quality', 'waste', 'costs', 'capacity', 'calendar', 'downtime', 'reports', 'ai'];
+  const tabs = ['dashboard', 'materials', 'packaging', 'formulas', 'orders', 'production', 'rnd', 'consumption', 'traceability', 'quality', 'waste', 'costs', 'capacity', 'calendar', 'downtime', 'reports', 'ai'];
   const [view, setView] = useRouteTab('production', tabs, 'dashboard');
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [newMaterialOpen, setNewMaterialOpen] = useState(false);
@@ -6483,6 +6568,8 @@ function Manufacturing({ user, setPage, globalPeriod }) {
   const [execOrder, setExecOrder] = useState(null);
   const [detailOrder, setDetailOrder] = useState(null);
   const [materialReqOpen, setMaterialReqOpen] = useState(false);
+  const [rndOpen, setRndOpen] = useState(false);
+  const [rndEdit, setRndEdit] = useState(null);
   const [materialReqForm, setMaterialReqForm] = useState({ productionOrderNo: '', priority: 'Normal', reason: '', lines: [{ inventoryId: '', quantity: 1 }] });
   const [refreshKey, setRefreshKey] = useState(0);
   const { loading, data, error } = useServer(user, 'getManufacturingWorkspaceData', [{ period: globalPeriod }], [refreshKey, globalPeriod]);
@@ -6517,6 +6604,8 @@ function Manufacturing({ user, setPage, globalPeriod }) {
     directMaterials: data?.directMaterials || [],
     consumables: data?.consumables || [],
     productionMaterialRequests: data?.productionMaterialRequests || [],
+    rndTrials: sortByDateDesc(data?.rndTrials, 'trialDate'),
+    rndTrialConsumptions: sortByDateDesc(data?.rndTrialConsumptions, 'consumedAt'),
     inventoryStock: data?.inventoryStock || [],
     reports: data?.reports || [],
     ai: data?.ai || [],
@@ -6574,6 +6663,7 @@ function Manufacturing({ user, setPage, globalPeriod }) {
         <button onClick={() => setOrderOpen(true)}><Factory size={16} /> New Production Order</button>
         <button type="button" className="primary-action" onClick={() => setMaterialReqOpen(true)}><Package size={16} /> Request from Inventory</button>
         <button onClick={() => setView('traceability')}><Route size={16} /> Traceability</button>
+        <button onClick={() => { setRndEdit(null); setRndOpen(true); }}><FlaskConical size={16} /> New R&D Trial</button>
         <button onClick={() => setView('reports')}><FileText size={16} /> Reports</button>
         <CreateRequisitionButton user={user} module="production" />
       </div>
@@ -6667,6 +6757,24 @@ function Manufacturing({ user, setPage, globalPeriod }) {
       <div className="sales-tabs">
         {tabs.map(tab => <button key={tab} className={view === tab ? 'active' : ''} onClick={() => setView(tab)}>{label(tab)}</button>)}
       </div>
+
+      {view === 'rnd' && (
+        <div className="dashboard-grid">
+          <Panel className="span-12" title="R&D Trials" action={<button type="button" className="primary-action" onClick={() => { setRndEdit(null); setRndOpen(true); }}><Plus size={15} /> Trial</button>}>
+            <SimpleTable rows={sorted.rndTrials || []} columns={['trialNo', 'trialName', 'productName', 'section', 'location', 'trialDate', 'leadResearcher', 'status', 'requisitionNo']} />
+          </Panel>
+          <Panel className="span-6" title="Goods Consumed in Trials">
+            <SimpleTable rows={sorted.rndTrialConsumptions || []} columns={['item', 'quantity', 'unit', 'source', 'purpose', 'consumedAt', 'createdBy']} />
+          </Panel>
+          <Panel className="span-6" title="R&D Routing">
+            <div className="metric-stack">
+              <div><span>Procurement linked</span><strong>{data.rndSummary?.procurementRequested || 0}</strong><em>Trial requests sent to Admin / Procurement.</em></div>
+              <div><span>Active trials</span><strong>{data.rndSummary?.active || 0}</strong><em>Planned, running, or waiting procurement.</em></div>
+              <div><span>Completed</span><strong>{data.rndSummary?.completed || 0}</strong><em>Closed R&D records.</em></div>
+            </div>
+          </Panel>
+        </div>
+      )}
 
       {view === 'dashboard' && (
         <>
@@ -6788,6 +6896,7 @@ function Manufacturing({ user, setPage, globalPeriod }) {
       {bomOpen && <BOMSetupModal user={user} products={products} rawMaterials={sorted.rawMaterials} formula={bomEdit} onClose={() => setBomOpen(false)} onSaved={() => { setBomOpen(false); refresh(); setView('formulas'); }} rpc={rpc} />}
       {orderOpen && <ProductionOrderModal user={user} formulas={sorted.formulas} rawMaterials={sorted.rawMaterials} formulaVersions={sorted.formulaVersions} onClose={() => setOrderOpen(false)} onSaved={() => { setOrderOpen(false); refresh(); setView('orders'); }} />}
       {execOrder && <ProductionExecutionModal user={user} order={execOrder} rawMaterials={sorted.rawMaterials} formulas={sorted.formulas} formulaVersions={sorted.formulaVersions} onClose={() => setExecOrder(null)} onSaved={() => { setExecOrder(null); refresh(); setView('traceability'); }} rpc={rpc} />}
+      {rndOpen && <RNDTrialModal user={user} initial={rndEdit} materials={sorted.rawMaterials} onClose={() => setRndOpen(false)} onSaved={() => { setRndOpen(false); setRndEdit(null); refresh(); setView('rnd'); }} />}
       {detailOrder && (
         <div className="modal-backdrop" onClick={() => setDetailOrder(null)}>
           <div className="modal-card wide" onClick={e => e.stopPropagation()}>
@@ -9097,6 +9206,11 @@ function Reports({ user, setPage, title, globalPeriod = 'Month' }) {
     customers: 'Customer',
     hr: 'Payroll'
   };
+  const setReportTab = id => {
+    setActiveTab(id);
+    const module = tabModuleMap[id] || 'Executive';
+    setFilters(prev => ({ ...prev, module }));
+  };
   const tabReports = data.reports.filter(r => activeTab === 'executive' || activeTab === 'custom' ? true : r.module === tabModuleMap[activeTab] || r.module === 'Executive');
   const executiveKpis = [
     { label: 'Revenue', value: data.kpis.find(k => k.label.toLowerCase().includes('revenue'))?.value || 0, type: 'money' },
@@ -9113,10 +9227,10 @@ function Reports({ user, setPage, title, globalPeriod = 'Month' }) {
     { label: 'Procurement Performance', value: data.kpis.find(k => k.label.toLowerCase().includes('procurement'))?.value || 0, type: 'number' }
   ];
   const departmentKpiMap = {
-    sales: ['Revenue', 'Sales Growth', 'Orders', 'Avg Order Value'],
+    sales: ['Orders', 'Sales Visits', 'Deliveries', 'Follow-ups'],
     inventory: ['Inventory Value', 'Stock Count', 'Low Stock', 'Turnover'],
     manufacturing: ['Planned Output', 'Actual Output', 'Delayed Jobs', 'Waste'],
-    procurement: ['Spend', 'PO Count', 'Lead Time', 'Delivery Accuracy'],
+    procurement: ['PO Count', 'Open Requests', 'Lead Time', 'Delivery Accuracy'],
     finance: ['Cash Flow', 'Expenses', 'Profit', 'Net Margin'],
     customers: ['Customer Growth', 'Churn Risk', 'Lifetime Value', 'Satisfaction'],
     hr: ['Headcount', 'Attendance', 'Productivity', 'Payroll Cost']
@@ -9152,7 +9266,7 @@ function Reports({ user, setPage, title, globalPeriod = 'Month' }) {
       <div className="inline-actions"><CreateRequisitionButton user={user} module="reports" /></div>
 
       <div className="analytics-tabs">
-        {tabs.map(id => <button key={id} className={activeTab === id ? 'active' : ''} onClick={() => setActiveTab(id)}>{label(id)}</button>)}
+        {tabs.map(id => <button key={id} className={activeTab === id ? 'active' : ''} onClick={() => setReportTab(id)}>{label(id)}</button>)}
       </div>
       <label className="analytics-tab-select">View
         <select value={activeTab} onChange={e => setActiveTab(e.target.value)}>
@@ -9264,21 +9378,14 @@ function Reports({ user, setPage, title, globalPeriod = 'Month' }) {
         <div className="dashboard-grid">
           <Panel className="span-12 sales-main-chart" title={`${label(activeTab)} visual — live data`} action={globalPeriod}>
             <SalesTrendChart
-              data={(data.chartData?.revenueExpenseTrend || data.chartData?.monthlyTrend || []).map(row => ({
-                month: row.month,
-                value: activeTab === 'finance' || activeTab === 'sales'
-                  ? num(row.revenue ?? row.currentYear ?? row.value)
-                  : activeTab === 'procurement'
-                    ? num(row.expenses ?? row.value)
-                    : num(row.revenue ?? row.value ?? row.currentYear)
-              }))}
+              data={(data.chartData?.moduleCharts?.[activeTab] || []).map(row => ({ month: row.month || row.name, value: num(row.value), records: num(row.secondary || 0) }))}
               metric="value"
             />
           </Panel>
-          <Panel className="span-12" title="Cross-module snapshot">
+          <Panel className="span-12" title={`${label(activeTab)} snapshot`}>
             <SimpleTable
-              rows={(data.chartData?.departmentBreakdown || []).map(r => ({ module: r.name, amount: r.value }))}
-              columns={['module', 'amount']}
+              rows={(data.chartData?.moduleBreakdowns?.[activeTab] || data.chartData?.moduleCharts?.[activeTab] || []).map(r => ({ item: r.name || r.month, value: r.value, secondary: r.secondary || '' }))}
+              columns={['item', 'value', 'secondary']}
             />
           </Panel>
           <div className="span-12 analytics-kpi-row">
@@ -13279,4 +13386,5 @@ function formatCell(value, key) {
 }
 
 createRoot(document.getElementById('root')).render(<App />);
+
 

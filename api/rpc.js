@@ -6200,7 +6200,7 @@ const api = {
     const allInvoices = list('invoices');
     const allExpenses = list('expenses');
     const allPurchaseOrders = d.purchaseOrders || [];
-    const allProduction = list('production');
+    const allProduction = [...list('production'), ...(d.productionOrders || [])].filter(Boolean);
     const allInventory = d.inventory || [];
     const allCustomers = list('customers');
     const allPayroll = d.payrollRecords || d.payroll || [];
@@ -6273,6 +6273,62 @@ const api = {
       return { month: m, value: Math.round(revenueByMonth[k] || 0), records: Math.round(ordersByMonth[k] || 0) };
     });
 
+    const productionCompletedByMonth = {};
+    const productionWasteByMonth = {};
+    const inventoryQtyByCategory = {};
+    const crmCallsByMonth = {};
+    const crmCustomersByMonth = {};
+    const procurementOrdersByMonth = {};
+    const hrAttendanceByMonth = {};
+    allProduction.forEach(row => {
+      const k = monthKey(row.startDate || row.date || row.createdAt);
+      productionCompletedByMonth[k] = (productionCompletedByMonth[k] || 0) + (String(row.status || '').toLowerCase() === 'completed' ? 1 : 0);
+      productionWasteByMonth[k] = (productionWasteByMonth[k] || 0) + num(row.wasteQuantity || row.waste || 0);
+    });
+    allInventory.forEach(row => {
+      const key = row.category || row.warehouseName || 'Stock';
+      inventoryQtyByCategory[key] = (inventoryQtyByCategory[key] || 0) + num(row.quantity);
+    });
+    (d.calls || []).forEach(row => { const k = monthKey(row.date || row.followUpDate || row.createdAt); crmCallsByMonth[k] = (crmCallsByMonth[k] || 0) + 1; });
+    allCustomers.forEach(row => { const k = monthKey(row.createdAt || row.date); crmCustomersByMonth[k] = (crmCustomersByMonth[k] || 0) + 1; });
+    allPurchaseOrders.forEach(row => { const k = monthKey(row.date || row.createdAt); procurementOrdersByMonth[k] = (procurementOrdersByMonth[k] || 0) + 1; });
+    (d.attendance || []).forEach(row => { const k = monthKey(row.date || row.createdAt); hrAttendanceByMonth[k] = (hrAttendanceByMonth[k] || 0) + 1; });
+
+    const moduleCharts = {
+      sales: months.map((m, i) => { const k = yearPrefix + monthNums[i]; return { month: m, value: ordersByMonth[k] || 0, secondary: Math.round(revenueByMonth[k] || 0), label: 'Orders' }; }),
+      inventory: Object.entries(inventoryQtyByCategory).map(([name, value]) => ({ month: name, value: Math.round(value), label: 'Stock Qty' })),
+      manufacturing: months.map((m, i) => { const k = yearPrefix + monthNums[i]; return { month: m, value: productionCompletedByMonth[k] || 0, secondary: Math.round(productionWasteByMonth[k] || 0), label: 'Completed Jobs' }; }),
+      procurement: months.map((m, i) => { const k = yearPrefix + monthNums[i]; return { month: m, value: procurementOrdersByMonth[k] || 0, secondary: Math.round(poByMonth[k] || 0), label: 'PO Count' }; }),
+      finance: months.map((m, i) => { const k = yearPrefix + monthNums[i]; return { month: m, value: Math.round(revenueByMonth[k] || 0), secondary: Math.round(expenseByMonth[k] || 0), label: 'Money' }; }),
+      customers: months.map((m, i) => { const k = yearPrefix + monthNums[i]; return { month: m, value: crmCustomersByMonth[k] || 0, secondary: crmCallsByMonth[k] || 0, label: 'Customers' }; }),
+      hr: months.map((m, i) => { const k = yearPrefix + monthNums[i]; return { month: m, value: hrAttendanceByMonth[k] || 0, secondary: (d.leaveApplications || []).filter(l => monthKey(l.appliedAt || l.startDate) === k).length, label: 'Attendance' }; })
+    };
+
+    const moduleBreakdowns = {
+      sales: [
+        { name: 'Orders', value: totalOrders },
+        { name: 'Invoices', value: allInvoices.length },
+        { name: 'Deliveries', value: (d.deliveries || []).length }
+      ],
+      manufacturing: [
+        { name: 'Production Orders', value: allProduction.length },
+        { name: 'Raw Materials', value: (d.rawMaterials || []).length },
+        { name: 'Batches', value: (d.productionBatches || []).length },
+        { name: 'QC Records', value: (d.qualityControlRecords || []).length }
+      ],
+      customers: [
+        { name: 'Customers', value: allCustomers.length },
+        { name: 'Calls', value: (d.calls || []).length },
+        { name: 'Leads', value: (d.leads || []).length }
+      ],
+      finance: [
+        { name: 'Revenue', value: Math.round(totalRevenue) },
+        { name: 'Expenses', value: Math.round(totalExpenses) },
+        { name: 'Profit', value: Math.round(totalProfit) },
+        { name: 'Receivables', value: Math.round(allInvoices.reduce((s, r) => s + num(r.balance), 0)) }
+      ]
+    };
+
     const chartData = {
       monthlyTrend,
       yoyComparison: {
@@ -6301,7 +6357,9 @@ const api = {
         { name: 'Payroll', value: Math.round(totalPayroll), color: '#64748b' }
       ].filter(d => d.value > 0),
       quarterlyComparison: quarterly,
-      weeklyTrend: weekly
+      weeklyTrend: weekly,
+      moduleCharts,
+      moduleBreakdowns
     };
 
     return {
@@ -8479,7 +8537,7 @@ const api = {
     const d = data();
     ['rawMaterials','rawMaterialBatches','formulas','formulaVersions','productionOrders','productionBatches',
      'rawMaterialConsumption','qualityControlRecords','wasteRecords','inventoryTransactions',
-     'productionBatchCosts','productionBatchYields','packagingMaterials','unitOfMeasure'].forEach(k => {
+     'productionBatchCosts','productionBatchYields','packagingMaterials','unitOfMeasure','rndTrials','rndTrialConsumptions'].forEach(k => {
       if (!Array.isArray(d[k])) d[k] = [];
     });
     const scope = filters && filters.period ? { ...periodRange(filters.period), ...filters } : (filters || {});
@@ -8493,6 +8551,8 @@ const api = {
     const inventoryTxns = (d.inventoryTransactions || []).filter(Boolean).filter(row => inDateRange(row, scope));
     const costRecords = (d.productionBatchCosts || []).filter(Boolean).filter(row => inDateRange(row, scope));
     const yieldRecords = (d.productionBatchYields || []).filter(Boolean).filter(row => inDateRange(row, scope));
+    const rndTrials = (d.rndTrials || []).filter(Boolean).filter(row => inDateRange(row, scope));
+    const rndConsumptions = (d.rndTrialConsumptions || []).filter(Boolean).filter(row => inDateRange(row, scope));
     const totalAvailable = materials.reduce((s, x) => s + num(x.availableQuantity), 0);
     const totalReserved = materials.reduce((s, x) => s + num(x.reservedQuantity), 0);
     const totalConsumed = materials.reduce((s, x) => s + num(x.consumedQuantity), 0);
@@ -8586,6 +8646,14 @@ const api = {
       calendar: (d.productionCalendar || []).filter(Boolean),
       documents: (d.manufacturingDocuments || []).filter(Boolean),
       recalls: (d.batchRecalls || []).filter(Boolean),
+      rndTrials,
+      rndTrialConsumptions: rndConsumptions,
+      rndSummary: {
+        trials: rndTrials.length,
+        active: rndTrials.filter(t => ['Planned', 'In Progress', 'Procurement Requested'].includes(t.status)).length,
+        completed: rndTrials.filter(t => t.status === 'Completed').length,
+        procurementRequested: rndTrials.filter(t => t.requisitionId).length
+      },
       costRecords,
       yieldRecords,
       health,
@@ -8627,6 +8695,93 @@ const api = {
         { title: 'Traceability ready', detail: 'Every completion records material batch, operator, cost, quality status, finished batch, inventory movement, finance journal, and event trail.', sources: ['productionBatches', 'consumption', 'qualityControlRecords'] }
       ]
     };
+  },
+  saveRNDTrial(user, form = {}) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.DEV, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.PRODUCTION, ROLES.PROCUREMENT, ROLES.WAREHOUSE);
+    const d = data();
+    d.rndTrials = Array.isArray(d.rndTrials) ? d.rndTrials : [];
+    d.rndTrialConsumptions = Array.isArray(d.rndTrialConsumptions) ? d.rndTrialConsumptions : [];
+    const now = new Date().toISOString();
+    const id = clean(form.id) || gid();
+    const existing = d.rndTrials.find(t => t.id === id);
+    const consumptions = (form.consumptions || []).filter(line => clean(line.item || line.materialName) || num(line.quantity) > 0).map(line => ({
+      id: clean(line.id) || gid(),
+      trialId: id,
+      item: clean(line.item || line.materialName),
+      quantity: num(line.quantity),
+      unit: clean(line.unit || 'PCS'),
+      source: clean(line.source || 'Store'),
+      purpose: clean(line.purpose || form.objective || ''),
+      consumedAt: dateOnly(line.consumedAt || form.trialDate || today()),
+      createdAt: now,
+      createdBy: u.name
+    }));
+    let requisitionId = existing?.requisitionId || '';
+    let requisitionNo = existing?.requisitionNo || '';
+    const procurementItems = (form.procurementItems || []).filter(line => clean(line.item) || num(line.quantity) > 0);
+    if (procurementItems.length) {
+      const reqResult = api.createRequisition(u, {
+        module: 'R&D Trials',
+        priority: form.priority || 'Medium',
+        requestedTo: 'Admin Office / Procurement',
+        reason: `R&D trial procurement: ${clean(form.trialName || form.productName || 'Trial')}`,
+        description: clean(form.procurementReason || form.objective || 'Materials required for R&D trial'),
+        requiredDate: form.requiredDate || form.trialDate || '',
+        items: procurementItems.map(line => ({
+          item: clean(line.item),
+          description: clean(line.description || `For trial ${form.trialName || ''}`),
+          quantity: num(line.quantity),
+          unit: clean(line.unit || 'PCS'),
+          estimatedPrice: num(line.estimatedPrice)
+        }))
+      });
+      requisitionId = reqResult.requisition.id;
+      requisitionNo = reqResult.reqNo;
+      try { api.submitRequisition(u, requisitionId); } catch {}
+    }
+    const trial = {
+      ...(existing || {}),
+      id,
+      trialNo: existing?.trialNo || `RND-${Date.now()}`,
+      trialName: clean(form.trialName || form.name || 'R&D Trial'),
+      productName: clean(form.productName || ''),
+      section: clean(form.section || 'Field Trial'),
+      location: clean(form.location || ''),
+      trialDate: dateOnly(form.trialDate || today()),
+      leadResearcher: clean(form.leadResearcher || u.name),
+      objective: clean(form.objective || ''),
+      method: clean(form.method || ''),
+      observations: clean(form.observations || ''),
+      outcome: clean(form.outcome || ''),
+      status: clean(form.status || (requisitionId ? 'Procurement Requested' : 'Planned')),
+      priority: clean(form.priority || 'Medium'),
+      requisitionId,
+      requisitionNo,
+      updatedAt: now,
+      updatedBy: u.name,
+      createdAt: existing?.createdAt || now,
+      createdBy: existing?.createdBy || u.name,
+      isDeleted: 'No'
+    };
+    if (existing) Object.assign(existing, trial);
+    else d.rndTrials.unshift(trial);
+    if (consumptions.length) {
+      d.rndTrialConsumptions = d.rndTrialConsumptions.filter(line => line.trialId !== id);
+      d.rndTrialConsumptions.unshift(...consumptions);
+    }
+    pushManualNotification(d, {
+      category: 'manufacturing',
+      priority: 'medium',
+      title: `R&D trial ${trial.status}`,
+      message: `${trial.trialName} at ${trial.location || 'location not set'}${requisitionNo ? ` created requisition ${requisitionNo}` : ''}.`,
+      sourceModule: 'production',
+      sourceId: trial.id,
+      sourceLabel: trial.trialName,
+      audienceRoles: [ROLES.ADMIN, ROLES.DEV, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.PROCUREMENT, ROLES.PRODUCTION]
+    });
+    emitBusinessEvent(u, 'manufacturing.rnd_trial_saved', 'rndTrials', trial.id, { trialNo: trial.trialNo, status: trial.status, requisitionNo });
+    log(u, existing ? 'Update R&D Trial' : 'Create R&D Trial', 'Manufacturing', trial.trialNo);
+    return { success: true, trial, consumptions, requisitionId, requisitionNo };
   },
   async saveRawMaterial(user, material = {}) {
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.PROCUREMENT, ROLES.WAREHOUSE, ROLES.PRODUCTION);
@@ -13405,6 +13560,7 @@ const SYNC_AFTER_RPC = {
   recordCustomerPayment: ['Payments', 'Invoices', 'Finance', 'Accounts', 'Dashboard', 'Activity'],
   postManualJournal: ['Finance', 'Accounts', 'Dashboard', 'Activity'],
   saveRawMaterial: ['Manufacturing', 'Raw Materials', 'Inventory', 'Dashboard', 'Activity'],
+  saveRNDTrial: ['Manufacturing', 'Requisitions', 'Notifications', 'Activity'],
   saveBOM: ['Manufacturing', 'Product Formulas', 'Dashboard', 'Activity'],
   saveProductionJob: ['Manufacturing', 'Inventory', 'Dashboard', 'Activity'],
   receiveRawMaterial: ['Manufacturing', 'Inventory', 'Inventory Movements', 'Dashboard', 'Activity'],
