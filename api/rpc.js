@@ -3772,6 +3772,8 @@ function reqRole(user, ...roles) {
   if (!user) throw new Error('Authentication required');
   const email = String(user.email || '').trim().toLowerCase();
   const id = String(user.id || '').trim();
+  const roleAliases = { admin: ROLES.ADMIN, administrator: ROLES.ADMIN, accounts: ROLES.ACCOUNTANT, finance: ROLES.ACCOUNTANT, boss: ROLES.EXECUTIVE, owner: ROLES.EXECUTIVE };
+  const sessionRole = roleAliases[String(user.role || '').trim().toLowerCase()] || user.role;
   let u = d.users.find(x => String(x.email || '').toLowerCase() === email || String(x.id || '') === id);
   // Bootstrap from session if missing in state
   if (!u && email) {
@@ -3779,7 +3781,7 @@ function reqRole(user, ...roles) {
       id: id || gid(),
       name: user.name || email.split('@')[0],
       email,
-      role: user.role || ROLES.CASUAL,
+      role: sessionRole || ROLES.CASUAL,
       status: 'Active',
       password: ''
     };
@@ -3788,7 +3790,7 @@ function reqRole(user, ...roles) {
   if (!u) throw new Error('User not found');
   if (u.status !== 'Active') throw new Error('Account is inactive');
   // Prefer live role from session if state is stale
-  if (user.role && Object.values(ROLES).includes(user.role)) u.role = user.role;
+  if (sessionRole && Object.values(ROLES).includes(sessionRole)) u.role = sessionRole;
   if (u.role === ROLES.ADMIN || u.role === ROLES.DEV || !roles.length || roles.includes(u.role)) return u;
   // Executive can act as manager for approvals
   if (u.role === ROLES.EXECUTIVE && roles.some(r => [ROLES.MANAGER, ROLES.ADMIN, ROLES.EXECUTIVE].includes(r))) return u;
