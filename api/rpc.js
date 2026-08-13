@@ -12882,6 +12882,9 @@ territory: geo,
       }
     };
   },
+  getHRWorkspaceData(user, filters = {}) {
+    return api.getHrData(user, filters);
+  },
   saveEmployee(user, form = {}) {
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.DEV, ROLES.EXECUTIVE);
     const d = data();

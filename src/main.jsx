@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import {
   AlertTriangle,
@@ -6026,12 +6027,12 @@ function ActionMenu({ actions = [], align = 'right', summary, quickActions = 0 }
       }
     };
     const onScroll = () => placePanel();
-    document.addEventListener('mousedown', close);
+    document.addEventListener('pointerdown', close);
     document.addEventListener('keydown', onKey);
     window.addEventListener('resize', placePanel);
     window.addEventListener('scroll', onScroll, true);
     return () => {
-      document.removeEventListener('mousedown', close);
+      document.removeEventListener('pointerdown', close);
       document.removeEventListener('keydown', onKey);
       window.removeEventListener('resize', placePanel);
       window.removeEventListener('scroll', onScroll, true);
@@ -6039,10 +6040,53 @@ function ActionMenu({ actions = [], align = 'right', summary, quickActions = 0 }
   }, [open, focusedIndex, rest, placePanel]);
 
   if (!usable.length) return null;
+  const menuPanel = open && typeof document !== 'undefined' ? createPortal(
+    <div
+      ref={panelRef}
+      className={`row-action-panel fixed-panel ${align}`}
+      role="menu"
+      onPointerDown={e => e.stopPropagation()}
+      onMouseDown={e => e.stopPropagation()}
+      onClick={e => e.stopPropagation()}
+      style={{
+        position: 'fixed',
+        top: coords.top,
+        bottom: coords.bottom,
+        left: coords.left,
+        right: 'auto',
+        zIndex: 12000
+      }}
+    >
+      {summary && <div className="row-action-summary">{summary}</div>}
+      {rest.map((action, idx) => (
+        <button
+          key={action.label}
+          type="button"
+          role="menuitem"
+          disabled={action.disabled}
+          className={focusedIndex === idx ? 'focused' : ''}
+          onPointerDown={event => event.stopPropagation()}
+          onMouseDown={event => event.stopPropagation()}
+          onClick={async event => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (action.disabled) return;
+            setOpen(false);
+            await action.onClick?.();
+          }}
+        >
+          {action.icon}
+          <span>{action.label}</span>
+          {action.shortcut && <em className="action-shortcut">{action.shortcut}</em>}
+        </button>
+      ))}
+    </div>,
+    document.body
+  ) : null;
   return (
-    <div className={`row-action-menu ${open ? 'is-open' : ''}`} ref={ref} onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
+    <div className={`row-action-menu ${open ? 'is-open' : ''}`} ref={ref} onPointerDown={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
       {quick.map(action => (
-        <button key={action.label} type="button" className="row-quick-action" disabled={action.disabled} onMouseDown={e => e.stopPropagation()} onClick={async e => { e.stopPropagation(); await action.onClick?.(); }} title={action.label}>
+        <button key={action.label} type="button" className="row-quick-action" disabled={action.disabled} onPointerDown={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()} onClick={async e => { e.stopPropagation(); await action.onClick?.(); }} title={action.label}>
           {action.icon}
         </button>
       ))}
@@ -6054,10 +6098,10 @@ function ActionMenu({ actions = [], align = 'right', summary, quickActions = 0 }
             className="row-action-trigger"
             aria-haspopup="menu"
             aria-expanded={open}
-            onMouseDown={e => {
-              e.preventDefault();
+            onPointerDown={e => {
               e.stopPropagation();
             }}
+            onMouseDown={e => e.stopPropagation()}
             onClick={e => {
               e.preventDefault();
               e.stopPropagation();
@@ -6068,45 +6112,7 @@ function ActionMenu({ actions = [], align = 'right', summary, quickActions = 0 }
           >
             <MoreVertical size={16} />
           </button>
-          {open && (
-            <div
-              ref={panelRef}
-              className={`row-action-panel fixed-panel ${align}`}
-              role="menu"
-              onMouseDown={e => e.stopPropagation()}
-              style={{
-                position: 'fixed',
-                top: coords.top,
-                bottom: coords.bottom,
-                left: coords.left,
-                right: 'auto',
-                zIndex: 10050
-              }}
-            >
-              {summary && <div className="row-action-summary">{summary}</div>}
-              {rest.map((action, idx) => (
-                <button
-                  key={action.label}
-                  type="button"
-                  role="menuitem"
-                  disabled={action.disabled}
-                  className={focusedIndex === idx ? 'focused' : ''}
-                  onMouseDown={event => event.stopPropagation()}
-                  onClick={async event => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    if (action.disabled) return;
-                    setOpen(false);
-                    await action.onClick?.();
-                  }}
-                >
-                  {action.icon}
-                  <span>{action.label}</span>
-                  {action.shortcut && <em className="action-shortcut">{action.shortcut}</em>}
-                </button>
-              ))}
-            </div>
-          )}
+          {menuPanel}
         </>
       )}
     </div>
