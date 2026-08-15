@@ -6804,13 +6804,9 @@ function Manufacturing({ user, setPage, globalPeriod }) {
       </div>
 
       <div className="inline-actions">
-        <button onClick={() => { setMaterialEdit(null); setNewMaterialOpen(true); }}><Plus size={16} /> New Raw Material</button>
-        <button onClick={() => setReceiveOpen(true)}><Package size={16} /> Receive Material</button>
-        <button onClick={() => { setBomEdit(null); setBomOpen(true); }}><Plus size={16} /> New Formula</button>
         <button onClick={() => setOrderOpen(true)}><Factory size={16} /> New Production Order</button>
-        <button type="button" className="primary-action" onClick={() => setMaterialReqOpen(true)}><Package size={16} /> Request from Inventory</button>
+        <button type="button" className="primary-action" onClick={() => setMaterialReqOpen(true)}><Package size={16} /> Request Materials from Inventory</button>
         <button onClick={() => setView('traceability')}><Route size={16} /> Traceability</button>
-        <button onClick={() => { setRndEdit(null); setRndOpen(true); }}><FlaskConical size={16} /> New R&D Trial</button>
         <button onClick={() => setView('reports')}><FileText size={16} /> Reports</button>
         <CreateRequisitionButton user={user} module="production" />
       </div>
@@ -6882,22 +6878,22 @@ function Manufacturing({ user, setPage, globalPeriod }) {
 
       <div className="manufacturing-input-console">
         <article>
-          <span>Raw Material Intake</span>
-          <strong>{(data?.rawMaterials || []).length} materials / {(data?.rawMaterialBatches || []).length} batches</strong>
-          <p>Receive kilograms, grams, litres, pieces, cartons, and batches with automatic base-unit conversion.</p>
-          <button onClick={() => setReceiveOpen(true)}><Plus size={16} /> Add Raw Material Receipt</button>
+          <span>Materials from Inventory</span>
+          <strong>{(sorted.inventoryStock || []).length} stock lines</strong>
+          <p>Request materials from Inventory — Warehouse approves the issue and stock is deducted there.</p>
+          <button onClick={() => setMaterialReqOpen(true)}><Package size={16} /> Request Materials</button>
         </article>
         <article>
-          <span>Formula Management</span>
-          <strong>{(data.formulas || []).length} formulas / {(data.formulaVersions || []).length} versions</strong>
-          <p>Version-controlled BOMs with draft, approve, archive, duplicate, and new version workflows.</p>
-          <button onClick={() => { setBomEdit(null); setBomOpen(true); }}><Plus size={16} /> Build Formula</button>
-        </article>
-        <article>
-          <span>Production Execution</span>
+          <span>Production Orders</span>
           <strong>{(data?.orders || []).length} orders</strong>
-          <p>Validated production with auto-deduct, cost breakdown, QC checks, and batch traceability.</p>
-          <button onClick={() => setOrderOpen(true)}><Factory size={16} /> Create Order</button>
+          <p>Say what you are producing; consumption of raw materials is recorded automatically.</p>
+          <button onClick={() => setOrderOpen(true)}><Factory size={16} /> New Production Order</button>
+        </article>
+        <article>
+          <span>Raw Material Consumption</span>
+          <strong>{(data?.consumption || []).length} records</strong>
+          <p>See what was used on each order, batch and product made.</p>
+          <button onClick={() => setView('consumption')}><BarChart3 size={16} /> View Consumption</button>
         </article>
       </div>
 
@@ -6962,12 +6958,12 @@ function Manufacturing({ user, setPage, globalPeriod }) {
         </>
       )}
       {view === 'materials' && (
-        <Panel title="Raw Material Storage Records" action={<button className="mini-action" onClick={() => { setMaterialEdit(null); setReceiveOpen(true); }}><Plus size={15} /> New Material</button>}>
+        <Panel title="Raw Material Storage Records" action="Issued from Inventory">
           <SimpleTable rows={sorted.rawMaterials} columns={['materialCode', 'materialName', 'category', 'unitOfMeasure', 'currentQuantity', 'availableQuantity', 'reservedQuantity', 'consumedQuantity', 'supplier', 'costPerUnit', 'warehouse', 'binLocation', 'expiryDate', 'status']} />
         </Panel>
       )}
       {view === 'packaging' && (
-        <Panel title="Packaging Materials" action={<button className="mini-action" onClick={() => { setMaterialEdit(null); setReceiveOpen(true); }}><Plus size={15} /> Add Packaging</button>}>
+        <Panel title="Packaging Materials" action="Issued from Inventory">
           <SimpleTable rows={sorted.packagingMaterials} columns={['materialCode', 'materialName', 'category', 'unitOfMeasure', 'currentQuantity', 'availableQuantity', 'reservedQuantity', 'consumedQuantity', 'supplier', 'costPerUnit', 'warehouse', 'binLocation', 'status']} />
         </Panel>
       )}
@@ -6979,9 +6975,9 @@ function Manufacturing({ user, setPage, globalPeriod }) {
               Starting a production order reserves materials; completing production consumes them and posts finished goods into inventory with full batch traceability.
             </p>
           </Panel>
-          <Panel className="span-5" title="Product Formulas" action={<button className="mini-action" onClick={() => { setBomEdit(null); setBomOpen(true); }}><Plus size={15} /> New Formula</button>}>
+          <Panel className="span-5" title="Product Formulas" action={`${sorted.formulas.length} BOMs`}>
             <SimpleTable rows={sorted.formulas} columns={['productName', 'formulaName', 'activeVersion', 'outputQuantity', 'outputUnit', 'approvalStatus', 'status', 'totalEstimatedCost']} onRowClick={openBOMEdit} />
-            {!sorted.formulas.length && <div className="empty-state">No formulas yet. Click New Formula to define ingredients for a product.</div>}
+            {!sorted.formulas.length && <div className="empty-state">No formulas defined yet. Formulas are maintained alongside the product catalogue.</div>}
           </Panel>
           <Panel className="span-7" title="Formula Version Materials">
             <SimpleTable rows={sorted.formulaVersions} columns={['formulaId', 'version', 'materialName', 'materialCategory', 'quantity', 'unit', 'wastePercent', 'status']} />
