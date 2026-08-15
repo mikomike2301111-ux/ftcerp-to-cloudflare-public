@@ -12101,34 +12101,48 @@ territory: geo,
       .slice(0, 25)
       .map(row => ({ customerName: row.customerName, invNo: row.invNo, dueDate: row.dueDate, paymentTerms: row.paymentTerms, total: row.total, paid: row.paid, balance: row.balance, daysOverdue: row.daysOverdue, risk: row.risk }));
     // ── Accounting integrity / balance sheet (Assets = Liabilities + Equity) ──
+    // Sign convention: balance = debit − credit. Assets/Expenses are debit-normal (positive),
+    // Liabilities/Equity/Revenue are credit-normal (negative for normal balances).
     const acctBalances = (d.financeAccounts || []).map(acc => ({ ...acc, balance: balanceFor(acc.name) }));
     const sumType = type => acctBalances.filter(a => a.type === type).reduce((s, a) => s + num(a.balance), 0);
-    const assets = Math.round(sumType('Asset'));
-    const liabilities = Math.round(sumType('Liability'));
-    const equity = Math.round(sumType('Equity'));
-    const balanceSheetDifference = Math.round(assets - (liabilities + equity));
+    // Presented values (positive for the statement):
+    const assets = Math.round(sumType('Asset'));                 // debit balance = positive
+    const liabilities = Math.round(-sumType('Liability'));       // credit balance = positive
+    const equity = Math.round(-sumType('Equity'));               // credit balance = positive
+    const revenueSum = Math.round(-sumType('Revenue'));          // credit balance = positive
+    const expenseSum = Math.round(sumType('Expense'));           // debit balance = positive
+    const netIncome = revenueSum - expenseSum;
+    // If the ledger is balanced, Assets − Liabilities − StatedEquity − NetIncome = 0.
+    const balanceSheetDifference = Math.round(assets - (liabilities + equity + netIncome));
+    const trialTotalDebit = Math.round(allLines.reduce((s, l) => s + num(l.debit), 0));
+    const trialTotalCredit = Math.round(allLines.reduce((s, l) => s + num(l.credit), 0));
+    const trialBalanced = trialTotalDebit === trialTotalCredit;
     const accountingIntegrity = {
-      assets, liabilities, equity,
+      assets, liabilities, equity, revenue: revenueSum, expenses: expenseSum, netIncome,
       difference: balanceSheetDifference,
-      balanced: Math.abs(balanceSheetDifference) < 1,
-      status: Math.abs(balanceSheetDifference) < 1 ? 'BALANCED' : 'OUT OF BALANCE',
-      trialBalance: {
-        totalDebit: Math.round(allLines.reduce((s, l) => s + num(l.debit), 0)),
-        totalCredit: Math.round(allLines.reduce((s, l) => s + num(l.credit), 0))
-      },
+      balanced: Math.abs(balanceSheetDifference) < 1 && trialBalanced,
+      status: (Math.abs(balanceSheetDifference) < 1 && trialBalanced) ? 'BALANCED' : 'OUT OF BALANCE',
+      trialBalance: { totalDebit: trialTotalDebit, totalCredit: trialTotalCredit, balanced: trialBalanced },
       accountCount: acctBalances.length
     };
+    const currentAssetCodes = ['1100', '1200', '1300', '1400'];
+    const nonCurrentAssetCodes = ['1500', '1600', '1700', '1800'];
+    const currentLiabilityCodes = ['2100', '2200', '2300', '2400', '2500'];
+    const nonCurrentLiabilityCodes = ['2600', '2700'];
     const balanceSheetSections = [
-      { name: 'Current Assets', accounts: acctBalances.filter(a => a.type === 'Asset' && ['1100','1200','1300','1400'].includes(String(a.code).slice(0, 4)) || String(a.code).slice(0, 1) === '1' && !['1500','1600','1700','1800'].includes(String(a.code).slice(0, 4))) },
-      { name: 'Non-Current Assets', accounts: acctBalances.filter(a => a.type === 'Asset' && ['1500','1600','1700','1800'].includes(String(a.code).slice(0, 4))) },
-      { name: 'Current Liabilities', accounts: acctBalances.filter(a => a.type === 'Liability' && ['2100','2200','2300','2400','2500'].includes(String(a.code).slice(0, 4))) },
-      { name: 'Non-Current Liabilities', accounts: acctBalances.filter(a => a.type === 'Liability' && ['2600','2700'].includes(String(a.code).slice(0, 4))) },
+      { name: 'Current Assets', accounts: acctBalances.filter(a => a.type === 'Asset' && (currentAssetCodes.includes(String(a.code).slice(0, 4)) || !nonCurrentAssetCodes.includes(String(a.code).slice(0, 4)))) },
+      { name: 'Non-Current Assets', accounts: acctBalances.filter(a => a.type === 'Asset' && nonCurrentAssetCodes.includes(String(a.code).slice(0, 4))) },
+      { name: 'Current Liabilities', accounts: acctBalances.filter(a => a.type === 'Liability' && currentLiabilityCodes.includes(String(a.code).slice(0, 4))) },
+      { name: 'Non-Current Liabilities', accounts: acctBalances.filter(a => a.type === 'Liability' && nonCurrentLiabilityCodes.includes(String(a.code).slice(0, 4))) },
       { name: 'Equity', accounts: acctBalances.filter(a => a.type === 'Equity') }
-    ].map(section => ({
-      name: section.name,
-      lines: section.accounts.filter(a => Math.abs(num(a.balance)) > 0 || String(a.code).endsWith('00')).map(a => ({ code: a.code, name: a.name, balance: Math.round(num(a.balance)) })),
-      total: Math.round(section.accounts.reduce((s, a) => s + num(a.balance), 0))
-    }));
+    ].map(section => {
+      const creditNormal = section.name.includes('Liabilities') || section.name === 'Equity';
+      const shown = section.accounts
+        .filter(a => Math.abs(num(a.balance)) > 0 || String(a.code).endsWith('00'))
+        .map(a => ({ code: a.code, name: a.name, balance: Math.round(creditNormal ? -num(a.balance) : num(a.balance)) }));
+      const total = Math.round(section.accounts.reduce((s, a) => s + (creditNormal ? -num(a.balance) : num(a.balance)), 0));
+      return { name: section.name, lines: shown, total };
+    });
     return {
       filters: { dateRange: 'This Fiscal Year', currency: 'KES', entity: 'Farmtrack Biosciences Ltd' },
       overview: {
