@@ -177,6 +177,7 @@ const STAFF_ROSTER = [
   { name: 'Moses Miano', email: 'mosesmiano@farmtrack.co.ke', password: 'Pass2026', role: ROLES.PRODUCTION, department: 'Bacteriology' },
   { name: 'EPF Fungal', email: 'epf@farmtrack.co.ke', password: 'Epf2026!', role: ROLES.PRODUCTION, department: 'Fungal' },
   { name: 'Alex', email: 'alex@farmtrack.co.ke', password: 'Pass2026', role: ROLES.PRODUCTION, department: 'R&D' },
+  { name: 'Moses Ngeno', email: 'mosesngeno@farmtrack.co.ke', password: 'Pass@2026', role: ROLES.PRODUCTION, department: 'R&D' },
   { name: 'Macharia', email: 'macharia@farmtrack.co.ke', password: 'Pass@2026', role: ROLES.DELIVERY, department: 'Delivery' },
   { name: 'KK', email: 'kk@farmtrack.co.ke', password: 'Kk2026!', role: ROLES.CASUAL, department: 'Operations' }
 ];
@@ -1378,20 +1379,35 @@ const REPORT_TEMPLATE_REGISTRY = {
         { section: 'Net Profit', account: 'Net Profit', amount: Math.round(revenue - cogs - expenseTotal) }
       ];
     }, { layout: 'financial-statement', sections: ['Revenue', 'Cost of Goods Sold', 'Operating Expenses', 'Net Profit'], aliases: ['Profit and Loss Statement', 'P&L', 'Income Statement', 'Profitability Report'] }),
-    template('Financial', 'financial-balance-sheet', 'Balance Sheet', ['section', 'account', 'amount'], (d, scope) => {
-      const invoices = reportInvoiceRows(d, scope);
-      const assets = [
-        { section: 'Assets', account: 'Accounts Receivable', amount: invoices.reduce((s, inv) => s + num(inv.balance), 0) },
-        { section: 'Assets', account: 'Inventory Asset', amount: (d.inventory || []).reduce((s, item) => s + num(item.quantity) * num(item.unitCost), 0) },
-        { section: 'Assets', account: 'Cash and Bank', amount: (d.bankAccounts || []).reduce((s, bank) => s + num(bank.balance || bank.openingBalance), 0) }
+    template('Financial', 'financial-balance-sheet', 'Balance Sheet', ['section', 'account', 'amount', 'note'], (d, scope) => {
+      // Build from the actual general ledger so the balance sheet reflects posted entries.
+      const byAccount = {};
+      financialJournalLines(d, scope).forEach(line => {
+        const key = `${line.accountCode || ''}-${line.accountName || ''}`;
+        byAccount[key] ||= { code: line.accountCode, name: line.accountName, type: line.accountType, amount: 0 };
+        byAccount[key].amount += num(line.debit) - num(line.credit);
+      });
+      const accountRows = (d.financeAccounts || []).map(acc => {
+        const ledger = Object.values(byAccount).find(b => b.code === acc.code || b.name === acc.name);
+        return { code: acc.code, name: acc.name, type: acc.type, amount: ledger ? ledger.amount : num(acc.balance || 0) };
+      });
+      const sumType = type => Math.round(accountRows.filter(a => a.type === type).reduce((s, a) => s + num(a.amount), 0));
+      const assets = sumType('Asset');
+      const liabilities = sumType('Liability');
+      const equity = sumType('Equity');
+      const difference = assets - (liabilities + equity);
+      const out = [
+        ...accountRows.filter(a => a.type === 'Asset' && Math.abs(num(a.amount)) > 0).map(a => ({ section: 'ASSETS', account: a.name, amount: Math.round(num(a.amount)), note: a.code })),
+        { section: 'ASSETS', account: 'TOTAL ASSETS', amount: assets, note: '' },
+        ...accountRows.filter(a => a.type === 'Liability' && Math.abs(num(a.amount)) > 0).map(a => ({ section: 'LIABILITIES', account: a.name, amount: Math.round(num(a.amount)), note: a.code })),
+        { section: 'LIABILITIES', account: 'TOTAL LIABILITIES', amount: liabilities, note: '' },
+        ...accountRows.filter(a => a.type === 'Equity' && Math.abs(num(a.amount)) > 0).map(a => ({ section: 'EQUITY', account: a.name, amount: Math.round(num(a.amount)), note: a.code })),
+        { section: 'EQUITY', account: 'TOTAL EQUITY', amount: equity, note: '' },
+        { section: 'BALANCE CHECK', account: `Liabilities + Equity (${liabilities} + ${equity})`, amount: liabilities + equity, note: 'Assets − (Liabilities + Equity)' },
+        { section: 'BALANCE CHECK', account: Math.abs(difference) < 1 ? 'BALANCED ✓' : 'OUT OF BALANCE — investigate', amount: difference, note: `Difference ${difference}` }
       ];
-      const liabilities = [
-        { section: 'Liabilities', account: 'Accounts Payable', amount: (d.accountsPayable || d.financeAccountsPayable || []).reduce((s, row) => s + num(row.outstandingBalance), 0) },
-        { section: 'Liabilities', account: 'Tax Payable', amount: (d.taxRecords || []).reduce((s, row) => s + num(row.liability), 0) }
-      ];
-      const equityAmount = assets.reduce((s, row) => s + num(row.amount), 0) - liabilities.reduce((s, row) => s + num(row.amount), 0);
-      return [...assets, ...liabilities, { section: 'Equity', account: 'Retained Earnings', amount: Math.round(equityAmount) }].map(row => ({ ...row, amount: Math.round(row.amount) }));
-    }, { layout: 'financial-statement', sections: ['Assets', 'Liabilities', 'Equity'] }),
+      return out;
+    }, { layout: 'financial-statement', sections: ['ASSETS', 'LIABILITIES', 'EQUITY', 'BALANCE CHECK'], aliases: ['Statement of Financial Position', 'Balance Sheet Report'] }),
     template('Financial', 'financial-trial-balance', 'Trial Balance', ['accountCode', 'accountName', 'debit', 'credit', 'balance'], (d, scope) => {
       const grouped = {};
       financialJournalLines(d, scope).forEach(line => {
@@ -2990,20 +3006,212 @@ function ensureManufacturingData() {
 function ensureFinanceData() {
   if (!db) return;
   // Structural chart of accounts only — no demo balances or journal seed.
-  if (!Array.isArray(db.financeAccounts) || !db.financeAccounts.length) {
-    const accountSeed = [
-      ['1000', 'Cash on Hand', 'Asset'], ['1010', 'KCB Bank', 'Asset'], ['1020', 'M-Pesa Till', 'Asset'],
-      ['1100', 'Accounts Receivable', 'Asset'], ['1200', 'Inventory Asset', 'Asset'], ['1300', 'Fixed Assets', 'Asset'],
-      ['2000', 'Accounts Payable', 'Liability'], ['2100', 'Tax Payable', 'Liability'], ['2200', 'Payroll Payable', 'Liability'],
-      ['3000', 'Owner Equity', 'Equity'], ['3100', 'Retained Earnings', 'Equity'],
-      ['4000', 'Sales Revenue', 'Revenue'], ['4100', 'Other Income', 'Revenue'],
-      ['5000', 'Cost of Goods Sold', 'Expense'], ['5100', 'Payroll Expense', 'Expense'], ['5200', 'Transport Expense', 'Expense'],
-      ['5300', 'Utilities Expense', 'Expense'], ['5400', 'Marketing Expense', 'Expense'], ['5500', 'Inventory Loss Expense', 'Expense'],
-      ['5600', 'Tax Expense', 'Expense']
+  const accountSeed = [
+      ['1000', 'Assets', 'Asset', ''],
+      ['1100', 'Cash & Cash Equivalents', 'Asset', '1000'],
+      ['1101', 'Cash on Hand', 'Asset', '1100'],
+      ['1102', 'Petty Cash', 'Asset', '1100'],
+      ['1103', 'Main Cash Account', 'Asset', '1100'],
+      ['1104', 'M-Pesa Till', 'Asset', '1100'],
+      ['1105', 'KCB Bank', 'Asset', '1100'],
+      ['1106', 'Equity Bank', 'Asset', '1100'],
+      ['1107', 'Mobile Money', 'Asset', '1100'],
+      ['1108', 'Undeposited Funds', 'Asset', '1100'],
+      ['1200', 'Accounts Receivable', 'Asset', '1000'],
+      ['1201', 'Trade Receivables', 'Asset', '1200'],
+      ['1202', 'Customer Advances', 'Asset', '1200'],
+      ['1203', 'Customer Deposits', 'Asset', '1200'],
+      ['1205', 'Other Receivables', 'Asset', '1200'],
+      ['1300', 'Inventory', 'Asset', '1000'],
+      ['1301', 'Inventory Asset', 'Asset', '1300'],
+      ['1302', 'Raw Materials Inventory', 'Asset', '1300'],
+      ['1303', 'Work in Progress', 'Asset', '1300'],
+      ['1304', 'Merchandise Inventory', 'Asset', '1300'],
+      ['1305', 'Packaging Materials', 'Asset', '1300'],
+      ['1306', 'Inventory in Transit', 'Asset', '1300'],
+      ['1307', 'Inventory Adjustments', 'Asset', '1300'],
+      ['1400', 'Prepayments', 'Asset', '1000'],
+      ['1401', 'Prepaid Insurance', 'Asset', '1400'],
+      ['1402', 'Prepaid Rent', 'Asset', '1400'],
+      ['1403', 'Prepaid Software', 'Asset', '1400'],
+      ['1405', 'Other Prepayments', 'Asset', '1400'],
+      ['1500', 'Property, Plant & Equipment', 'Asset', '1000'],
+      ['1501', 'Land', 'Asset', '1500'],
+      ['1502', 'Buildings', 'Asset', '1500'],
+      ['1503', 'Machinery', 'Asset', '1500'],
+      ['1504', 'Vehicles', 'Asset', '1500'],
+      ['1505', 'Computers', 'Asset', '1500'],
+      ['1506', 'Office Equipment', 'Asset', '1500'],
+      ['1507', 'Furniture', 'Asset', '1500'],
+      ['1600', 'Accumulated Depreciation', 'Asset', '1000'],
+      ['1601', 'Accumulated Depreciation - Buildings', 'Asset', '1600'],
+      ['1602', 'Accumulated Depreciation - Machinery', 'Asset', '1600'],
+      ['1603', 'Accumulated Depreciation - Vehicles', 'Asset', '1600'],
+      ['1604', 'Accumulated Depreciation - Computers', 'Asset', '1600'],
+      ['1700', 'Intangible Assets', 'Asset', '1000'],
+      ['1701', 'Software (Intangible)', 'Asset', '1700'],
+      ['1703', 'Patents', 'Asset', '1700'],
+      ['1800', 'Long-Term Investments', 'Asset', '1000'],
+      ['1801', 'Investments', 'Asset', '1800'],
+      ['1802', 'Security Deposits', 'Asset', '1800'],
+      ['2000', 'Liabilities', 'Liability', ''],
+      ['2100', 'Accounts Payable', 'Liability', '2000'],
+      ['2101', 'Supplier Payables', 'Liability', '2100'],
+      ['2102', 'Trade Creditors', 'Liability', '2100'],
+      ['2103', 'Supplier Advances', 'Liability', '2100'],
+      ['2200', 'Taxes Payable', 'Liability', '2000'],
+      ['2201', 'Tax Payable', 'Liability', '2200'],
+      ['2202', 'VAT Input', 'Liability', '2200'],
+      ['2203', 'PAYE Payable', 'Liability', '2200'],
+      ['2204', 'Withholding Tax', 'Liability', '2200'],
+      ['2205', 'Corporate Tax Payable', 'Liability', '2200'],
+      ['2300', 'Employee Liabilities', 'Liability', '2000'],
+      ['2301', 'Payroll Payable', 'Liability', '2300'],
+      ['2302', 'Employee Advances', 'Liability', '2300'],
+      ['2303', 'Benefits Payable', 'Liability', '2300'],
+      ['2400', 'Accrued Expenses', 'Liability', '2000'],
+      ['2401', 'Accrued Rent', 'Liability', '2400'],
+      ['2402', 'Accrued Utilities', 'Liability', '2400'],
+      ['2403', 'Accrued Salaries', 'Liability', '2400'],
+      ['2500', 'Short-Term Loans', 'Liability', '2000'],
+      ['2501', 'Bank Overdraft', 'Liability', '2500'],
+      ['2502', 'Short-Term Loan', 'Liability', '2500'],
+      ['2600', 'Long-Term Debt', 'Liability', '2000'],
+      ['2601', 'Bank Loan', 'Liability', '2600'],
+      ['2602', 'Equipment Financing', 'Liability', '2600'],
+      ['2700', 'Provisions', 'Liability', '2000'],
+      ['2701', 'Employee Provisions', 'Liability', '2700'],
+      ['2702', 'Warranty Provision', 'Liability', '2700'],
+      ['3000', 'Equity', 'Equity', ''],
+      ['3001', 'Owner Equity', 'Equity', '3000'],
+      ['3002', 'Share Capital', 'Equity', '3000'],
+      ['3003', 'Additional Capital', 'Equity', '3000'],
+      ['3004', 'Retained Earnings', 'Equity', '3000'],
+      ['3005', 'Current Year Profit', 'Equity', '3000'],
+      ['3006', 'Current Year Loss', 'Equity', '3000'],
+      ['3007', 'Drawings', 'Equity', '3000'],
+      ['3008', 'Dividends', 'Equity', '3000'],
+      ['4000', 'Sales Revenue', 'Revenue', ''],
+      ['4001', 'Product Sales', 'Revenue', '4000'],
+      ['4002', 'Service Revenue', 'Revenue', '4000'],
+      ['4003', 'Online Sales', 'Revenue', '4000'],
+      ['4004', 'Wholesale Sales', 'Revenue', '4000'],
+      ['4005', 'Retail Sales', 'Revenue', '4000'],
+      ['4006', 'Export Sales', 'Revenue', '4000'],
+      ['4007', 'Other Sales', 'Revenue', '4000'],
+      ['4100', 'Other Operating Revenue', 'Revenue', ''],
+      ['4101', 'Delivery Income', 'Revenue', '4100'],
+      ['4102', 'Installation Income', 'Revenue', '4100'],
+      ['4103', 'Consulting Income', 'Revenue', '4100'],
+      ['4200', 'Other Income', 'Revenue', ''],
+      ['4201', 'Interest Income', 'Revenue', '4200'],
+      ['4202', 'Foreign Exchange Gain', 'Revenue', '4200'],
+      ['4203', 'Asset Disposal Gain', 'Revenue', '4200'],
+      ['5000', 'Cost of Goods Sold', 'Expense', ''],
+      ['5001', 'Product Cost', 'Expense', '5000'],
+      ['5002', 'Material Cost', 'Expense', '5000'],
+      ['5003', 'Direct Labour', 'Expense', '5000'],
+      ['5004', 'Manufacturing Overhead', 'Expense', '5000'],
+      ['5005', 'Freight In', 'Expense', '5000'],
+      ['5006', 'Inventory Loss Expense', 'Expense', '5000'],
+      ['5007', 'Inventory Adjustments Expense', 'Expense', '5000'],
+      ['5008', 'Stock Write-Offs', 'Expense', '5000'],
+      ['6000', 'Operating Expenses', 'Expense', ''],
+      ['6100', 'Payroll Expense', 'Expense', '6000'],
+      ['6101', 'Salaries Expense', 'Expense', '6100'],
+      ['6102', 'Wages Expense', 'Expense', '6100'],
+      ['6103', 'Bonuses Expense', 'Expense', '6100'],
+      ['6104', 'Staff Benefits Expense', 'Expense', '6100'],
+      ['6105', 'Training Expense', 'Expense', '6100'],
+      ['6106', 'Recruitment Expense', 'Expense', '6100'],
+      ['6107', 'Staff Welfare Expense', 'Expense', '6100'],
+      ['6200', 'Premises Expenses', 'Expense', '6000'],
+      ['6201', 'Rent Expense', 'Expense', '6200'],
+      ['6202', 'Utilities Expense', 'Expense', '6200'],
+      ['6203', 'Electricity Expense', 'Expense', '6200'],
+      ['6204', 'Water Expense', 'Expense', '6200'],
+      ['6205', 'Security Expense', 'Expense', '6200'],
+      ['6206', 'Cleaning Expense', 'Expense', '6200'],
+      ['6207', 'Repairs & Maintenance Expense', 'Expense', '6200'],
+      ['6208', 'Maintenance Expense', 'Expense', '6200'],
+      ['6209', 'Insurance Expense', 'Expense', '6200'],
+      ['6210', 'Miscellaneous Expense', 'Expense', '6200'],
+      ['6211', 'Tax Expense', 'Expense', '6200'],
+      ['6300', 'Technology Expenses', 'Expense', '6000'],
+      ['6301', 'Software Expense', 'Expense', '6300'],
+      ['6302', 'Internet Expense', 'Expense', '6300'],
+      ['6303', 'Hosting Expense', 'Expense', '6300'],
+      ['6304', 'IT Services Expense', 'Expense', '6300'],
+      ['6305', 'Cybersecurity Expense', 'Expense', '6300'],
+      ['6306', 'Equipment Rental Expense', 'Expense', '6300'],
+      ['6400', 'Sales & Marketing', 'Expense', '6000'],
+      ['6401', 'Marketing Expense', 'Expense', '6400'],
+      ['6402', 'Advertising Expense', 'Expense', '6400'],
+      ['6403', 'Promotions Expense', 'Expense', '6400'],
+      ['6404', 'Sales Commissions Expense', 'Expense', '6400'],
+      ['6405', 'Entertainment Expense', 'Expense', '6400'],
+      ['6406', 'Donations Expense', 'Expense', '6400'],
+      ['6407', 'Subscriptions Expense', 'Expense', '6400'],
+      ['6500', 'Transport & Vehicles', 'Expense', '6000'],
+      ['6501', 'Transport Expense', 'Expense', '6500'],
+      ['6502', 'Fuel Expense', 'Expense', '6500'],
+      ['6503', 'Vehicle Maintenance Expense', 'Expense', '6500'],
+      ['6504', 'Vehicle Insurance Expense', 'Expense', '6500'],
+      ['6505', 'Delivery Expense', 'Expense', '6500'],
+      ['6506', 'Parking Expense', 'Expense', '6500'],
+      ['6507', 'Travel Expense', 'Expense', '6500'],
+      ['6600', 'Professional Services', 'Expense', '6000'],
+      ['6601', 'Professional Fees Expense', 'Expense', '6600'],
+      ['6602', 'Legal Fees Expense', 'Expense', '6600'],
+      ['6603', 'Consulting Expense', 'Expense', '6600'],
+      ['6604', 'Audit Expense', 'Expense', '6600'],
+      ['6605', 'Research & Development Expense', 'Expense', '6600'],
+      ['6606', 'License Fees Expense', 'Expense', '6600'],
+      ['6607', 'Permits Expense', 'Expense', '6600'],
+      ['6700', 'Office & General', 'Expense', '6000'],
+      ['6701', 'Office Supplies Expense', 'Expense', '6700'],
+      ['6702', 'Printing Expense', 'Expense', '6700'],
+      ['6703', 'Telephone Expense', 'Expense', '6700'],
+      ['6704', 'Postage Expense', 'Expense', '6700'],
+      ['6705', 'Communication Expense', 'Expense', '6700'],
+      ['6706', 'Gas Expense', 'Expense', '6700'],
+      ['6800', 'Financial Expenses', 'Expense', '6000'],
+      ['6801', 'Bank Charges Expense', 'Expense', '6800'],
+      ['6802', 'M-Pesa Charges Expense', 'Expense', '6800'],
+      ['6803', 'Interest Expense', 'Expense', '6800'],
+      ['6804', 'Loan Fees Expense', 'Expense', '6800'],
+      ['6805', 'Foreign Exchange Loss Expense', 'Expense', '6800'],
+      ['6806', 'Fines & Penalties Expense', 'Expense', '6800'],
+      ['6807', 'Bad Debt Expense', 'Expense', '6800'],
+      ['6808', 'Loan Repayment', 'Expense', '6800'],
+      ['6900', 'Depreciation & Amortisation', 'Expense', '6000'],
+      ['6901', 'Depreciation Expense', 'Expense', '6900'],
+      ['6902', 'Amortisation Expense', 'Expense', '6900'],
+      ['8001', 'Capital Expenditure', 'Expense', '6000'],
+      ['8002', 'Asset Purchase', 'Expense', '8001'],
+      ['8003', 'Software Purchase', 'Expense', '8001'],
+      ['8004', 'Hardware Purchase', 'Expense', '8001'],
+      ['8005', 'Furniture Purchase', 'Expense', '8001'],
+      ['8006', 'Vehicle Purchase', 'Expense', '8001'],
+      ['8007', 'Land Purchase', 'Expense', '8001'],
+      ['8008', 'Building Purchase', 'Expense', '8001'],
+      ['8009', 'Other Asset Purchase', 'Expense', '8001'],
+      ['7001', 'Owner Contributions', 'Equity', '3000']
     ];
-    db.financeAccounts = accountSeed.map(([code, name, type]) => ({
-      id: gid(), code, name, type, balance: 0, status: 'Active', createdAt: new Date().toISOString()
+  if (!Array.isArray(db.financeAccounts) || !db.financeAccounts.length) {
+    db.financeAccounts = accountSeed.map(([code, name, type, parent]) => ({
+      id: gid(), code, name, type, parent: parent || type, balance: 0, status: 'Active', createdAt: new Date().toISOString()
     }));
+  } else {
+    // Merge the professional chart of accounts into an existing book without duplicating.
+    const existingCodes = new Set(db.financeAccounts.map(a => String(a.code || '').trim()));
+    const existingNames = new Set(db.financeAccounts.map(a => String(a.name || '').trim().toLowerCase()));
+    const missing = accountSeed.filter(([code, name]) => !existingCodes.has(String(code).trim()) && !existingNames.has(String(name).trim().toLowerCase()));
+    missing.forEach(([code, name, type, parent]) => {
+      db.financeAccounts.push({ id: gid(), code, name, type, parent: parent || type, balance: 0, status: 'Active', createdAt: new Date().toISOString() });
+      existingCodes.add(String(code));
+      existingNames.add(String(name).toLowerCase());
+    });
   }
   db.financeJournalEntries = Array.isArray(db.financeJournalEntries) ? db.financeJournalEntries : [];
   db.financeJournalLines = Array.isArray(db.financeJournalLines) ? db.financeJournalLines : [];
@@ -7585,7 +7793,7 @@ const api = {
     return { success: true, settings: d.settings, section: key };
   },
   saveSettingsUser(user, payload = {}) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.DEV);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.DEV, ROLES.MANAGER, ROLES.EXECUTIVE);
     assertRequired(payload.name, 'Name');
     assertRequired(payload.email, 'Email');
     assertRequired(payload.role, 'Role');
@@ -7623,7 +7831,7 @@ const api = {
     return { success: true, user: publicUser({ ...row, password: undefined }) };
   },
   resetUserPassword(user, userId, newPassword) {
-    const u = reqRole(user, ROLES.ADMIN, ROLES.DEV);
+    const u = reqRole(user, ROLES.ADMIN, ROLES.DEV, ROLES.MANAGER);
     assertRequired(newPassword, 'New password');
     if (String(newPassword).length < 6) throw new Error('Password must be at least 6 characters');
     const d = data();
@@ -11892,6 +12100,35 @@ territory: geo,
       .filter(row => num(row.balance) > 0)
       .slice(0, 25)
       .map(row => ({ customerName: row.customerName, invNo: row.invNo, dueDate: row.dueDate, paymentTerms: row.paymentTerms, total: row.total, paid: row.paid, balance: row.balance, daysOverdue: row.daysOverdue, risk: row.risk }));
+    // ── Accounting integrity / balance sheet (Assets = Liabilities + Equity) ──
+    const acctBalances = (d.financeAccounts || []).map(acc => ({ ...acc, balance: balanceFor(acc.name) }));
+    const sumType = type => acctBalances.filter(a => a.type === type).reduce((s, a) => s + num(a.balance), 0);
+    const assets = Math.round(sumType('Asset'));
+    const liabilities = Math.round(sumType('Liability'));
+    const equity = Math.round(sumType('Equity'));
+    const balanceSheetDifference = Math.round(assets - (liabilities + equity));
+    const accountingIntegrity = {
+      assets, liabilities, equity,
+      difference: balanceSheetDifference,
+      balanced: Math.abs(balanceSheetDifference) < 1,
+      status: Math.abs(balanceSheetDifference) < 1 ? 'BALANCED' : 'OUT OF BALANCE',
+      trialBalance: {
+        totalDebit: Math.round(allLines.reduce((s, l) => s + num(l.debit), 0)),
+        totalCredit: Math.round(allLines.reduce((s, l) => s + num(l.credit), 0))
+      },
+      accountCount: acctBalances.length
+    };
+    const balanceSheetSections = [
+      { name: 'Current Assets', accounts: acctBalances.filter(a => a.type === 'Asset' && ['1100','1200','1300','1400'].includes(String(a.code).slice(0, 4)) || String(a.code).slice(0, 1) === '1' && !['1500','1600','1700','1800'].includes(String(a.code).slice(0, 4))) },
+      { name: 'Non-Current Assets', accounts: acctBalances.filter(a => a.type === 'Asset' && ['1500','1600','1700','1800'].includes(String(a.code).slice(0, 4))) },
+      { name: 'Current Liabilities', accounts: acctBalances.filter(a => a.type === 'Liability' && ['2100','2200','2300','2400','2500'].includes(String(a.code).slice(0, 4))) },
+      { name: 'Non-Current Liabilities', accounts: acctBalances.filter(a => a.type === 'Liability' && ['2600','2700'].includes(String(a.code).slice(0, 4))) },
+      { name: 'Equity', accounts: acctBalances.filter(a => a.type === 'Equity') }
+    ].map(section => ({
+      name: section.name,
+      lines: section.accounts.filter(a => Math.abs(num(a.balance)) > 0 || String(a.code).endsWith('00')).map(a => ({ code: a.code, name: a.name, balance: Math.round(num(a.balance)) })),
+      total: Math.round(section.accounts.reduce((s, a) => s + num(a.balance), 0))
+    }));
     return {
       filters: { dateRange: 'This Fiscal Year', currency: 'KES', entity: 'Farmtrack Biosciences Ltd' },
       overview: {
@@ -11901,6 +12138,8 @@ territory: geo,
         financialHealthScore: Math.max(1, Math.min(100, Math.round(70 + (netProfit > 0 ? 12 : -10) + (cashPosition > ap ? 8 : -8))))
       },
       integrity: { journals: allEntries.length, lines: allLines.length, unbalanced: unbalanced.length, immutable: allEntries.every(x => x.immutable) },
+      accountingIntegrity,
+      balanceSheetSections,
       trend,
       accounts: d.financeAccounts,
       journals: allEntries,
@@ -11962,6 +12201,8 @@ territory: geo,
         bankAccounts: [], bankTransactions: [], expenses: [], payroll: [], taxes: [], assets: [], budgets: [],
         costCenters: [], forecasts: [], reports: [], audit: [], ai: [], customerFinance: [], agingSummary: [],
         collectionQueue: [], paymentTermsSummary: [], statementPreview: [], quotations: [], payments: [],
+        accountingIntegrity: { assets: 0, liabilities: 0, equity: 0, difference: 0, balanced: true, status: 'BALANCED', trialBalance: { totalDebit: 0, totalCredit: 0 }, accountCount: 0 },
+        balanceSheetSections: [], paymentMethodsSummary: [], paymentAccountsSummary: [],
         sourceFlows: [], errorSafe: true, errorMessage: err && err.message,
         creditNotes: [], creditNoteItems: [], productReturns: [], taxSettings: [], invoiceHistory: [], accountingAuditTrail: [], warehouses: []
       };
@@ -12057,7 +12298,20 @@ territory: geo,
     const category = row.category || 'Office Expenses';
     const mappedAccount = categoryMap[category] || 'Miscellaneous Expense';
     const paymentMethod = row.paymentMethod || 'Bank';
-    const expense = api.saveExpense(u, { category, date: row.date || today(), description: row.description || 'Finance expense', amount: num(row.amount), paymentMethod, status: 'Paid', accountCategory: mappedAccount });
+    // Expense classification + cost-centre fields (Fixed/Variable/Recurring etc., department/branch/project)
+    const expenseTypes = ['Fixed', 'Variable', 'Semi-Variable', 'Step Cost', 'Discretionary', 'Committed', 'One-Time', 'Recurring', 'Accrued', 'Prepaid'];
+    const expenseType = expenseTypes.includes(row.expenseType) ? row.expenseType : '';
+    const expense = api.saveExpense(u, {
+      category, date: row.date || today(), description: row.description || 'Finance expense', amount: num(row.amount),
+      paymentMethod, status: 'Paid', accountCategory: mappedAccount,
+      expenseType,
+      department: clean(row.department) || '',
+      branch: clean(row.branch) || '',
+      project: clean(row.project) || '',
+      costCentre: clean(row.costCentre || row.costCenter) || '',
+      supplier: clean(row.supplier) || '',
+      employee: clean(row.employee) || ''
+    });
     ensureFinanceData();
     const d = data();
     const expenseAccount = d.financeAccounts.find(a => a.name === mappedAccount) || d.financeAccounts.find(a => a.name === 'Miscellaneous Expense');
@@ -12071,9 +12325,18 @@ territory: geo,
   },
   recordCustomerPayment(user, row = {}) {
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT);
-    const result = api.recordPayment(u, { referenceId: row.invoiceId || row.referenceId, amount: row.amount, method: row.method || 'Bank' });
+    // recordPayment already posts the double-entry (Dr received-into account / Cr Accounts Receivable).
+    const result = api.recordPayment(u, {
+      referenceId: row.invoiceId || row.referenceId,
+      amount: row.amount,
+      method: row.method || 'Bank',
+      bankAccount: row.bankAccount || (row.method === 'M-Pesa' ? 'M-Pesa Till' : row.method === 'Cash' ? 'Cash on Hand' : 'KCB Bank'),
+      reference: row.reference || '',
+      notes: row.notes || '',
+      date: row.date || today(),
+      cashier: u.name
+    });
     const inv = data().invoices.find(i => i.id === (row.invoiceId || row.referenceId));
-    if (inv) api.postManualJournal(u, { amount: row.amount, description: `Customer payment ${inv.invNo}`, reference: inv.invNo, debitAccountId: data().financeAccounts.find(a => a.name === 'KCB Bank')?.id, creditAccountId: data().financeAccounts.find(a => a.name === 'Accounts Receivable')?.id });
     // Email: payment receipt to customer
     if (inv) {
       const customer = (data().customers || []).find(c => c.id === inv.customerId || c.name === inv.customerName);

@@ -7390,6 +7390,33 @@ function AccountsWorkspace({ user, setPage, globalPeriod }) {
               <SimpleTable rows={(data.paymentAccountsSummary || []).map(row => ({ ...row, total: num(row.total) })).sort((a, b) => b.total - a.total)} columns={['account', 'count', 'total']} />
               {!(data.paymentAccountsSummary || []).length && <div className="quiet-state">No payments recorded yet.</div>}
             </Panel>
+            <Panel className="span-12" title="Accounting Integrity">
+              <div className="metric-stack">
+                {(data.accountingIntegrity || {}).balanced !== undefined && (
+                  <>
+                    <div><span>Assets</span><strong>{currency((data.accountingIntegrity.assets || 0))}</strong><em>Total debit balances of asset accounts</em></div>
+                    <div><span>Liabilities</span><strong>{currency((data.accountingIntegrity.liabilities || 0))}</strong><em>Total credit balances of liability accounts</em></div>
+                    <div><span>Equity</span><strong>{currency((data.accountingIntegrity.equity || 0))}</strong><em>Capital, retained earnings and current year</em></div>
+                    <div><span>Difference</span><strong style={{ color: (data.accountingIntegrity.difference || 0) === 0 ? '#22c55e' : '#ef4444' }}>{currency((data.accountingIntegrity.difference || 0))}</strong><em>Assets − (Liabilities + Equity)</em></div>
+                    <div><span>Status</span><strong style={{ color: data.accountingIntegrity.balanced ? '#22c55e' : '#ef4444' }}>{data.accountingIntegrity.status || 'BALANCED'}</strong><em>Double-entry check</em></div>
+                    <div><span>Trial Balance</span><strong>{(data.accountingIntegrity.trialBalance || {}).totalDebit === (data.accountingIntegrity.trialBalance || {}).totalCredit ? 'Debit = Credit' : 'Out of balance'}</strong><em>Dr {currency((data.accountingIntegrity.trialBalance || {}).totalDebit)} · Cr {currency((data.accountingIntegrity.trialBalance || {}).totalCredit)}</em></div>
+                  </>
+                )}
+                {!(data.accountingIntegrity || {}).balanced !== undefined && <div className="quiet-state">Balance check requires posted journal activity.</div>}
+              </div>
+            </Panel>
+            <Panel className="span-12" title="Balance Sheet (Statement of Financial Position)">
+              <div className="dashboard-grid">
+                {(data.balanceSheetSections || []).map(section => (
+                  <Panel key={section.name} className="span-4" title={section.name} action={currency(section.total)}>
+                    <div className="metric-stack">
+                      {(section.lines || []).map((line, i) => <div key={`${line.code}-${i}`}><span>{line.code} - {line.name}</span><strong>{currency(line.balance)}</strong><em>{line.balance < 0 ? 'cr' : 'dr'}</em></div>)}
+                      {!(section.lines || []).length && <div className="quiet-state">No balances</div>}
+                    </div>
+                  </Panel>
+                ))}
+              </div>
+            </Panel>
           </div>
         </>
       )}
@@ -7465,9 +7492,19 @@ function AccountsWorkspace({ user, setPage, globalPeriod }) {
                         actions={[
                           { label: 'View summary', icon: <FileText size={15} />, onClick: () => printText(row.invoiceNo || 'Payable', rowSummary(row)) },
                           { label: 'Copy details', icon: <FileText size={15} />, onClick: () => copyText(rowSummary(row)) },
+                          num(row.outstandingBalance) > 0 && { label: 'Pay bill', icon: <CheckCircle2 size={15} />, onClick: async () => {
+                            const amt = window.prompt(`Pay ${row.supplierName} — outstanding ${currency(row.outstandingBalance)}. Enter amount to pay:`);
+                            if (amt === null) return;
+                            try {
+                              await rpc('recordSupplierPayment', [user, row.supplierInvoiceId || row.id, Number(amt) || 0]);
+                              alert('Payment recorded and posted to Accounts Payable.');
+                              refresh();
+                            } catch (e) { alert(e.message || 'Could not record payment'); }
+                          } },
+                          { label: 'Supplier statement', icon: <FileText size={15} />, onClick: () => printText(`${row.supplierName} statement`, `Supplier: ${row.supplierName}\nBill: ${row.invoiceNo}\nAmount due: ${currency(row.outstandingBalance)}\nAging: ${row.agingBucket}`) },
                           { label: 'Record expense', icon: <ReceiptText size={15} />, onClick: () => setExpenseOpen(true) },
                           { label: 'Export CSV', icon: <Download size={15} />, onClick: () => downloadRowsFile(`payable-${row.invoiceNo}`, [row], 'CSV') }
-                        ]}
+                        ].filter(Boolean)}
                       />
                     </td>
                   </tr>
@@ -7529,7 +7566,7 @@ function AccountsWorkspace({ user, setPage, globalPeriod }) {
           </Panel>
         </div>
       )}
-      {view === 'expenses' && <Panel title="Expenses" action={<button className="mini-action" onClick={() => setExpenseOpen(true)}><Plus size={15} /> Record Expense</button>}><SimpleTable rows={data.expenses || []} columns={['expNo', 'category', 'date', 'description', 'amount', 'paymentMethod', 'status']} /></Panel>}
+      {view === 'expenses' && <Panel title="Expenses" action={<button className="mini-action" onClick={() => setExpenseOpen(true)}><Plus size={15} /> Record Expense</button>}><SimpleTable rows={(data.expenses || []).map(e => ({ ...e, account: e.accountCategory || '', classification: e.expenseType || '', department: e.department || e.costCentre || '' }))} columns={['expNo', 'category', 'account', 'classification', 'department', 'date', 'description', 'amount', 'paymentMethod', 'status']} /></Panel>}
       {view === 'audit' && (
         <Panel title="Audit Trail" action={<span>Immutable records</span>}>
           <div className="report-filter-bar" style={{ marginBottom: 12 }}>
@@ -8154,7 +8191,7 @@ function Finance({ user, setPage, globalPeriod }) {
       {view === 'payables' && <Panel title="Accounts Payable"><SimpleTable rows={data.payables} columns={['invoiceNo', 'supplierName', 'invoiceAmount', 'paidAmount', 'outstandingBalance', 'agingBucket', 'risk', 'paymentStatus']} /></Panel>}
       {view === 'banking' && <Panel title="Bank Transactions"><SimpleTable rows={data.bankTransactions} columns={['date', 'accountName', 'reference', 'description', 'deposit', 'withdrawal', 'reconciled']} /></Panel>}
       {view === 'cash' && <Panel title="Cash Management"><SimpleTable rows={data.bankAccounts} columns={['accountName', 'bank', 'openingBalance', 'balance', 'status']} /></Panel>}
-      {view === 'expenses' && <Panel title="Expense Center"><SimpleTable rows={data.expenses} columns={['expNo', 'category', 'date', 'description', 'amount', 'paymentMethod', 'status']} /></Panel>}
+      {view === 'expenses' && <Panel title="Expense Center"><SimpleTable rows={(data.expenses || []).map(e => ({ ...e, account: e.accountCategory || '', classification: e.expenseType || '', department: e.department || e.costCentre || '' }))} columns={['expNo', 'category', 'account', 'classification', 'department', 'date', 'description', 'amount', 'paymentMethod', 'status']} /></Panel>}
       {view === 'revenue' && <Panel title="Revenue Center"><InvoiceDocumentTable user={user} rows={data.receivables} columns={['invNo', 'customerName', 'total', 'paid', 'balance', 'status']} /></Panel>}
       {view === 'payroll' && <Panel title="Payroll Management"><SimpleTable rows={data.payroll} columns={['employeeNo', 'name', 'department', 'basicSalary', 'allowances', 'deductions', 'netPay', 'status']} /></Panel>}
       {view === 'taxes' && <Panel title="Kenyan Tax Engine"><SimpleTable rows={data.taxes} columns={['taxType', 'liability', 'period', 'status']} /></Panel>}
@@ -8494,7 +8531,7 @@ function FinanceBankTransactionModal({ user, accounts, onClose, onSaved }) {
 
 function FinanceExpenseModal({ user, onClose, onSaved }) {
   const categories = ['Salaries', 'Rent', 'Utilities', 'Manufacturing', 'Marketing', 'Transport', 'Fuel', 'Internet', 'Maintenance', 'Packaging', 'Office Supplies', 'Taxes', 'Miscellaneous', 'Insurance', 'Depreciation', 'Interest', 'Professional Fees', 'Repairs', 'Training', 'Travel', 'Entertainment', 'Donations', 'Subscriptions', 'Rent & Rates', 'Cleaning', 'Security', 'Staff Welfare', 'Raw Materials', 'Printing', 'Communication', 'Water', 'Electricity', 'Gas', 'Repairs & Maintenance', 'Vehicle Maintenance', 'Equipment Rental', 'IT Services', 'Legal Fees', 'Consulting', 'Advertising', 'Promotions', 'Research', 'Development', 'License Fees', 'Permits', 'Fines', 'Penalties', 'Bad Debt', 'Foreign Exchange Loss', 'Bank Charges', 'Card Fees', 'Loan Repayment', 'Dividends', 'Drawings', 'Capital Expenditure', 'Software Purchase', 'Hardware Purchase', 'Furniture Purchase', 'Vehicle Purchase', 'Other Asset Purchase'];
-  const [form, setForm] = useState({ category: 'Salaries', date: new Date().toISOString().slice(0, 10), description: '', amount: 0, paymentMethod: 'Bank Transfer', reference: '', notes: '' });
+  const [form, setForm] = useState({ category: 'Salaries', date: new Date().toISOString().slice(0, 10), description: '', amount: 0, paymentMethod: 'Bank Transfer', reference: '', notes: '', expenseType: 'Fixed', department: '', branch: '', project: '', costCentre: '', supplier: '', employee: '' });
   const [saving, setSaving] = useState(false);
   async function save(e) {
     e.preventDefault();
@@ -8519,6 +8556,16 @@ function FinanceExpenseModal({ user, onClose, onSaved }) {
           <label>Notes<textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} rows={2} placeholder="Optional notes" /></label>
         </div>
         <label>Description<input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="What was this expense for?" /></label>
+        <div className="modal-grid">
+          <label>Expense Type<select value={form.expenseType} onChange={e => setForm({ ...form, expenseType: e.target.value })}>
+            {['Fixed', 'Variable', 'Semi-Variable', 'Step Cost', 'Discretionary', 'Committed', 'One-Time', 'Recurring', 'Accrued', 'Prepaid'].map(x => <option key={x}>{x}</option>)}
+          </select></label>
+          <label>Department<input value={form.department} onChange={e => setForm({ ...form, department: e.target.value })} placeholder="e.g. Marketing" /></label>
+          <label>Branch<input value={form.branch} onChange={e => setForm({ ...form, branch: e.target.value })} placeholder="e.g. Nairobi" /></label>
+          <label>Project<input value={form.project} onChange={e => setForm({ ...form, project: e.target.value })} placeholder="e.g. 2026 Campaign" /></label>
+          <label>Cost Centre<input value={form.costCentre} onChange={e => setForm({ ...form, costCentre: e.target.value })} placeholder="Cost centre code" /></label>
+          <label>Supplier / Employee<input value={form.supplier} onChange={e => setForm({ ...form, supplier: e.target.value })} placeholder="Supplier or employee (optional)" /></label>
+        </div>
         <button className="primary-action" disabled={saving}>{saving ? 'Posting...' : 'Record Expense + Journal'}</button>
       </form>
     </div>
