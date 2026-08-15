@@ -564,6 +564,94 @@ create table if not exists public.audit_events (
   created_at timestamptz default now()
 );
 
+-- ─── ACCOUNTING ENHANCEMENTS ──────────────────────────────────────────────────
+create table if not exists public.credit_notes (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid references public.tenants(id),
+  credit_no text,
+  invoice_id uuid,
+  customer_id uuid references public.customers(id),
+  customer_name text,
+  date date default current_date,
+  amount numeric default 0,
+  reason text,
+  status text default 'Draft',
+  approval_status text default 'Pending',
+  posted_by text,
+  approved_by text,
+  approved_at timestamptz,
+  created_by text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table if not exists public.credit_note_items (
+  id uuid primary key default gen_random_uuid(),
+  credit_note_id uuid references public.credit_notes(id) on delete cascade,
+  product_id uuid references public.products(id),
+  product_name text,
+  quantity numeric default 0,
+  unit_price numeric default 0,
+  total numeric default 0,
+  return_reason text,
+  warehouse_id uuid references public.warehouses(id),
+  created_at timestamptz default now()
+);
+
+create table if not exists public.product_returns (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid references public.tenants(id),
+  return_no text,
+  credit_note_id uuid references public.credit_notes(id),
+  sales_order_id uuid,
+  invoice_id uuid,
+  customer_id uuid references public.customers(id),
+  product_id uuid references public.products(id),
+  quantity numeric default 0,
+  reason text,
+  warehouse_id uuid references public.warehouses(id),
+  condition text default 'Resalable',
+  status text default 'Received',
+  received_by text,
+  received_at timestamptz default now(),
+  created_by text,
+  created_at timestamptz default now()
+);
+
+create table if not exists public.tax_settings (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid references public.tenants(id),
+  vat_rate numeric default 16,
+  vat_enabled boolean default true,
+  vat_number text,
+  effective_date date default current_date,
+  created_by text,
+  updated_at timestamptz default now()
+);
+
+create table if not exists public.invoice_history (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid references public.tenants(id),
+  invoice_id uuid,
+  action text,
+  old_value jsonb,
+  new_value jsonb,
+  user_name text,
+  timestamp timestamptz default now(),
+  notes text
+);
+
+create table if not exists public.account_categories (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid references public.tenants(id),
+  name text,
+  type text,
+  code text,
+  parent text,
+  status text default 'Active',
+  created_at timestamptz default now()
+);
+
 -- ─── SEED TENANT + EMPTY STATE ROW ───────────────────────────────────────────
 insert into public.tenants (id, name, domain)
 values ('00000000-0000-0000-0000-000000000001', 'Farmtrack Biosciences Ltd', 'staff.farmtrack.co.ke')

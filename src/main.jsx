@@ -2333,7 +2333,7 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
   });
   const [followBusy, setFollowBusy] = useState(false);
   const [receptionForm, setReceptionForm] = useState({
-    callerName: '', phone: '', reason: '', receivedBy: user?.name || '', date: new Date().toISOString().slice(0, 10), time: new Date().toTimeString().slice(0, 5)
+    callerName: '', phone: '', reason: '', receivedBy: user?.name || '', date: new Date().toISOString().slice(0, 10)
   });
   const [receptionBusy, setReceptionBusy] = useState(false);
   if (loading) return <Loading title="CRM" />;
@@ -2549,7 +2549,7 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
 {view === 'leads' && <Panel title="Leads and Opportunities" action="Live"><SimpleTable rows={allLeads} columns={['name', 'company', 'phone', 'stage', 'assignedTo', 'status']} /></Panel>}
       {view === 'calls' && (
         <div className="dashboard-grid">
-          <Panel className="span-5" title="Reception call" action="DATE · TIME · NUMBER · REASON">
+          <Panel className="span-5" title="Reception call" action="DATE · NUMBER · REASON">
             <form className="settings-form-grid" onSubmit={async e => {
               e.preventDefault();
               if (!receptionForm.phone) return alert('Phone number is required');
@@ -2557,7 +2557,6 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
               setReceptionBusy(true);
               try {
                 const date = receptionForm.date || new Date().toISOString().slice(0, 10);
-                const time = receptionForm.time || new Date().toTimeString().slice(0, 5);
                 await rpc('saveCall', [user, {
                   recordType: 'reception',
                   customerName: receptionForm.callerName || receptionForm.phone,
@@ -2572,16 +2571,14 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                   assignedTo: receptionForm.receivedBy || user?.name || 'Reception',
                   stage: 'Reception',
                   date,
-                  time,
-                  datetime: `${date} ${time}`
+                  datetime: `${date}`
                 }]);
-                setReceptionForm({ callerName: '', phone: '', reason: '', receivedBy: user?.name || '', date: new Date().toISOString().slice(0, 10), time: new Date().toTimeString().slice(0, 5) });
+                setReceptionForm({ callerName: '', phone: '', reason: '', receivedBy: user?.name || '', date: new Date().toISOString().slice(0, 10) });
                 setRefreshKey(x => x + 1);
               } catch (err) { alert(err.message); }
               finally { setReceptionBusy(false); }
             }}>
               <label>Date<input type="date" value={receptionForm.date} onChange={e => setReceptionForm({ ...receptionForm, date: e.target.value })} required /></label>
-              <label>Time<input type="time" value={receptionForm.time} onChange={e => setReceptionForm({ ...receptionForm, time: e.target.value })} required /></label>
               <label>Name of Call<input value={receptionForm.callerName} onChange={e => setReceptionForm({ ...receptionForm, callerName: e.target.value })} placeholder="Caller / customer name" /></label>
               <label>Number<input type="tel" inputMode="tel" value={receptionForm.phone} onChange={e => setReceptionForm({ ...receptionForm, phone: e.target.value })} placeholder="Caller phone number" required /></label>
               <label>Reason<textarea value={receptionForm.reason} onChange={e => setReceptionForm({ ...receptionForm, reason: e.target.value })} rows={3} placeholder="General enquiry, asking, direction, supplier, customer question..." required /></label>
@@ -2592,13 +2589,13 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
           <Panel className="span-7" title="Reception calls" action={`${(allCalls || []).filter(r => r.recordType === 'reception' || r.stage === 'Reception').length} calls`}>
             <div className="table-wrap">
               <table>
-                <thead><tr><th>Date</th><th>Time</th><th>Name</th><th>Number</th><th>Reason</th><th>Received by / Transfer to</th></tr></thead>
+                <thead><tr><th>Date</th><th>Name</th><th>Number</th><th>Reason</th><th>Received by / Transfer to</th></tr></thead>
                 <tbody>
                   {(() => {
                     const rows = (allCalls || [])
                       .filter(r => r.recordType === 'reception' || r.stage === 'Reception')
                       .sort((a, b) => String(b.datetime || b.date || '').localeCompare(String(a.datetime || a.date || '')));
-                    if (!rows.length) return <tr><td colSpan={6}><div className="empty-state">No reception calls yet.</div></td></tr>;
+                    if (!rows.length) return <tr><td colSpan={5}><div className="empty-state">No reception calls yet.</div></td></tr>;
                     let lastDay = '';
                     const out = [];
                     rows.forEach(row => {
@@ -2607,14 +2604,13 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                         lastDay = day;
                         out.push(
                           <tr key={`day-${day}`} className="day-separator-row">
-                            <td colSpan={6} style={{ background: '#f8fafc', fontWeight: 700, color: '#334155', padding: '8px 12px' }}>{day}</td>
+                            <td colSpan={5} style={{ background: '#f8fafc', fontWeight: 700, color: '#334155', padding: '8px 12px' }}>{day}</td>
                           </tr>
                         );
                       }
                       out.push(
                         <tr key={row.id}>
                           <td>{row.date || '—'}</td>
-                          <td>{row.time || String(row.datetime || '').slice(11, 16) || '—'}</td>
                           <td><strong>{row.callName || row.name || row.customerName || '—'}</strong></td>
                           <td><strong>{row.phone || row.customerName || '—'}</strong></td>
                           <td>{row.reason || row.comments || row.notes || '—'}</td>
@@ -6239,7 +6235,7 @@ function SalesOrdersWorkspace({ user, orders, deliveries, onDone, canGenerateInv
 
 function NewSaleModal({ user, onClose, onSaved }) {
   const lookup = useServer(user, 'getLookupData');
-  const [form, setForm] = useState({ customerId: '', customerName: '', customerEmail: '', customerPhone: '', productId: '', quantity: 1, paid: 0, paymentMethod: 'Credit', destination: '', deliveryMethod: 'Company Vehicle', driver: '', vehicle: '', notes: '' });
+  const [form, setForm] = useState({ customerId: '', customerName: '', customerEmail: '', customerPhone: '', productId: '', quantity: 1, paid: 0, paymentMethod: 'Credit', taxStatus: 'Taxable', destination: '', deliveryMethod: 'Company Vehicle', driver: '', vehicle: '', notes: '' });
   const [saving, setSaving] = useState(false);
   if (lookup.loading) return <div className="modal-backdrop"><div className="modal-card"><Loader2 className="spin" /> Loading sale form...</div></div>;
   if (lookup.error) return <div className="modal-backdrop"><div className="modal-card">Unable to load sale form: {lookup.error}</div></div>;
@@ -6250,8 +6246,14 @@ function NewSaleModal({ user, onClose, onSaved }) {
   const selectedPrice = num(selectedProduct.price || 0);
   const selectedCost = num(selectedProduct.cost || 0);
   const selectedStock = num(selectedProduct.stock || 0);
+  const lookupVat = lookup.data.taxSettings || { vatRate: 16, vatEnabled: true, vatInclusive: false };
   const projectedSubtotal = Math.round(selectedQty * selectedPrice);
-  const projectedVat = Math.round(projectedSubtotal * 0.16);
+  const vatEnabledConfigured = lookupVat.vatEnabled !== false && lookupVat.active !== false;
+  const projectedVat = vatEnabledConfigured && !(form.taxStatus === 'Exempt' || form.taxStatus === 'Zero Rated')
+    ? (lookupVat.vatInclusive === true
+      ? Math.round(projectedSubtotal - projectedSubtotal / (1 + num(lookupVat.vatRate) / 100))
+      : Math.round(projectedSubtotal * (num(lookupVat.vatRate) / 100)))
+    : 0;
   const projectedTotal = projectedSubtotal + projectedVat;
   const stockWarning = selectedProduct.id && selectedStock < selectedQty;
   const lowStockWarning = selectedProduct.id && !stockWarning && selectedStock - selectedQty <= num(selectedProduct.minStock || 0);
@@ -6287,6 +6289,7 @@ function NewSaleModal({ user, onClose, onSaved }) {
             <article><span>Unit Price</span><strong>{currency(selectedPrice)}</strong></article>
             <article><span>Available Stock</span><strong>{selectedStock.toLocaleString()} {selectedProduct.unit || ''}</strong></article>
             <article><span>Line Amount</span><strong>{currency(projectedSubtotal)}</strong></article>
+            <article><span>VAT ({num(lookupVat.vatRate)}%)</span><strong>{currency(projectedVat)}</strong></article>
             <article><span>Order Total (incl. VAT)</span><strong>{currency(projectedTotal)}</strong></article>
             {stockWarning && <p>Insufficient stock. Reduce quantity or restock before confirming.</p>}
             {lowStockWarning && <p>This order will push stock close to reorder level.</p>}
@@ -6295,6 +6298,14 @@ function NewSaleModal({ user, onClose, onSaved }) {
         <div className="modal-grid">
           <label>Quantity<input type="number" min="1" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} /></label>
           <label>Paid<input type="number" min="0" value={form.paid} onChange={e => setForm({ ...form, paid: e.target.value })} /></label>
+        </div>
+        <div className="modal-grid">
+          <label>VAT / Tax Status<select value={form.taxStatus} onChange={e => setForm({ ...form, taxStatus: e.target.value })}>
+            {['Taxable', 'Exempt', 'Zero Rated'].map(x => <option key={x} value={x}>{x === 'Taxable' ? `${x} (${num(lookupVat.vatRate)}% ${lookupVat.taxName || 'VAT'})` : x}</option>)}
+          </select></label>
+          <label>Payment Method<select value={form.paymentMethod} onChange={e => setForm({ ...form, paymentMethod: e.target.value })}>
+            {['Cash', 'Bank Transfer', 'M-Pesa', 'Cheque', 'Direct Transfer', 'Credit', 'Mobile Money', 'Mixed Payments'].map(x => <option key={x}>{x}</option>)}
+          </select></label>
         </div>
         <div className="modal-grid">
           <label>Driver<input value={form.driver} onChange={e => setForm({ ...form, driver: e.target.value })} placeholder="Optional" /></label>
@@ -7204,7 +7215,7 @@ function CreditHealthDonut({ data = [] }) {
    ========================================================== */
 
 function AccountsWorkspace({ user, setPage, globalPeriod }) {
-  const tabs = ['overview', 'chart', 'receivables', 'payables', 'banking', 'trial', 'journals', 'reconciliation', 'quotations', 'statements', 'expenses', 'reports', 'audit'];
+  const tabs = ['overview', 'chart', 'receivables', 'payables', 'banking', 'trial', 'journals', 'reconciliation', 'quotations', 'statements', 'expenses', 'reports', 'audit', 'credit-notes', 'returns', 'history'];
   const [view, setView] = useRouteTab('accounts', tabs, 'overview');
   const [journalOpen, setJournalOpen] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
@@ -7214,6 +7225,10 @@ function AccountsWorkspace({ user, setPage, globalPeriod }) {
   const [bankOpen, setBankOpen] = useState(false);
   const [quotationOpen, setQuotationOpen] = useState(false);
   const [statementOpen, setStatementOpen] = useState(false);
+  const [creditNoteOpen, setCreditNoteOpen] = useState(false);
+  const [returnOpen, setReturnOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState('');
   const [nonPoOpen, setNonPoOpen] = useState(false);
   const [nonPoForm, setNonPoForm] = useState({ supplierName: '', invoiceAmount: '', notes: '', category: 'Direct purchase', paymentTerms: 'Net 30' });
   const [deepAccount, setDeepAccount] = useState(null);
@@ -7263,6 +7278,8 @@ function AccountsWorkspace({ user, setPage, globalPeriod }) {
         <button type="button" className="primary-action" onClick={() => setNonPoOpen(true)}><FileText size={16} /> Non-PO Invoice</button>
         <button onClick={() => setQuotationOpen(true)}><FileText size={16} /> Create Quotation</button>
         <button onClick={() => setStatementOpen(true)}><ReceiptText size={16} /> Generate Statement</button>
+        <button onClick={() => setCreditNoteOpen(true)}><FileText size={16} /> Credit Note</button>
+        <button onClick={() => setReturnOpen(true)}><Package size={16} /> Process Return</button>
         <CreateRequisitionButton user={user} module="accounts" />
         <button onClick={() => downloadRowsFile('accounts-receivable', data.receivables, 'CSV')}><Download size={16} /> Receivables CSV</button>
         <button onClick={() => downloadRowsFile('accounts-payable', data.payables, 'CSV')}><Download size={16} /> Payables CSV</button>
@@ -7365,6 +7382,14 @@ function AccountsWorkspace({ user, setPage, globalPeriod }) {
               <div><span>Bank reconciled</span><strong>{(data.bankTransactions || []).length > 0 ? '✓' : '!'}</strong><em>{(data.bankTransactions || []).length} movements</em></div>
               <div><span>Payments confirmed</span><strong style={{ color: '#12b76a' }}>✓</strong><em>Ready to close</em></div>
             </div></Panel>
+            <Panel className="span-6" title="Payments by Method" action={`${(data.payments || []).length} payments`}>
+              <SimpleTable rows={(data.paymentMethodsSummary || []).map(row => ({ ...row, total: num(row.total) })).sort((a, b) => b.total - a.total)} columns={['method', 'count', 'total']} />
+              {!(data.paymentMethodsSummary || []).length && <div className="quiet-state">No payments recorded yet.</div>}
+            </Panel>
+            <Panel className="span-6" title="Payments by Account" action="Cash / Bank / M-Pesa channels">
+              <SimpleTable rows={(data.paymentAccountsSummary || []).map(row => ({ ...row, total: num(row.total) })).sort((a, b) => b.total - a.total)} columns={['account', 'count', 'total']} />
+              {!(data.paymentAccountsSummary || []).length && <div className="quiet-state">No payments recorded yet.</div>}
+            </Panel>
           </div>
         </>
       )}
@@ -7514,6 +7539,69 @@ function AccountsWorkspace({ user, setPage, globalPeriod }) {
         </Panel>
       )}
       {view === 'reports' && <InventoryReports reports={data.reports} user={user} module="Financial" />}
+      {view === 'credit-notes' && (
+        <Panel title="Credit Notes" action={<div className="panel-action-row"><button className="mini-action" onClick={() => setCreditNoteOpen(true)}><Plus size={15} /> New Credit Note</button><button className="mini-action" onClick={() => downloadRowsFile('credit-notes', data.creditNotes, 'CSV')}><Download size={15} /> CSV</button></div>}>
+          <SimpleTable
+            rows={(data.creditNotes || []).map(cn => {
+              const cnId = cn.id;
+              const act = async action => {
+                try {
+                  await rpc('approveCreditNote', [user, cnId, action]);
+                  refresh();
+                } catch (err) { alert(err.message); }
+              };
+              return {
+                creditNo: cn.creditNo,
+                invoiceId: cn.invoiceId || cn.invoiceNo,
+                customerName: cn.customerName,
+                date: cn.date,
+                amount: num(cn.amount),
+                vatAdjustment: num(cn.vatAdjustment || 0),
+                reason: cn.reason,
+                creditHandling: cn.creditHandling || '—',
+                status: cn.status,
+                approvalStatus: cn.approvalStatus,
+                actions: (
+                  <span className="inline-actions" style={{ gap: 6 }} onClick={e => e.stopPropagation()}>
+                    {cn.approvalStatus === 'Pending' && <>
+                      <button className="mini-action" onClick={() => act('approve')}>Approve</button>
+                      <button className="mini-action" onClick={() => act('post')}>Post</button>
+                      <button className="mini-action" style={{ color: '#d92d20' }} onClick={() => act('reject')}>Reject</button>
+                    </>}
+                    {cn.approvalStatus === 'Approved' && cn.status !== 'Posted' && <button className="mini-action" onClick={() => act('post')}>Post</button>}
+                  </span>
+                )
+              };
+            })}
+            columns={['creditNo', 'invoiceId', 'customerName', 'date', 'amount', 'vatAdjustment', 'reason', 'creditHandling', 'status', 'approvalStatus', 'actions']}
+          />
+        </Panel>
+      )}
+      {view === 'returns' && (
+        <Panel title="Product Returns" action={<button className="mini-action" onClick={() => setReturnOpen(true)}><Plus size={15} /> Process Return</button>}>
+          <SimpleTable rows={(data.productReturns || []).map(r => ({
+            returnNo: r.returnNo, invoiceId: r.invoiceId, productId: r.productId, quantity: num(r.quantity),
+            reason: r.reason, condition: r.condition, status: r.status, receivedBy: r.receivedBy
+          }))} columns={['returnNo', 'invoiceId', 'productId', 'quantity', 'reason', 'condition', 'status', 'receivedBy']} />
+        </Panel>
+      )}
+      {view === 'history' && (
+        <Panel title="Invoice History">
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ marginRight: 8 }}>Invoice</label>
+            <select value={selectedInvoiceId} onChange={e => setSelectedInvoiceId(e.target.value)} style={{ minWidth: 200 }}>
+              <option value="">Select invoice...</option>
+              {(data.receivables || []).map(inv => <option key={inv.invoiceId || inv.id} value={inv.invoiceId || inv.id}>{inv.invNo || inv.invoiceNo} - {inv.customerName}</option>)}
+            </select>
+            {selectedInvoiceId && <button className="mini-action" style={{ marginLeft: 8 }} onClick={() => { }}>Load History</button>}
+          </div>
+          {selectedInvoiceId ? (
+            <InvoiceHistoryView user={user} invoiceId={selectedInvoiceId} />
+          ) : (
+            <div className="empty-state">Select an invoice to view its complete transaction history.</div>
+          )}
+        </Panel>
+      )}
       {orderOpen && <NewSaleModal user={user} onClose={() => setOrderOpen(false)} onSaved={() => { setOrderOpen(false); refresh(); setView('receivables'); }} />}
       {journalOpen && <FinanceJournalModal user={user} accounts={data.accounts} onClose={() => setJournalOpen(false)} onSaved={() => { setJournalOpen(false); refresh(); setView('journals'); }} />}
       {expenseOpen && <FinanceExpenseModal user={user} onClose={() => setExpenseOpen(false)} onSaved={() => { setExpenseOpen(false); refresh(); setView('reports'); }} />}
@@ -7524,6 +7612,8 @@ function AccountsWorkspace({ user, setPage, globalPeriod }) {
       {bankOpen && <FinanceBankTransactionModal user={user} accounts={data.accounts} onClose={() => setBankOpen(false)} onSaved={() => { setBankOpen(false); refresh(); setView('banking'); }} />}
       {quotationOpen && <QuotationModal user={user} customers={data.customerFinance || []} onClose={() => setQuotationOpen(false)} onSaved={() => { setQuotationOpen(false); refresh(); setView('quotations'); }} />}
       {statementOpen && <CustomerStatementModal user={user} customers={data.customerFinance || []} onClose={() => setStatementOpen(false)} onSaved={() => { setStatementOpen(false); refresh(); }} />}
+      {creditNoteOpen && <CreditNoteModal user={user} invoices={data.receivables || []} onClose={() => setCreditNoteOpen(false)} onSaved={() => { setCreditNoteOpen(false); refresh(); setView('credit-notes'); }} />}
+      {returnOpen && <ReturnModal user={user} invoices={data.receivables || []} products={data.products || []} warehouses={data.warehouses || []} onClose={() => setReturnOpen(false)} onSaved={() => { setReturnOpen(false); refresh(); setView('returns'); }} />}
     </section>
   );
 }
@@ -7733,8 +7823,19 @@ function InvoiceDocumentTable({ user, rows, columns, onChanged }) {
       { label: 'Copy details', icon: <FileText size={15} />, onClick: () => copyText(rowSummary(row)) },
       { label: 'Delete invoice', icon: <X size={15} />, disabled: busy === `delete-${invoiceId}`, onClick: () => deleteInvoice(row) }
     ].filter(Boolean);
+    // Automatic PAID stamp — never manually toggled (Requirement 3).
+    const isPaid = num(row.balance || 0) <= 0 && num(row.total || 0) > 0;
+    const statusLabel = row.liveStatus || row.status || '—';
+    const statusDisplay = (
+      <span className={`invoice-status-cell ${isPaid ? 'is-paid' : ''}`}>
+        <span className={`status ${String(statusLabel).toLowerCase().replaceAll(' ', '-')}`}>{statusLabel}</span>
+        {isPaid && <span className="paid-stamp">PAID</span>}
+      </span>
+    );
     return {
       ...row,
+      status: statusDisplay,
+      liveStatus: statusDisplay,
       document: (
         <div className="invoice-doc-actions" onClick={e => e.stopPropagation()}>
           <button title="Edit preview" onClick={() => openEdit(row)}><UserCog size={14} /></button>
@@ -7899,12 +8000,15 @@ function financeRowActions(row, kind, helpers = {}) {
 }
 
 function Finance({ user, setPage, globalPeriod }) {
-  const tabs = ['dashboard', 'ledger', 'accounts', 'journals', 'receivables', 'payables', 'banking', 'cash', 'expenses', 'revenue', 'payroll', 'taxes', 'assets', 'budgeting', 'reconciliation', 'reports', 'audit', 'costCenters', 'forecasting', 'ai', 'credit', 'timeline', 'customerLedger'];
+  const tabs = ['dashboard', 'ledger', 'accounts', 'journals', 'receivables', 'payables', 'banking', 'cash', 'expenses', 'revenue', 'payroll', 'taxes', 'assets', 'budgeting', 'reconciliation', 'reports', 'audit', 'costCenters', 'forecasting', 'ai', 'credit', 'timeline', 'customerLedger', 'credit-notes', 'returns', 'tax-settings', 'vat-report'];
   const [view, setView] = useRouteTab('finance', tabs, 'dashboard');
   const [metric, setMetric] = useState('profit');
   const [journalOpen, setJournalOpen] = useState(false);
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
+  const [creditNoteOpen, setCreditNoteOpen] = useState(false);
+  const [returnOpen, setReturnOpen] = useState(false);
+  const [taxSettingsOpen, setTaxSettingsOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const { loading, data, error } = useServer(user, 'getFinanceWorkspaceData', [{ period: globalPeriod }], [refreshKey, globalPeriod]);
   if (loading) return <Loading title="Finance" />;
@@ -7934,8 +8038,11 @@ function Finance({ user, setPage, globalPeriod }) {
         <button onClick={() => setJournalOpen(true)}><Plus size={16} /> Manual Journal</button>
         <button onClick={() => setExpenseOpen(true)}><ReceiptText size={16} /> Record Expense</button>
         <button onClick={() => setPaymentOpen(true)}><CircleDollarSign size={16} /> Receive Payment</button>
+        <button onClick={() => setCreditNoteOpen(true)}><FileText size={16} /> Credit Note</button>
+        <button onClick={() => setReturnOpen(true)}><Package size={16} /> Process Return</button>
         <button onClick={() => setView('reports')}><FileText size={16} /> Financial Reports</button>
         <button onClick={() => setView('audit')}><CheckCircle2 size={16} /> Audit Center</button>
+        <button onClick={() => setTaxSettingsOpen(true)}><SlidersHorizontal size={16} /> Tax Settings</button>
         <CreateRequisitionButton user={user} module="finance" />
       </div>
 
@@ -8080,9 +8187,78 @@ function Finance({ user, setPage, globalPeriod }) {
           </Panel>
         </div>
       )}
+      {view === 'credit-notes' && (
+        <Panel title="Credit Notes" action={<div className="panel-action-row"><button className="mini-action" onClick={() => setCreditNoteOpen(true)}><Plus size={15} /> New Credit Note</button><button className="mini-action" onClick={() => downloadRowsFile('credit-notes', data.creditNotes, 'CSV')}><Download size={15} /> CSV</button></div>}>
+          <SimpleTable
+            rows={(data.creditNotes || []).map(cn => {
+              const cnId = cn.id;
+              const act = async action => {
+                try {
+                  await rpc('approveCreditNote', [user, cnId, action]);
+                  refresh();
+                } catch (err) { alert(err.message); }
+              };
+              return {
+                creditNo: cn.creditNo,
+                invoiceId: cn.invoiceId || cn.invoiceNo,
+                customerName: cn.customerName,
+                date: cn.date,
+                amount: num(cn.amount),
+                vatAdjustment: num(cn.vatAdjustment || 0),
+                reason: cn.reason,
+                creditHandling: cn.creditHandling || '—',
+                status: cn.status,
+                approvalStatus: cn.approvalStatus,
+                actions: (
+                  <span className="inline-actions" style={{ gap: 6 }} onClick={e => e.stopPropagation()}>
+                    {cn.approvalStatus === 'Pending' && <>
+                      <button className="mini-action" onClick={() => act('approve')}>Approve</button>
+                      <button className="mini-action" onClick={() => act('post')}>Post</button>
+                      <button className="mini-action" style={{ color: '#d92d20' }} onClick={() => act('reject')}>Reject</button>
+                    </>}
+                    {cn.approvalStatus === 'Approved' && cn.status !== 'Posted' && <button className="mini-action" onClick={() => act('post')}>Post</button>}
+                  </span>
+                )
+              };
+            })}
+            columns={['creditNo', 'invoiceId', 'customerName', 'date', 'amount', 'vatAdjustment', 'reason', 'creditHandling', 'status', 'approvalStatus', 'actions']}
+          />
+        </Panel>
+      )}
+      {view === 'returns' && (
+        <Panel title="Product Returns" action={<button className="mini-action" onClick={() => setReturnOpen(true)}><Plus size={15} /> Process Return</button>}>
+          <SimpleTable rows={(data.productReturns || []).map(r => ({
+            returnNo: r.returnNo, invoiceId: r.invoiceId, productId: r.productId, quantity: num(r.quantity),
+            reason: r.reason, condition: r.condition, status: r.status, receivedBy: r.receivedBy
+          }))} columns={['returnNo', 'invoiceId', 'productId', 'quantity', 'reason', 'condition', 'status', 'receivedBy']} />
+        </Panel>
+      )}
+      {view === 'tax-settings' && (
+        <Panel title="Tax Settings" action={<button className="mini-action" onClick={() => setTaxSettingsOpen(true)}><SlidersHorizontal size={15} /> Configure Tax</button>}>
+          <div className="settings-kv-grid">
+            {(data.taxSettings || []).map(t => (
+              <article key={t.id}>
+                <span>VAT Rate</span><strong>{num(t.vatRate)}%</strong>
+                <span>Enabled</span><strong>{t.vatEnabled ? 'Yes' : 'No'}</strong>
+                <span>VAT Number</span><strong>{t.vatNumber || '-'}</strong>
+                <span>Effective Date</span><strong>{t.effectiveDate}</strong>
+              </article>
+            ))}
+            {(data.taxSettings || []).length === 0 && <div className="empty-state">No tax settings configured. Click Configure Tax to set up VAT.</div>}
+          </div>
+        </Panel>
+      )}
+      {view === 'vat-report' && (
+        <Panel title="VAT Report">
+          <VATReportView user={user} data={data} />
+        </Panel>
+      )}
       {journalOpen && <FinanceJournalModal user={user} accounts={data.accounts} onClose={() => setJournalOpen(false)} onSaved={() => { setJournalOpen(false); refresh(); setView('journals'); }} />}
       {expenseOpen && <FinanceExpenseModal user={user} onClose={() => setExpenseOpen(false)} onSaved={() => { setExpenseOpen(false); refresh(); setView('expenses'); }} />}
       {paymentOpen && <FinancePaymentModal user={user} receivables={data.receivables} bankAccounts={data.bankAccounts} onClose={() => setPaymentOpen(false)} onSaved={() => { setPaymentOpen(false); refresh(); setView('receivables'); }} />}
+      {creditNoteOpen && <CreditNoteModal user={user} invoices={data.receivables || []} onClose={() => setCreditNoteOpen(false)} onSaved={() => { setCreditNoteOpen(false); refresh(); setView('credit-notes'); }} />}
+      {returnOpen && <ReturnModal user={user} invoices={data.receivables || []} products={data.products || []} warehouses={data.warehouses || []} onClose={() => setReturnOpen(false)} onSaved={() => { setReturnOpen(false); refresh(); setView('returns'); }} />}
+      {taxSettingsOpen && <TaxSettingsModal user={user} tax={data.taxSettings?.[0]} onClose={() => setTaxSettingsOpen(false)} onSaved={() => { setTaxSettingsOpen(false); refresh(); setView('tax-settings'); }} />}
     </section>
   );
 }
@@ -9069,6 +9245,10 @@ function CustomerStatementModal({ user, customers = [], onClose, onSaved }) {
   const [statement, setStatement] = useState(null);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [period, setPeriod] = useState('All time');
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
+  const [month, setMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const sorted = useMemo(() => {
     const q = query.trim().toLowerCase();
     return [...(customers || [])]
@@ -9076,13 +9256,33 @@ function CustomerStatementModal({ user, customers = [], onClose, onSaved }) {
       .sort((a, b) => String(b.updatedAt || b.lastActivity || b.name || '').localeCompare(String(a.updatedAt || a.lastActivity || a.name || '')));
   }, [customers, query]);
 
+  function periodOptions() {
+    const today = new Date();
+    const iso = d => d.toISOString().slice(0, 10);
+    const startOfWeek = new Date(today); startOfWeek.setDate(today.getDate() - today.getDay() + 1);
+    const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+    const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const startOfYear = new Date(today.getFullYear(), 0, 1);
+    switch (period) {
+      case 'Today': return { startDate: iso(today), endDate: iso(today) };
+      case 'This Week': return { startDate: iso(startOfWeek), endDate: iso(today) };
+      case 'This Month': return { startDate: iso(startOfMonth), endDate: iso(today) };
+      case 'Last Month': return { startDate: iso(lastMonthStart), endDate: iso(lastMonthEnd) };
+      case 'This Year': return { startDate: iso(startOfYear), endDate: iso(today) };
+      case 'Monthly': return { month };
+      case 'Custom': return { startDate: customStart || undefined, endDate: customEnd || undefined };
+      default: return {};
+    }
+  }
+
   async function generate(id) {
     const target = id || customerId;
     if (!target) return alert('Select a customer');
     setCustomerId(target);
     setLoading(true);
     try {
-      const result = await rpc('generateCustomerStatement', [user, target]);
+      const result = await rpc('generateCustomerStatement', [user, target, periodOptions()]);
       setStatement(result);
     } catch (error) {
       alert(error.message || 'Could not generate statement');
@@ -9095,7 +9295,7 @@ function CustomerStatementModal({ user, customers = [], onClose, onSaved }) {
     if (!statement) return;
     setExporting(true);
     try {
-      const file = await rpc('exportCustomerStatement', [user, customerId, format]);
+      const file = await rpc('exportCustomerStatement', [user, customerId, format, periodOptions()]);
       handleGeneratedFile(file, format);
     } catch (error) {
       alert(error.message || 'Export failed');
@@ -9115,6 +9315,19 @@ function CustomerStatementModal({ user, customers = [], onClose, onSaved }) {
           <div className="report-search-box" style={{ marginBottom: 12 }}>
             <Search size={16} />
             <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Type customer name or phone (predictive)..." autoFocus />
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+            <label style={{ fontSize: 13, color: '#475467' }}>Period
+              <select value={period} onChange={e => setPeriod(e.target.value)} style={{ marginLeft: 6, padding: '6px 8px', borderRadius: 8, border: '1px solid #d0d5dd' }}>
+                {['All time', 'Today', 'This Week', 'This Month', 'Last Month', 'This Year', 'Monthly', 'Custom'].map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </label>
+            {period === 'Monthly' && <input type="month" value={month} onChange={e => setMonth(e.target.value)} style={{ padding: '6px 8px', borderRadius: 8, border: '1px solid #d0d5dd' }} />}
+            {period === 'Custom' && <>
+              <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} style={{ padding: '6px 8px', borderRadius: 8, border: '1px solid #d0d5dd' }} />
+              <span style={{ color: '#667085' }}>to</span>
+              <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} style={{ padding: '6px 8px', borderRadius: 8, border: '1px solid #d0d5dd' }} />
+            </>}
           </div>
           <div className="table-wrap" style={{ maxHeight: 220, marginBottom: 14 }}>
             <table>
@@ -9139,11 +9352,16 @@ function CustomerStatementModal({ user, customers = [], onClose, onSaved }) {
           {loading && <div className="empty-state">Building statement...</div>}
           {statement && !loading && (
             <div className="dashboard-grid">
-              <Panel className="span-12" title={`${statement.customerName} · statement`} action={statement.statementDate}>
+              <Panel className="span-12" title={`${statement.customerName} · statement`} action={`${statement.period || statement.statementDate}`}>
                 <div className="settings-kv-grid">
+                  <article><span>Period</span><strong>{statement.period || 'All time'}</strong></article>
+                  <article><span>Opening balance</span><strong>{currency(statement.openingBalance || 0)}</strong></article>
                   <article><span>Closing balance</span><strong>{currency(statement.closingBalance)}</strong></article>
                   <article><span>Total invoiced</span><strong>{currency(statement.totalInvoiced)}</strong></article>
                   <article><span>Total paid</span><strong>{currency(statement.totalPaid)}</strong></article>
+                  <article><span>Total credit notes</span><strong>{currency(statement.totalCredits || 0)}</strong></article>
+                  <article><span>Amount due</span><strong style={{ color: num(statement.closingBalance) > 0 ? '#ef4444' : '#22c55e' }}>{currency(statement.closingBalance)}</strong></article>
+                  <article><span>Credit limit</span><strong>{currency(statement.creditLimit || 0)}</strong></article>
                 </div>
                 <div className="inline-actions" style={{ margin: '12px 0' }}>
                   <button className="primary-action" disabled={exporting} onClick={() => exportStatement('PDF')}><Download size={14} /> PDF</button>
@@ -13399,6 +13617,317 @@ function ErrorState({ title, error, statusCode }) {
 
 function label(key) {
   return key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
+}
+
+function CreditNoteModal({ user, invoices = [], onClose, onSaved }) {
+  const [form, setForm] = useState({ invoiceId: '', reason: 'Goods returned', notes: '', date: new Date().toISOString().slice(0, 10), creditHandling: 'Apply to invoice balance', refundMethod: 'M-Pesa', refundReference: '' });
+  const [items, setItems] = useState([]);
+  const [invoiceDetail, setInvoiceDetail] = useState(null);
+  const [loadingItems, setLoadingItems] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const invoice = invoices.find(i => (i.invoiceId || i.id) === form.invoiceId);
+
+  async function loadInvoiceItems(invoiceId) {
+    setForm(prev => ({ ...prev, invoiceId }));
+    setItems([]);
+    setInvoiceDetail(null);
+    if (!invoiceId) return;
+    setLoadingItems(true);
+    try {
+      const result = await rpc('getInvoiceItems', [user, invoiceId]);
+      setInvoiceDetail(result.invoice);
+      setItems((result.items || []).map(item => ({
+        productId: item.productId,
+        productName: item.productName,
+        quantity: 1,
+        unitPrice: num(item.unitPrice),
+        maxQuantity: num(item.quantity),
+        selected: true
+      })));
+    } catch (err) {
+      alert(err.message || 'Could not load invoice items');
+    } finally {
+      setLoadingItems(false);
+    }
+  }
+
+  function updateItem(index, patch) {
+    setItems(prev => prev.map((item, i) => {
+      if (i !== index) return item;
+      const next = { ...item, ...patch };
+      next.quantity = Math.max(0, Math.min(num(next.quantity), num(next.maxQuantity)));
+      return next;
+    }));
+  }
+
+  const selectedItems = items.filter(i => i.selected && num(i.quantity) > 0);
+  const lineTotal = selectedItems.reduce((sum, i) => sum + num(i.quantity) * num(i.unitPrice), 0);
+
+  async function save(e) {
+    e.preventDefault();
+    if (!selectedItems.length) return alert('Select at least one product with a quantity above zero');
+    setSaving(true);
+    try {
+      const payload = {
+        invoiceId: form.invoiceId,
+        amount: lineTotal,
+        reason: form.reason,
+        notes: form.notes,
+        date: form.date,
+        creditHandling: form.creditHandling,
+        refundMethod: form.creditHandling === 'Refund' ? form.refundMethod : '',
+        refundReference: form.creditHandling === 'Refund' ? form.refundReference : '',
+        items: selectedItems.map(i => ({ productId: i.productId, productName: i.productName, quantity: num(i.quantity), unitPrice: num(i.unitPrice), returnReason: form.reason, warehouseId: '' }))
+      };
+      await rpc('createCreditNote', [user, payload]);
+      onSaved?.();
+      onClose?.();
+    } catch (err) { alert(err.message); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <ModalCard title="Create Credit Note" onClose={onClose} wide>
+      <form className="settings-form-grid" onSubmit={save}>
+        <fieldset className="settings-fieldset"><legend>Credit Note Details</legend><div>
+          <label>Invoice<select value={form.invoiceId} onChange={e => loadInvoiceItems(e.target.value)} required>
+            <option value="">Select invoice...</option>
+            {invoices.map(inv => <option key={inv.invoiceId || inv.id} value={inv.invoiceId || inv.id}>{inv.invNo || inv.invoiceNo} - {inv.customerName} - {currency(inv.total)}</option>)}
+          </select></label>
+          <label>Reason<select value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} required>
+            {['Goods returned', 'Wrong product', 'Wrong quantity', 'Damaged goods', 'Overbilling', 'Pricing correction', 'Duplicate invoice', 'Customer adjustment', 'Tax correction', 'Other'].map(r => <option key={r} value={r}>{r}</option>)}
+          </select></label>
+          <label>Date<input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></label>
+          <label>Credit Handling<select value={form.creditHandling} onChange={e => setForm({ ...form, creditHandling: e.target.value })}>
+            {['Apply to invoice balance', 'Customer credit balance', 'Refund', 'Apply to another invoice', 'Carry forward'].map(x => <option key={x} value={x}>{x}</option>)}
+          </select></label>
+          {form.creditHandling === 'Refund' && (
+            <>
+              <label>Refund Method<select value={form.refundMethod} onChange={e => setForm({ ...form, refundMethod: e.target.value })}>
+                {['M-Pesa', 'Bank', 'Cheque', 'Direct Transfer', 'Cash', 'Other'].map(x => <option key={x} value={x}>{x}</option>)}
+              </select></label>
+              <label>Refund Reference<input value={form.refundReference} onChange={e => setForm({ ...form, refundReference: e.target.value })} placeholder="Receipt / transaction ref" /></label>
+            </>
+          )}
+          <label>Notes<textarea rows={2} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Optional notes explaining the credit" /></label>
+          {invoice && <div style={{ background: '#f0f9ff', borderRadius: 8, padding: 12, marginTop: 8 }}>
+            <strong>Invoice:</strong> {invoice.invNo || invoice.invoiceNo} | <strong>Balance:</strong> {currency(invoice.balance)}
+          </div>}
+        </div></fieldset>
+
+        <fieldset className="settings-fieldset"><legend>Products being credited ({selectedItems.length})</legend>
+          {loadingItems && <div className="quiet-state">Loading invoice products...</div>}
+          {!loadingItems && !form.invoiceId && <div className="quiet-state">Select an invoice above to load its products.</div>}
+          {!loadingItems && form.invoiceId && items.length === 0 && <div className="quiet-state">No line items found on this invoice.</div>}
+          <div style={{ display: 'grid', gap: 8 }}>
+            {items.map((item, index) => (
+              <div key={`${item.productId}-${index}`} style={{ display: 'grid', gridTemplateColumns: 'auto 2fr 1fr auto 1fr auto', gap: 8, alignItems: 'center', padding: '8px 10px', background: item.selected ? '#f0fdf4' : '#f9fafb', borderRadius: 8, border: item.selected ? '1px solid #b7e4c4' : '1px solid #e5e7eb' }}>
+                <input type="checkbox" checked={item.selected} onChange={e => updateItem(index, { selected: e.target.checked })} />
+                <strong style={{ fontSize: 13 }}>{item.productName}</strong>
+                <span style={{ fontSize: 12, color: '#667085' }}>{currency(item.unitPrice)} · max {item.maxQuantity}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <button type="button" className="mini-action" onClick={() => updateItem(index, { quantity: num(item.quantity) - 1 })}>−</button>
+                  <input type="number" min="0" max={item.maxQuantity} value={item.quantity} onChange={e => updateItem(index, { quantity: e.target.value })} style={{ width: 64, textAlign: 'center' }} />
+                  <button type="button" className="mini-action" onClick={() => updateItem(index, { quantity: num(item.quantity) + 1 })}>+</button>
+                </div>
+                <span style={{ fontWeight: 700, textAlign: 'right' }}>{currency(num(item.quantity) * num(item.unitPrice))}</span>
+              </div>
+            ))}
+          </div>
+          {selectedItems.length > 0 && (
+            <div style={{ background: '#f0f9ff', borderRadius: 8, padding: 12, marginTop: 10, display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ fontWeight: 700 }}>Credit total</span>
+              <strong>{currency(lineTotal)}</strong>
+            </div>
+          )}
+        </fieldset>
+
+        <button className="primary-action" type="submit" disabled={saving || !form.invoiceId || !selectedItems.length}>{saving ? 'Creating...' : 'Create Credit Note'}</button>
+      </form>
+    </ModalCard>
+  );
+}
+
+function ReturnModal({ user, invoices = [], products = [], warehouses = [], onClose, onSaved }) {
+  const [form, setForm] = useState({ invoiceId: '', productId: '', quantity: 1, reason: '', condition: 'Resalable', warehouseId: warehouses[0]?.id || '', date: new Date().toISOString().slice(0, 10) });
+  const [saving, setSaving] = useState(false);
+  async function save(e) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await rpc('processReturn', [user, form]);
+      onSaved?.();
+      onClose?.();
+    } catch (err) { alert(err.message); }
+    finally { setSaving(false); }
+  }
+  return (
+    <ModalCard title="Process Product Return" onClose={onClose} wide>
+      <form className="settings-form-grid" onSubmit={save}>
+        <fieldset className="settings-fieldset"><legend>Return Details</legend><div>
+          <label>Invoice<select value={form.invoiceId} onChange={e => setForm({ ...form, invoiceId: e.target.value })} required>
+            <option value="">Select invoice...</option>
+            {invoices.map(inv => <option key={inv.invoiceId || inv.id} value={inv.invoiceId || inv.id}>{inv.invNo || inv.invoiceNo} - {inv.customerName}</option>)}
+          </select></label>
+          <label>Product<select value={form.productId} onChange={e => setForm({ ...form, productId: e.target.value })} required>
+            <option value="">Select product...</option>
+            {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select></label>
+          <label>Quantity<input type="number" min="1" value={form.quantity} onChange={e => setForm({ ...form, quantity: Number(e.target.value) })} required /></label>
+          <label>Condition<select value={form.condition} onChange={e => setForm({ ...form, condition: e.target.value })}>
+            {['Resalable', 'Damaged', 'Expired', 'Other'].map(c => <option key={c} value={c}>{c}</option>)}
+          </select></label>
+          <label>Warehouse<select value={form.warehouseId} onChange={e => setForm({ ...form, warehouseId: e.target.value })} required>
+            <option value="">Select warehouse...</option>
+            {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+          </select></label>
+          <label>Reason<select value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} required>
+            <option value="">Select reason...</option>
+            {['Wrong product', 'Wrong quantity', 'Damaged in transit', 'Customer changed mind', 'Expired product', 'Quality issue', 'Other'].map(r => <option key={r} value={r}>{r}</option>)}
+          </select></label>
+          <label>Date<input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></label>
+        </div></fieldset>
+        <button className="primary-action" type="submit" disabled={saving}>{saving ? 'Processing...' : 'Process Return'}</button>
+      </form>
+    </ModalCard>
+  );
+}
+
+function TaxSettingsModal({ user, tax, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    taxName: tax?.taxName || 'VAT',
+    vatRate: num(tax?.vatRate) || 16,
+    vatEnabled: tax?.vatEnabled !== false,
+    vatInclusive: tax?.vatInclusive === true,
+    defaultTaxStatus: tax?.defaultTaxStatus || 'Taxable',
+    active: tax?.active !== false,
+    vatNumber: tax?.vatNumber || '',
+    effectiveDate: tax?.effectiveDate || new Date().toISOString().slice(0, 10)
+  });
+  const [saving, setSaving] = useState(false);
+  async function save(e) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await rpc('configureTax', [user, form]);
+      onSaved?.();
+      onClose?.();
+    } catch (err) { alert(err.message); }
+    finally { setSaving(false); }
+  }
+  return (
+    <ModalCard title="Tax Settings" onClose={onClose} wide>
+      <form className="settings-form-grid" onSubmit={save}>
+        <fieldset className="settings-fieldset"><legend>VAT Configuration</legend><div>
+          <label>Tax Name<input value={form.taxName} onChange={e => setForm({ ...form, taxName: e.target.value })} placeholder="VAT / VAT-GST / Sales Tax" /></label>
+          <label>Tax Percentage (%)<input type="number" step="0.1" min="0" value={form.vatRate} onChange={e => setForm({ ...form, vatRate: Number(e.target.value) })} /></label>
+          <label>Tax Enabled<select value={form.vatEnabled ? 'true' : 'false'} onChange={e => setForm({ ...form, vatEnabled: e.target.value === 'true' })}>
+            <option value="true">Yes</option>
+            <option value="false">No</option>
+          </select></label>
+          <label>Tax Basis<select value={form.vatInclusive ? 'inclusive' : 'exclusive'} onChange={e => setForm({ ...form, vatInclusive: e.target.value === 'inclusive' })}>
+            <option value="exclusive">Exclusive (add tax on top of price)</option>
+            <option value="inclusive">Inclusive (tax is inside the price)</option>
+          </select></label>
+          <label>Default Tax Status<select value={form.defaultTaxStatus} onChange={e => setForm({ ...form, defaultTaxStatus: e.target.value })}>
+            <option value="Taxable">Taxable</option>
+            <option value="Exempt">VAT Exempt</option>
+            <option value="Zero Rated">Zero Rated (0%)</option>
+            <option value="Custom">Custom</option>
+          </select></label>
+          <label>Rate Active<select value={form.active ? 'true' : 'false'} onChange={e => setForm({ ...form, active: e.target.value === 'true' })}>
+            <option value="true">Active</option>
+            <option value="false">Inactive</option>
+          </select></label>
+          <label>KRA PIN / VAT Number<input value={form.vatNumber} onChange={e => setForm({ ...form, vatNumber: e.target.value })} /></label>
+          <label>Effective Date<input type="date" value={form.effectiveDate} onChange={e => setForm({ ...form, effectiveDate: e.target.value })} /></label>
+        </div></fieldset>
+        <button className="primary-action" type="submit" disabled={saving}>{saving ? 'Saving...' : 'Save Tax Settings'}</button>
+      </form>
+    </ModalCard>
+  );
+}
+
+function VATReportView({ user, data }) {
+  const [period, setPeriod] = useState('This Fiscal Year');
+  const [report, setReport] = useState(null);
+  const [loading, setLoading] = useState(false);
+  async function load() {
+    setLoading(true);
+    try {
+      const result = await rpc('getVATReport', [user, { period }]);
+      setReport(result);
+    } catch (err) { alert(err.message); }
+    finally { setLoading(false); }
+  }
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
+        <select value={period} onChange={e => setPeriod(e.target.value)}>
+          {['Today', 'This Week', 'This Month', 'Last Month', 'This Year', 'This Fiscal Year'].map(p => <option key={p} value={p}>{p}</option>)}
+        </select>
+        <button className="primary-action" onClick={load} disabled={loading}>{loading ? 'Loading...' : 'Generate VAT Report'}</button>
+      </div>
+      {report && (
+        <div className="dashboard-grid">
+          <Panel className="span-4" title="VAT Rate"><strong>{report.vatRate}%</strong><br/><span>{report.vatEnabled ? 'Enabled' : 'Disabled'}</span></Panel>
+          <Panel className="span-4" title="Taxable Sales"><strong>{currency(report.taxableSales)}</strong></Panel>
+          <Panel className="span-4" title="VAT on Sales"><strong style={{ color: '#22c55e' }}>{currency(report.vatOnSales)}</strong></Panel>
+          <Panel className="span-4" title="VAT on Credits"><strong style={{ color: '#ef4444' }}>{currency(report.vatOnCredits)}</strong></Panel>
+          <Panel className="span-4" title="Net Taxable"><strong>{currency(report.netTaxable)}</strong></Panel>
+          <Panel className="span-4" title="VAT Liability"><strong>{currency(report.vatLiability)}</strong></Panel>
+          <Panel className="span-12" title="VAT Summary">
+            <SimpleTable rows={[
+              { metric: 'Taxable Sales', value: report.taxableSales },
+              { metric: 'VAT Exempt', value: report.vatExempt },
+              { metric: 'VAT on Sales', value: report.vatOnSales },
+              { metric: 'VAT on Credit Notes', value: report.vatOnCredits },
+              { metric: 'Net Taxable', value: report.netTaxable },
+              { metric: 'VAT Liability', value: report.vatLiability },
+              { metric: 'Invoices', value: report.invoices },
+              { metric: 'Credit Notes', value: report.creditNotes }
+            ]} columns={['metric', 'value']} />
+          </Panel>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function InvoiceHistoryView({ user, invoiceId }) {
+  const [history, setHistory] = useState(null);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!invoiceId) return;
+    setLoading(true);
+    rpc('getInvoiceHistory', [user, invoiceId]).then(result => setHistory(result)).catch(() => {}).finally(() => setLoading(false));
+  }, [invoiceId, user]);
+  if (loading) return <div className="quiet-state">Loading history...</div>;
+  if (!history) return <div className="quiet-state">Select an invoice to view history.</div>;
+  return (
+    <div>
+      {history.invoice && (
+        <div style={{ background: '#f9fafb', borderRadius: 12, padding: 16, marginBottom: 16 }}>
+          <h3>{history.invoice.invNo || history.invoice.invoiceNo}</h3>
+          <p>{history.invoice.customerName} | {history.invoice.date} | Total: {currency(history.invoice.total)} | Paid: {currency(history.invoice.paid)} | Balance: {currency(history.invoice.balance)}</p>
+        </div>
+      )}
+      <div className="dashboard-grid">
+        <Panel className="span-12" title="Transaction Timeline">
+          <SimpleTable rows={(history.timeline || []).map(item => ({
+            type: item.type, date: item.date || item.timestamp, reference: item.reference || item.invoiceId,
+            description: item.description || item.action, amount: item.amount || '', status: item.status || item.approvalStatus || ''
+          }))} columns={['type', 'date', 'reference', 'description', 'amount', 'status']} />
+        </Panel>
+        <Panel className="span-6" title="Payments">
+          <SimpleTable rows={history.payments || []} columns={['paymentNo', 'date', 'amount', 'method', 'status']} />
+        </Panel>
+        <Panel className="span-6" title="Credit Notes">
+          <SimpleTable rows={history.creditNotes || []} columns={['creditNo', 'date', 'amount', 'reason', 'status']} />
+        </Panel>
+      </div>
+    </div>
+  );
 }
 
 function formatCell(value, key) {

@@ -2960,70 +2960,32 @@ function convertUom(quantity, fromUnit, toUnit) {
 }
 
 function ensureManufacturingData() {
-  if (!db || db.rawMaterials?.length && db.productionOrders?.length && db.unitConversions?.length) return;
-  const now = new Date().toISOString();
-  db.unitOfMeasure = [
-    ['KG', 'Kilograms', 'mass'], ['G', 'Grams', 'mass'], ['MG', 'Milligrams', 'mass'], ['TONNE', 'Tonnes', 'mass'],
-    ['L', 'Litres', 'volume'], ['ML', 'Millilitres', 'volume'], ['PCS', 'Pieces', 'count'], ['BOTTLE', 'Bottles', 'count'],
-    ['PACKET', 'Packets', 'count'], ['BOX', 'Boxes', 'count'], ['CARTON', 'Cartons', 'count'], ['BAG', 'Bags', 'count'],
-    ['ml', 'Millilitres', 'volume'], ['kg', 'Kilograms', 'mass'], ['Piece', 'Pieces', 'count'], ['Roll', 'Rolls', 'count']
-  ].map(([code, name, family]) => ({ id: `UOM-${code}`, code, name, family, status: 'Active' }));
-  db.unitConversions = [
-    { fromUnit: 'KG', toUnit: 'G', factor: 1000 }, { fromUnit: 'G', toUnit: 'MG', factor: 1000 }, { fromUnit: 'TONNE', toUnit: 'KG', factor: 1000 },
-    { fromUnit: 'L', toUnit: 'ML', factor: 1000 }, { fromUnit: 'CARTON', toUnit: 'BOTTLE', factor: 24 }, { fromUnit: 'BOX', toUnit: 'PACKET', factor: 12 }
-  ].map((x, index) => ({ id: `UCON-${index + 1}`, ...x, status: 'Active' }));
-  db.rawMaterials = [
-    { id: 'RM-001', barcode: 'BC-MAIZE-001', materialCode: 'RM-MAIZE', materialName: 'Maize Bran', description: 'High-quality maize bran for animal feed', category: 'Direct Materials', unitOfMeasure: 'G', baseUnit: 'G', conversionFactor: 1, currentQuantity: 500000, availableQuantity: 500000, reservedQuantity: 0, consumedQuantity: 0, currentStock: 500000, availableStock: 500000, reservedStock: 0, supplier: 'Unga Millers Ltd', unitCost: 1.8, averageCost: 1.8, lastPurchasePrice: 1.8, warehouse: 'Raw Materials Store', binLocation: 'A1', batchNumber: 'MAT-MAIZE-001', manufactureDate: '2026-01-04', expiryDate: '2027-01-04', minStockLevel: 100000, maxStockLevel: 1000000, reorderLevel: 200000, leadTime: 7, status: 'Active', storageCondition: 'Room Temp', hazardous: false },
-    { id: 'RM-002', barcode: 'BC-NEEM-001', materialCode: 'RM-NEEM', materialName: 'Neem Extract', description: 'Organic neem extract for bio-pesticide', category: 'Chemicals', unitOfMeasure: 'ML', baseUnit: 'ML', conversionFactor: 1, currentQuantity: 220000, availableQuantity: 220000, reservedQuantity: 0, consumedQuantity: 0, currentStock: 220000, availableStock: 220000, reservedStock: 0, supplier: 'Bayer Crop Science', unitCost: 2.4, averageCost: 2.4, lastPurchasePrice: 2.4, warehouse: 'Raw Materials Store', binLocation: 'B2', batchNumber: 'MAT-NEEM-001', manufactureDate: '2026-02-10', expiryDate: '2027-02-10', minStockLevel: 50000, maxStockLevel: 500000, reorderLevel: 100000, leadTime: 14, status: 'Active', storageCondition: 'Room Temp', hazardous: false },
-    { id: 'RM-003', barcode: 'BC-BTL-001', materialCode: 'PK-BOTTLE', materialName: '1L Bottle', description: 'HDPE bottle for liquid products', category: 'Packaging Materials', unitOfMeasure: 'PCS', baseUnit: 'PCS', conversionFactor: 1, currentQuantity: 2400, availableQuantity: 2400, reservedQuantity: 0, consumedQuantity: 0, currentStock: 2400, availableStock: 2400, reservedStock: 0, supplier: 'Green Packaging Co', unitCost: 18, averageCost: 18, lastPurchasePrice: 18, warehouse: 'Packaging Store', binLocation: 'P1', batchNumber: 'PKG-BTL-001', manufactureDate: '2026-01-20', expiryDate: '', minStockLevel: 500, maxStockLevel: 10000, reorderLevel: 1000, leadTime: 5, status: 'Active', storageCondition: 'Room Temp', hazardous: false },
-    { id: 'RM-004', barcode: 'BC-LBL-001', materialCode: 'PK-LABEL', materialName: 'Product Label', description: 'Printed product labels', category: 'Labels & Printed Materials', unitOfMeasure: 'PCS', baseUnit: 'PCS', conversionFactor: 1, currentQuantity: 5000, availableQuantity: 5000, reservedQuantity: 0, consumedQuantity: 0, currentStock: 5000, availableStock: 5000, reservedStock: 0, supplier: 'Print Masters Ltd', unitCost: 2.5, averageCost: 2.5, lastPurchasePrice: 2.5, warehouse: 'Packaging Store', binLocation: 'P2', batchNumber: 'PKG-LBL-001', manufactureDate: '2026-01-15', expiryDate: '', minStockLevel: 1000, maxStockLevel: 20000, reorderLevel: 2000, leadTime: 3, status: 'Active', storageCondition: 'Room Temp', hazardous: false },
-    { id: 'RM-005', barcode: 'BC-SCH-001', materialCode: 'RM-SACHET', materialName: 'Sachet Film', description: 'Laminated sachet film for packaging', category: 'Packaging Materials', unitOfMeasure: 'PCS', baseUnit: 'PCS', conversionFactor: 1, currentQuantity: 10000, availableQuantity: 10000, reservedQuantity: 0, consumedQuantity: 0, currentStock: 10000, availableStock: 10000, reservedStock: 0, supplier: 'Packaging Plus', unitCost: 1.2, averageCost: 1.2, lastPurchasePrice: 1.2, warehouse: 'Packaging Store', binLocation: 'P3', batchNumber: 'PKG-SCH-001', manufactureDate: '2026-01-20', expiryDate: '', minStockLevel: 2000, maxStockLevel: 50000, reorderLevel: 5000, leadTime: 4, status: 'Active', storageCondition: 'Room Temp', hazardous: false },
-    { id: 'RM-006', barcode: 'BC-MAL-001', materialCode: 'RM-MALATHION', materialName: 'Malathion', description: 'Active ingredient for pest control', category: 'Chemicals', unitOfMeasure: 'ML', baseUnit: 'ML', conversionFactor: 1, currentQuantity: 50000, availableQuantity: 50000, reservedQuantity: 0, consumedQuantity: 0, currentStock: 50000, availableStock: 50000, reservedStock: 0, supplier: 'Syngenta Kenya', unitCost: 3.5, averageCost: 3.5, lastPurchasePrice: 3.5, warehouse: 'Chemical Store', binLocation: 'C1', batchNumber: 'MAT-MAL-001', manufactureDate: '2026-01-01', expiryDate: '2027-01-01', minStockLevel: 10000, maxStockLevel: 100000, reorderLevel: 20000, leadTime: 10, status: 'Active', storageCondition: 'Hazardous', hazardous: true },
-    { id: 'RM-007', barcode: 'BC-WD-001', materialCode: 'RM-WOOD', materialName: 'Wooden Block', description: 'Wooden blocks for insect traps', category: 'Direct Materials', unitOfMeasure: 'PCS', baseUnit: 'PCS', conversionFactor: 1, currentQuantity: 1000, availableQuantity: 1000, reservedQuantity: 0, consumedQuantity: 0, currentStock: 1000, availableStock: 1000, reservedStock: 0, supplier: 'Timber Works', unitCost: 5.0, averageCost: 5.0, lastPurchasePrice: 5.0, warehouse: 'Raw Materials Store', binLocation: 'A3', batchNumber: 'MAT-WD-001', manufactureDate: '2026-01-01', expiryDate: '', minStockLevel: 200, maxStockLevel: 5000, reorderLevel: 500, leadTime: 5, status: 'Active', storageCondition: 'Room Temp', hazardous: false },
-    { id: 'RM-008', barcode: 'BC-ACC-001', materialCode: 'RM-ACCESSORY', materialName: 'Cap/Lid', description: 'Bottle caps and lids', category: 'Accessories', unitOfMeasure: 'PCS', baseUnit: 'PCS', conversionFactor: 1, currentQuantity: 3000, availableQuantity: 3000, reservedQuantity: 0, consumedQuantity: 0, currentStock: 3000, availableStock: 3000, reservedStock: 0, supplier: 'Green Packaging Co', unitCost: 1.5, averageCost: 1.5, lastPurchasePrice: 1.5, warehouse: 'Packaging Store', binLocation: 'P4', batchNumber: 'PKG-CAP-001', manufactureDate: '2026-01-20', expiryDate: '', minStockLevel: 500, maxStockLevel: 10000, reorderLevel: 1000, leadTime: 3, status: 'Active', storageCondition: 'Room Temp', hazardous: false }
-  ];
-  db.rawMaterialBatches = db.rawMaterials.map((m, index) => ({ id: `RMB-${index + 1}`, batchNumber: m.batchNumber, materialId: m.id, materialName: m.materialName, supplier: m.supplier, quantity: m.currentQuantity, availableQuantity: m.availableQuantity, reservedQuantity: 0, unit: m.unitOfMeasure, cost: m.currentQuantity * m.unitCost, costPerBaseUnit: m.unitCost, receivedDate: today(), expiryDate: m.expiryDate, warehouse: m.warehouse, storageLocation: m.binLocation, status: 'Available' }));
-  db.productFormulas = [
-    { id: 'FORM-001', productId: 'PROD-001', productName: 'Dairy Meal 16% 70kg', formulaName: 'Dairy Meal Standard Formula', activeVersion: 'v1', outputQuantity: 1, outputUnit: 'BAG', laborCost: 150, overheadCost: 80, machineCost: 50, utilityCost: 30, totalEstimatedCost: 780, status: 'Active', approvalStatus: 'Approved', createdBy: 'System', approvedBy: 'Administrator', approvedAt: now, createdAt: now },
-    { id: 'FORM-002', productId: 'PROD-002', productName: 'Organic Neem Oil 1L', formulaName: 'Neem Oil Bottle Formula', activeVersion: 'v1', outputQuantity: 1, outputUnit: 'BOTTLE', laborCost: 20, overheadCost: 10, machineCost: 5, utilityCost: 3, totalEstimatedCost: 58, status: 'Active', approvalStatus: 'Approved', createdBy: 'System', approvedBy: 'Administrator', approvedAt: now, createdAt: now },
-    { id: 'FORM-003', productId: 'PROD-003', productName: 'Bactrolure Block', formulaName: 'Bactrolure Block Formula', activeVersion: 'v1', outputQuantity: 1, outputUnit: 'Piece', laborCost: 30, overheadCost: 15, machineCost: 10, utilityCost: 5, totalEstimatedCost: 150, status: 'Active', approvalStatus: 'Approved', createdBy: 'System', approvedBy: 'Administrator', approvedAt: now, createdAt: now }
-  ];
-  db.formulaVersions = [
-    { id: 'FV-001', formulaId: 'FORM-001', version: 'v1', rawMaterialId: 'RM-001', materialName: 'Maize Bran', materialCategory: 'Direct Materials', quantity: 250, unit: 'G', wastePercent: 2, notes: 'Base ingredient', status: 'Active', createdAt: now },
-    { id: 'FV-002', formulaId: 'FORM-002', version: 'v1', rawMaterialId: 'RM-002', materialName: 'Neem Extract', materialCategory: 'Chemicals', quantity: 950, unit: 'ML', wastePercent: 1, notes: 'Active ingredient', status: 'Active', createdAt: now },
-    { id: 'FV-003', formulaId: 'FORM-002', version: 'v1', rawMaterialId: 'RM-003', materialName: '1L Bottle', materialCategory: 'Packaging Materials', quantity: 1, unit: 'PCS', wastePercent: 0, notes: 'Primary packaging', status: 'Active', createdAt: now },
-    { id: 'FV-004', formulaId: 'FORM-002', version: 'v1', rawMaterialId: 'RM-004', materialName: 'Product Label', materialCategory: 'Labels & Printed Materials', quantity: 1, unit: 'PCS', wastePercent: 0, notes: 'Label', status: 'Active', createdAt: now },
-    { id: 'FV-005', formulaId: 'FORM-003', version: 'v1', rawMaterialId: 'RM-006', materialName: 'Malathion', materialCategory: 'Chemicals', quantity: 1, unit: 'ML', wastePercent: 0.5, notes: 'Active chemical', status: 'Active', createdAt: now },
-    { id: 'FV-006', formulaId: 'FORM-003', version: 'v1', rawMaterialId: 'RM-007', materialName: 'Wooden Block', materialCategory: 'Direct Materials', quantity: 1, unit: 'PCS', wastePercent: 0, notes: 'Base block', status: 'Active', createdAt: now },
-    { id: 'FV-007', formulaId: 'FORM-003', version: 'v1', rawMaterialId: 'RM-005', materialName: 'Sachet Film', materialCategory: 'Packaging Materials', quantity: 1, unit: 'PCS', wastePercent: 0, notes: 'Sachet packaging', status: 'Active', createdAt: now },
-    { id: 'FV-008', formulaId: 'FORM-003', version: 'v1', rawMaterialId: 'RM-004', materialName: 'Product Label', materialCategory: 'Labels & Printed Materials', quantity: 1, unit: 'PCS', wastePercent: 0, notes: 'Label', status: 'Active', createdAt: now }
-  ];
-  db.bomVersionHistory = [
-    { id: 'BVH-001', formulaId: 'FORM-001', version: 'v1', action: 'create', user: 'System', timestamp: now, itemCount: 1 },
-    { id: 'BVH-002', formulaId: 'FORM-002', version: 'v1', action: 'create', user: 'System', timestamp: now, itemCount: 2 },
-    { id: 'BVH-003', formulaId: 'FORM-003', version: 'v1', action: 'create', user: 'System', timestamp: now, itemCount: 3 }
-  ];
-  db.productionOrders = (db.production || []).map(job => ({ id: job.id, orderNo: job.jobNo, productName: job.productName, productId: job.productId || 'PROD-001', formulaId: 'FORM-001', formulaVersion: 'v1', plannedQty: num(job.plannedQty || 1), outputUnit: 'BAG', status: job.status || 'Pending', operator: job.assignedTo || 'Grace Production', warehouse: 'Njiru Store', startDate: job.startDate || today(), endDate: job.endDate || '', createdAt: now, materialCost: 0, packagingCost: 0, consumableCost: 0, laborCost: 0, overheadCost: 0, machineCost: 0, utilityCost: 0, totalActualCost: 0, costPerUnit: 0, grossMargin: 0 }));
-  db.productionBatches = [];
-  db.productionBatchMaterials = [];
-  db.productionBatchCosts = [];
-  db.productionBatchYields = [];
-  db.rawMaterialConsumption = [];
-  db.productionStorageHistory = [];
-  db.qualityControlRecords = [];
-  db.wasteRecords = [];
-  db.inventoryTransactions = [];
-  db.productionQualityChecks = [{ id: 'QC-001', batchNo: 'Pending', productName: 'Dairy Meal 16% 70kg', parameter: 'Moisture', result: 'Pending', inspector: 'Quality Team', date: today(), status: 'Pending' }];
-  db.productionDowntime = [{ id: 'DT-001', orderNo: 'PJ-001', reason: 'Material Delay', minutes: 35, operator: 'Grace Production', date: today(), impact: 'Low' }];
-  db.productionCapacity = [
-    { id: 'CAP-001', resource: 'Feed Mixer Machine', type: 'Machine', dailyCapacity: 220, scheduled: 100, available: 120, unit: 'BAG', status: 'Available' },
-    { id: 'CAP-002', resource: 'Packaging Line', type: 'Machine', dailyCapacity: 900, scheduled: 320, available: 580, unit: 'BOTTLE', status: 'Available' },
-    { id: 'CAP-003', resource: 'Bactrolure Assembly', type: 'Machine', dailyCapacity: 500, scheduled: 200, available: 300, unit: 'Piece', status: 'Available' }
-  ];
-  db.productionCalendar = ['Daily', 'Weekly', 'Monthly', 'Yearly'].map((period, index) => ({ id: `PCAL-${index + 1}`, period, plannedOrders: 2 + index, plannedOutput: 1200 * (index + 1), status: 'Planned' }));
-  db.manufacturingDocuments = [{ id: 'DOC-001', title: 'Dairy Meal SOP', type: 'SOP', productName: 'Dairy Meal 16% 70kg', version: 'v1', status: 'Active' }];
-  db.batchRecalls = [];
+  if (!db) return;
+  // Units of measure are configuration, kept minimal and structural.
+  if (!Array.isArray(db.unitOfMeasure) || !db.unitOfMeasure.length) {
+    db.unitOfMeasure = [
+      ['KG', 'Kilograms', 'mass'], ['G', 'Grams', 'mass'], ['MG', 'Milligrams', 'mass'], ['TONNE', 'Tonnes', 'mass'],
+      ['L', 'Litres', 'volume'], ['ML', 'Millilitres', 'volume'], ['PCS', 'Pieces', 'count'], ['BOTTLE', 'Bottles', 'count'],
+      ['PACKET', 'Packets', 'count'], ['BOX', 'Boxes', 'count'], ['CARTON', 'Cartons', 'count'], ['BAG', 'Bags', 'count'],
+      ['ml', 'Millilitres', 'volume'], ['kg', 'Kilograms', 'mass'], ['Piece', 'Pieces', 'count'], ['Roll', 'Rolls', 'count']
+    ].map(([code, name, family]) => ({ id: 'UOM-' + code, code, name, family, status: 'Active' }));
+  }
+  if (!Array.isArray(db.unitConversions) || !db.unitConversions.length) {
+    db.unitConversions = [
+      { fromUnit: 'KG', toUnit: 'G', factor: 1000 }, { fromUnit: 'G', toUnit: 'MG', factor: 1000 }, { fromUnit: 'TONNE', toUnit: 'KG', factor: 1000 },
+      { fromUnit: 'L', toUnit: 'ML', factor: 1000 }, { fromUnit: 'CARTON', toUnit: 'BOTTLE', factor: 24 }, { fromUnit: 'BOX', toUnit: 'PACKET', factor: 12 }
+    ].map((x, index) => ({ id: 'UCON-' + (index + 1), ...x, status: 'Active' }));
+  }
+  // Demo/manufacturing data has been removed. Collections start empty.
+  ['rawMaterials', 'formulas', 'formulaVersions', 'formulaVersionItems', 'bomVersionHistory', 'productionOrders', 'productionBatches',
+    'productionBatchMaterials', 'productionBatchCosts', 'productionBatchYields', 'rawMaterialConsumption',
+    'productionStorageHistory', 'qualityControlRecords', 'wasteRecords', 'productionQualityChecks',
+    'productionDowntime', 'productionCapacity', 'productionCalendar', 'manufacturingDocuments', 'batchRecalls'
+  ].forEach(key => {
+    db[key] = Array.isArray(db[key]) ? db[key] : [];
+  });
 }
+
 
 function ensureFinanceData() {
   if (!db) return;
@@ -3063,6 +3025,12 @@ function ensureFinanceData() {
   db.costCenters = Array.isArray(db.costCenters) ? db.costCenters : [];
   db.financialForecasts = Array.isArray(db.financialForecasts) ? db.financialForecasts : [];
   db.financialAiInsights = Array.isArray(db.financialAiInsights) ? db.financialAiInsights : [];
+  db.creditNotes = Array.isArray(db.creditNotes) ? db.creditNotes : [];
+  db.creditNoteItems = Array.isArray(db.creditNoteItems) ? db.creditNoteItems : [];
+  db.productReturns = Array.isArray(db.productReturns) ? db.productReturns : [];
+  db.taxSettings = Array.isArray(db.taxSettings) ? db.taxSettings : [];
+  db.invoiceHistory = Array.isArray(db.invoiceHistory) ? db.invoiceHistory : [];
+  db.accountingAuditTrail = Array.isArray(db.accountingAuditTrail) ? db.accountingAuditTrail : [];
   // Bank accounts: structure only, zero opening if missing
   if (!Array.isArray(db.bankAccounts) || !db.bankAccounts.length) {
     db.bankAccounts = [
@@ -4845,6 +4813,33 @@ function leaveEntitlementFor(emp = {}, bucket = 'annual', approvedUsed = 0) {
   const storedBalance = emp[`leaveBalance${suffix}`];
   if (storedBalance !== undefined && storedBalance !== null && storedBalance !== '') return Math.max(0, num(storedBalance) + num(approvedUsed));
   return Math.max(0, defaults[bucket] || 0);
+}
+
+/**
+ * Compute VAT/TAX using the configured tax settings (never hard-coded).
+ * opts.taxStatus: 'Taxable' | 'Exempt' | 'Zero Rated' | 'Custom'
+ * opts.vatRate: optional override (custom rate)
+ * Returns { rate, tax, taxableSubtotal, isExempt }
+ */
+function computeInvoiceTax(d, subtotal = 0, opts = {}) {
+  const settings = (d && d.taxSettings && d.taxSettings[0]) || { taxName: 'VAT', vatRate: 16, vatEnabled: true };
+  const taxStatus = opts.taxStatus || settings.defaultTaxStatus || 'Taxable';
+  const isExempt = taxStatus === 'Exempt' || taxStatus === 'Zero Rated' || opts.vatExempt === true || opts.vatExempt === 'Yes';
+  const vatEnabled = settings.vatEnabled !== false && settings.active !== false;
+  let rate = opts.vatRate !== undefined && opts.vatRate !== null && opts.vatRate !== '' ? num(opts.vatRate) : num(settings.vatRate);
+  if (isExempt) rate = 0;
+  if (!vatEnabled) rate = 0;
+  // Tax-inclusive prices: VAT is extracted from the total, not added on top.
+  let taxableSubtotal = Math.round(num(subtotal) * 100) / 100;
+  let tax = 0;
+  if (rate > 0) {
+    if (settings.vatInclusive === true) {
+      tax = Math.round((taxableSubtotal - taxableSubtotal / (1 + rate / 100)) * 100) / 100;
+    } else {
+      tax = Math.round(taxableSubtotal * (rate / 100) * 100) / 100;
+    }
+  }
+  return { rate, tax, taxableSubtotal, total: taxableSubtotal + tax, isExempt, taxStatus };
 }
 
 function postFinanceJournal(user, { date, sourceModule, sourceId, reference, description, debitAccountName, creditAccountName, amount }) {
@@ -9881,7 +9876,8 @@ territory: geo,
       }
     });
     const subtotal = items.reduce((s, i) => s + num(i.quantity) * num(i.unitPrice), 0);
-    const tax = Math.round(subtotal * 0.16), total = subtotal + tax, paid = num(row.paid || total), id = gid(), saleNo = 'SALE-' + Date.now();
+    const vatCalc = computeInvoiceTax(d, subtotal, { taxStatus: row.taxStatus || (row.vatExempt ? 'Exempt' : undefined), vatRate: row.vatRate });
+    const tax = vatCalc.tax, total = vatCalc.total, paid = num(row.paid || total), id = gid(), saleNo = 'SALE-' + Date.now();
     const customerRow = d.customers.find(c => c.id === row.customerId || c.name === row.customerName);
     if (customerRow && !customerRow.salesOwner) {
       customerRow.salesOwner = u.name;
@@ -9894,6 +9890,7 @@ territory: geo,
       date: today(), subtotal, tax, total, paid, balance: total - paid,
       status: paid >= total ? 'Paid' : 'Partial', approvalStatus: 'Auto Approved',
       paymentMethod: row.paymentMethod || 'Cash', deliveryStatus: 'Pending Delivery',
+      taxStatus: vatCalc.taxStatus, vatRate: vatCalc.rate, vatExempt: vatCalc.isExempt,
       deliveryMethod: row.deliveryMethod || row.method || 'Company Vehicle',
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), isDeleted: 'No'
     };
@@ -9920,7 +9917,7 @@ territory: geo,
       }
     });
     const invoiceId = gid();
-    d.invoices.unshift({ id: invoiceId, invNo: nextInvoiceNo(d), customerId: row.customerId, customerName: row.customerName, date: today(), dueDate: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10), subtotal, tax, total, paid, balance: total - paid, status: paid >= total ? 'Paid' : 'Partial', approvalStatus: 'Auto Approved', type: 'Sales', saleId: id, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), isDeleted: 'No' });
+    d.invoices.unshift({ id: invoiceId, invNo: nextInvoiceNo(d), customerId: row.customerId, customerName: row.customerName, date: today(), dueDate: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10), subtotal, tax, total, paid, balance: total - paid, status: paid >= total ? 'Paid' : 'Partial', approvalStatus: 'Auto Approved', type: 'Sales', saleId: id, taxStatus: vatCalc.taxStatus, vatRate: vatCalc.rate, vatExempt: vatCalc.isExempt, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), isDeleted: 'No' });
     items.forEach(i => d.invoiceItems.push({ id: gid(), invoiceId, productId: i.productId, productName: i.productName, quantity: i.quantity, unitPrice: i.unitPrice, total: num(i.quantity) * num(i.unitPrice) }));
     const deliveryId = gid();
     d.deliveries.unshift({
@@ -10007,6 +10004,8 @@ territory: geo,
       customerEmail: customer.email || row?.customerEmail,
       paymentMethod: row?.paymentMethod || 'Credit',
       paid: num(row?.paid || 0),
+      taxStatus: row?.taxStatus,
+      vatRate: row?.vatRate,
       driver: row?.driver,
       vehicle: row?.vehicle,
       destination: row?.destination,
@@ -10117,12 +10116,22 @@ territory: geo,
   },
   generateInvoiceFromSale(user, saleId) {
     reqRole(user, ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.ACCOUNTANT);
-    const sale = data().sales.find(s => s.id === saleId);
+    const d = data();
+    const sale = d.sales.find(s => s.id === saleId);
     if (!sale) throw new Error('Sale not found');
-    let invoice = data().invoices.find(i => i.saleId === saleId);
+    const taxSettings = (d.taxSettings || [])[0] || { vatRate: 16, vatEnabled: true };
+    const subtotal = num(sale.subtotal) || num(sale.total);
+    const tax = taxSettings.vatEnabled ? Math.round(subtotal * (num(taxSettings.vatRate) / 100) * 100) / 100 : 0;
+    const total = subtotal + tax;
+    let invoice = d.invoices.find(i => i.saleId === saleId);
     if (!invoice) {
-      invoice = { id: gid(), invNo: nextInvoiceNo(data()), saleId, customerId: sale.customerId, customerName: sale.customerName, date: today(), dueDate: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10), subtotal: sale.subtotal, tax: sale.tax, total: sale.total, paid: sale.paid, balance: sale.balance, status: sale.status, approvalStatus: 'Auto Approved', type: 'Sales', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), isDeleted: 'No' };
-      data().invoices.unshift(invoice);
+      invoice = { id: gid(), invNo: nextInvoiceNo(d), saleId, customerId: sale.customerId, customerName: sale.customerName, date: today(), dueDate: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10), subtotal, tax, total, paid: sale.paid || 0, balance: total - (sale.paid || 0), status: sale.balance <= 0 ? 'Paid' : 'Pending', paymentTerms: 'Net 30', approvalStatus: 'Auto Approved', type: 'Sales', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), isDeleted: 'No' };
+      d.invoices.unshift(invoice);
+    } else {
+      invoice.subtotal = subtotal;
+      invoice.tax = tax;
+      invoice.total = total;
+      invoice.balance = total - num(invoice.paid);
     }
     return { success: true, invoice };
   },
@@ -10254,7 +10263,36 @@ territory: geo,
     return { success: true, delivery };
   },
   getInvoices: user => (reqRole(user), list('invoices')),
-  getInvoiceItems: (user, id) => (reqRole(user), data().invoiceItems.filter(i => i.invoiceId === id)),
+  getInvoiceItems(user, invoiceId) {
+    reqRole(user);
+    const d = data();
+    const invoice = (d.invoices || []).find(row => row.id === invoiceId || row.invNo === invoiceId || row.invoiceNo === invoiceId);
+    if (!invoice) throw new Error('Invoice not found');
+    const invoiceItems = (d.invoiceItems || []).filter(row => row.invoiceId === invoice.id);
+    const saleItems = invoice.saleId ? (d.saleItems || []).filter(row => row.saleId === invoice.saleId) : [];
+    const items = (invoiceItems.length ? invoiceItems : saleItems).map(row => ({
+      productId: row.productId || '',
+      productName: row.productName || row.description || 'Item',
+      quantity: num(row.quantity || 1),
+      unitPrice: num(row.unitPrice || row.rate || row.price || 0),
+      total: num(row.total || num(row.quantity || 1) * num(row.unitPrice || row.rate || row.price || 0))
+    }));
+    return {
+      success: true,
+      invoice: {
+        id: invoice.id,
+        invNo: invoice.invNo || invoice.invoiceNo,
+        customerId: invoice.customerId,
+        customerName: invoice.customerName,
+        total: num(invoice.total),
+        paid: num(invoice.paid),
+        balance: num(invoice.balance),
+        vatRate: invoice.vatRate,
+        taxStatus: invoice.taxStatus
+      },
+      items
+    };
+  },
   async recordPayment(user, row) {
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT);
     const d = data();
@@ -10269,7 +10307,7 @@ territory: geo,
     if (inv) {
       inv.paid = num(inv.paid) + amount;
       inv.balance = num(inv.total) - inv.paid;
-      inv.status = inv.balance <= 0 ? 'Paid' : 'Partial';
+      inv.status = inv.balance <= 0 ? 'Paid' : 'Partially Paid';
       inv.paymentMethod = method;
       inv.lastPaymentDate = now.slice(0, 10);
     }
@@ -10296,7 +10334,7 @@ territory: geo,
       customerName: customer?.name || inv?.customerName || row.customerName || '',
       amount,
       method,
-      bankAccount: row.bankAccount || '',
+      bankAccount: row.bankAccount || (method === 'M-Pesa' ? 'M-Pesa Till' : method === 'Cash' ? 'Cash on Hand' : 'KCB Bank'),
       reference: row.reference || paymentNo,
       cashier: u.name,
       notes: row.notes || '',
@@ -10309,10 +10347,21 @@ territory: geo,
     if (inv) {
       d.paymentAllocations ||= [];
       d.paymentAllocations.unshift({ id: gid(), paymentId: payment.id, invoiceId: inv.id, amount, date: payment.date, createdAt: now });
+      d.invoiceHistory ||= [];
+      d.invoiceHistory.unshift({
+        id: gid(),
+        invoiceId: inv.id,
+        action: 'Payment Received',
+        oldValue: { balance: num(inv.balance) + amount, status: inv.status === 'Paid' ? 'Partially Paid' : inv.status },
+        newValue: { balance: inv.balance, status: inv.status, paymentId: payment.id, paymentNo },
+        userName: u.name,
+        timestamp: now,
+        notes: `Payment ${paymentNo} - ${money(amount)} ${method}`
+      });
     }
 
     ensureFinanceData();
-    const bankAccount = d.financeAccounts.find(a => a.name === (method === 'M-Pesa' ? 'M-Pesa Till' : method === 'Cash' ? 'Cash on Hand' : 'KCB Bank'));
+    const bankAccount = d.financeAccounts.find(a => a.name === payment.bankAccount) || d.financeAccounts.find(a => a.name === 'KCB Bank');
     const arAccount = d.financeAccounts.find(a => a.name === 'Accounts Receivable');
     if (bankAccount && arAccount) {
       api.postManualJournal(u, { amount, description: `Payment received ${paymentNo} for ${inv?.invNo || 'Customer'}`, reference: paymentNo, debitAccountId: bankAccount.id, creditAccountId: arAccount.id });
@@ -11220,7 +11269,7 @@ territory: geo,
     const supplier = data().suppliers[0];
     const product = data().products.find(p => p.id === request.productId) || data().products[0];
     const subtotal = num(request.quantity) * num(product.costPrice);
-    const tax = Math.round(subtotal * 0.16);
+    const tax = computeInvoiceTax(data(), subtotal).tax;
     const po = {
       id: gid(),
       poNo: `PO-${Date.now()}`,
@@ -11691,6 +11740,9 @@ territory: geo,
     const liveReceivables = (d.invoices || []).filter(inv => inv.status !== 'Deleted' && inv.isDeleted !== 'Yes').map(inv => ({
       id: `AR-${inv.id}`, invoiceId: inv.id, invNo: inv.invNo || inv.invoiceNo, customerName: inv.customerName, dueDate: inv.dueDate,
       total: num(inv.total), paid: num(inv.paid), balance: num(inv.balance), status: inv.status,
+      subtotal: num(inv.subtotal), tax: num(inv.tax), taxStatus: inv.taxStatus || (num(inv.tax) > 0 ? 'Taxable' : 'Exempt'),
+      vatRate: inv.vatRate, vatExempt: inv.vatExempt,
+      creditNotesApplied: num(inv.creditNotesApplied || 0),
       shipToLocation: inv.shipToLocation || inv.deliveryAddress || inv.shippingAddress || '',
       deliveryAddress: inv.deliveryAddress || inv.shippingAddress || inv.shipToLocation || '',
       notes: inv.notes || '', paymentTerms: inv.paymentTerms || 'Net 30',
@@ -11734,9 +11786,19 @@ territory: geo,
     });
     const receivables = liveReceivables.map(row => {
       const daysOverdue = num(row.balance) > 0 ? reportDaysOverdue(row.dueDate) : 0;
+      // Business rules: a fully paid invoice is automatically PAID; overdue after due date.
+      let liveStatus = row.status;
+      if (row.status === 'Cancelled' || row.status === 'Deleted') liveStatus = 'Cancelled';
+      else if (num(row.balance) <= 0 && num(row.total) > 0) liveStatus = 'Paid';
+      else if (num(row.creditNotesApplied) > 0 && num(row.balance) > 0) liveStatus = 'Partially Credited';
+      else if (num(row.paid) > 0 && num(row.balance) > 0) liveStatus = 'Partially Paid';
+      else if (num(row.balance) > 0 && daysOverdue > 0) liveStatus = 'Overdue';
+      else if (liveStatus === 'Draft') liveStatus = 'Draft';
+      else liveStatus = 'Pending';
       return {
         ...row,
         daysOverdue,
+        liveStatus,
         agingBucket: num(row.balance) <= 0 ? 'Paid' : agingBucket(daysOverdue),
         paymentTerms: row.paymentTerms || 'Net 30',
         risk: daysOverdue > 90 ? 'Defaulted' : daysOverdue > 60 ? 'Credit Hold' : daysOverdue > 30 ? 'Overdue' : num(row.balance) > 100000 ? 'Watch' : 'Normal'
@@ -11811,6 +11873,21 @@ territory: geo,
       acc[key].overdueBalance += num(row.overdueBalance);
       return acc;
     }, {})).map(row => ({ ...row, dueBalance: Math.round(row.dueBalance), overdueBalance: Math.round(row.overdueBalance) }));
+    // Payments by method / account (Requirement 38-39) — how money came in.
+    const paymentMethodsSummary = Object.values((d.payments || []).reduce((acc, p) => {
+      const method = p.method || 'Other';
+      acc[method] ||= { method, count: 0, total: 0 };
+      acc[method].count += 1;
+      acc[method].total += num(p.amount);
+      return acc;
+    }, {}));
+    const paymentAccountsSummary = Object.values((d.payments || []).reduce((acc, p) => {
+      const account = p.bankAccount || (p.method === 'M-Pesa' ? 'M-Pesa Till' : p.method === 'Cash' ? 'Cash on Hand' : 'KCB Bank');
+      acc[account] ||= { account, count: 0, total: 0 };
+      acc[account].count += 1;
+      acc[account].total += num(p.amount);
+      return acc;
+    }, {}));
     const statementPreview = receivables
       .filter(row => num(row.balance) > 0)
       .slice(0, 25)
@@ -11849,6 +11926,8 @@ territory: geo,
       agingSummary,
       collectionQueue,
       paymentTermsSummary,
+      paymentMethodsSummary,
+      paymentAccountsSummary,
       statementPreview,
       quotations: d.quotations || [],
       quotationItems: d.quotationItems || [],
@@ -11864,7 +11943,14 @@ territory: geo,
         { module: 'Taxes', records: (d.taxRecords || []).length, journals: allEntries.filter(x => x.sourceModule === 'Taxes').length, status: 'Posting' },
         { module: 'Banking', records: generatedBankTransactions.length, journals: allEntries.filter(x => x.sourceModule === 'Banking' || generatedBankTransactions.some(tx => tx.reference === x.reference)).length, status: 'Posting' },
         { module: 'Manual Inputs', records: manualEntries.length, journals: manualEntries.length, status: 'Posting' }
-      ]
+      ],
+      creditNotes: d.creditNotes || [],
+      creditNoteItems: d.creditNoteItems || [],
+      productReturns: d.productReturns || [],
+      taxSettings: d.taxSettings || [],
+      invoiceHistory: d.invoiceHistory || [],
+      accountingAuditTrail: d.accountingAuditTrail || [],
+      warehouses: d.inventoryWarehouses || d.warehouses || [{ id: 'WH1', name: 'Njiru Store' }]
     };
     } catch (err) {
       console.error('getFinanceWorkspaceData', err && err.message);
@@ -11876,7 +11962,8 @@ territory: geo,
         bankAccounts: [], bankTransactions: [], expenses: [], payroll: [], taxes: [], assets: [], budgets: [],
         costCenters: [], forecasts: [], reports: [], audit: [], ai: [], customerFinance: [], agingSummary: [],
         collectionQueue: [], paymentTermsSummary: [], statementPreview: [], quotations: [], payments: [],
-        sourceFlows: [], errorSafe: true, errorMessage: err && err.message
+        sourceFlows: [], errorSafe: true, errorMessage: err && err.message,
+        creditNotes: [], creditNoteItems: [], productReturns: [], taxSettings: [], invoiceHistory: [], accountingAuditTrail: [], warehouses: []
       };
     }
   },
@@ -11890,9 +11977,9 @@ territory: geo,
     const debit = data().financeAccounts.find(a => a.id === row.debitAccountId) || data().financeAccounts.find(a => a.name === 'Transport Expense');
     const credit = data().financeAccounts.find(a => a.id === row.creditAccountId) || data().financeAccounts.find(a => a.name === 'KCB Bank');
     const id = gid();
-    const entry = { id, journalNo: `JE-${String(data().financeJournalEntries.length + 1).padStart(5, '0')}`, date: row.date || today(), description: row.description || 'Manual journal', sourceModule: 'Finance', sourceId: id, reference: row.reference || 'MANUAL', totalDebit: amount, totalCredit: amount, approvalStatus: 'Posted', postedBy: u.name, immutable: true, createdAt: new Date().toISOString() };
-    const debitLine = { id: gid(), journalEntryId: id, accountCode: debit.code, accountName: debit.name, accountType: debit.type, debit: amount, credit: 0, sourceModule: 'Finance', reference: entry.reference, date: entry.date };
-    const creditLine = { id: gid(), journalEntryId: id, accountCode: credit.code, accountName: credit.name, accountType: credit.type, debit: 0, credit: amount, sourceModule: 'Finance', reference: entry.reference, date: entry.date };
+    const entry = { id, journalNo: `JE-${String(data().financeJournalEntries.length + 1).padStart(5, '0')}`, date: row.date || today(), description: row.description || 'Manual journal', sourceModule: row.category || 'Finance', sourceId: id, reference: row.reference || 'MANUAL', totalDebit: amount, totalCredit: amount, approvalStatus: 'Posted', postedBy: u.name, immutable: true, createdAt: new Date().toISOString() };
+    const debitLine = { id: gid(), journalEntryId: id, accountCode: debit.code, accountName: debit.name, accountType: debit.type, debit: amount, credit: 0, sourceModule: row.category || 'Finance', reference: entry.reference, date: entry.date };
+    const creditLine = { id: gid(), journalEntryId: id, accountCode: credit.code, accountName: credit.name, accountType: credit.type, debit: 0, credit: amount, sourceModule: row.category || 'Finance', reference: entry.reference, date: entry.date };
     data().financeManualJournals ||= [];
     data().financeManualJournalLines ||= [];
     data().financeManualLedger ||= [];
@@ -11900,7 +11987,7 @@ territory: geo,
     data().financeManualJournals.unshift(entry);
     data().financeManualJournalLines.unshift(creditLine, debitLine);
     data().financeManualLedger.unshift({ id: gid(), ...creditLine, runningBalance: 0 }, { id: gid(), ...debitLine, runningBalance: 0 });
-    data().financeManualAuditLogs.unshift({ id: gid(), user: u.name, date: entry.date, module: 'Finance', action: 'Manual Journal Posted', reference: entry.reference, oldValue: '', newValue: `${amount}/${amount}`, reason: entry.description, approval: entry.approvalStatus, immutable: true });
+    data().financeManualAuditLogs.unshift({ id: gid(), user: u.name, date: entry.date, module: row.category || 'Finance', action: 'Manual Journal Posted', reference: entry.reference, oldValue: '', newValue: `${amount}/${amount}`, reason: entry.description, approval: entry.approvalStatus, immutable: true });
     log(u, 'Post Manual Journal', 'Finance', entry.journalNo);
     return { success: true, entry };
   },
@@ -11969,15 +12056,16 @@ territory: geo,
     };
     const category = row.category || 'Office Expenses';
     const mappedAccount = categoryMap[category] || 'Miscellaneous Expense';
-    const expense = api.saveExpense(u, { category, date: row.date || today(), description: row.description || 'Finance expense', amount: num(row.amount), paymentMethod: row.paymentMethod || 'Bank', status: 'Paid' });
+    const paymentMethod = row.paymentMethod || 'Bank';
+    const expense = api.saveExpense(u, { category, date: row.date || today(), description: row.description || 'Finance expense', amount: num(row.amount), paymentMethod, status: 'Paid', accountCategory: mappedAccount });
     ensureFinanceData();
     const d = data();
     const expenseAccount = d.financeAccounts.find(a => a.name === mappedAccount) || d.financeAccounts.find(a => a.name === 'Miscellaneous Expense');
-    const bankAccount = d.financeAccounts.find(a => a.name === (row.paymentMethod === 'M-Pesa' ? 'M-Pesa Till' : row.paymentMethod === 'Cash' ? 'Cash on Hand' : 'KCB Bank'));
+    const bankAccount = d.financeAccounts.find(a => a.name === (paymentMethod === 'M-Pesa' ? 'M-Pesa Till' : paymentMethod === 'Cash' ? 'Cash on Hand' : 'KCB Bank'));
     if (expenseAccount && bankAccount) {
-      api.postManualJournal(u, { amount: num(row.amount), description: `Expense posted: ${row.description || category} (${mappedAccount})`, reference: expense.id || expense.row?.id || `EXP-${Date.now()}`, debitAccountId: expenseAccount.id, creditAccountId: bankAccount.id });
+      api.postManualJournal(u, { amount: num(row.amount), description: `Expense posted: ${row.description || category} (${mappedAccount})`, reference: expense.id || expense.row?.id || `EXP-${Date.now()}`, debitAccountId: expenseAccount.id, creditAccountId: bankAccount.id, category: 'Expenses' });
     } else {
-      api.postManualJournal(u, { amount: num(row.amount), description: `Expense posted: ${row.description || category}`, reference: expense.id || expense.row?.id || `EXP-${Date.now()}` });
+      api.postManualJournal(u, { amount: num(row.amount), description: `Expense posted: ${row.description || category}`, reference: expense.id || expense.row?.id || `EXP-${Date.now()}`, category: 'Expenses' });
     }
     return { success: true, expense };
   },
@@ -12046,13 +12134,28 @@ territory: geo,
     if (!customer) throw new Error('Customer not found');
     const cid = customer.id;
     const cname = customer.name;
-    const invoices = (d.invoices || []).filter(i => i.customerId === cid || i.customerName === cname).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
-    const payments = (d.payments || []).filter(p => p.customerId === cid || p.customerName === cname).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
-    const sales = (d.sales || []).filter(s => s.customerId === cid || s.customerName === cname).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
-    const orders = sales;
-    const deliveries = (d.deliveries || []).filter(x => x.customerId === cid || x.customerName === cname);
-    const calls = (d.calls || []).filter(x => x.customerId === cid || x.customerName === cname);
-    const credits = (d.creditNotes || []).filter(c => c.customerId === cid) || [];
+    const scopeStart = options.startDate || options.from || '';
+    const scopeEnd = options.endDate || options.to || '';
+    const monthFilter = options.month || '';
+    let invoices = (d.invoices || []).filter(i => i.customerId === cid || i.customerName === cname).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    let payments = (d.payments || []).filter(p => p.customerId === cid || p.customerName === cname).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    let sales = (d.sales || []).filter(s => s.customerId === cid || s.customerName === cname).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    let deliveries = (d.deliveries || []).filter(x => x.customerId === cid || x.customerName === cname);
+    let calls = (d.calls || []).filter(x => x.customerId === cid || x.customerName === cname);
+    let credits = (d.creditNotes || []).filter(c => c.customerId === cid || c.customerName === cname) || [];
+    if (monthFilter) {
+      const monthStart = `${monthFilter}-01`;
+      const monthEnd = new Date(new Date(monthStart).getFullYear(), new Date(monthStart).getMonth() + 1, 0).toISOString().slice(0, 10);
+      invoices = invoices.filter(i => i.date >= monthStart && i.date <= monthEnd);
+      payments = payments.filter(p => p.date >= monthStart && p.date <= monthEnd);
+      credits = credits.filter(c => c.date >= monthStart && c.date <= monthEnd);
+      sales = sales.filter(s => s.date >= monthStart && s.date <= monthEnd);
+    } else if (scopeStart || scopeEnd) {
+      invoices = invoices.filter(i => (!scopeStart || i.date >= scopeStart) && (!scopeEnd || i.date <= scopeEnd));
+      payments = payments.filter(p => (!scopeStart || p.date >= scopeStart) && (!scopeEnd || p.date <= scopeEnd));
+      credits = credits.filter(c => (!scopeStart || c.date >= scopeStart) && (!scopeEnd || c.date <= scopeEnd));
+      sales = sales.filter(s => (!scopeStart || s.date >= scopeStart) && (!scopeEnd || s.date <= scopeEnd));
+    }
     const statementLines = [];
     let runningBalance = 0;
     const allTxns = [
@@ -12071,6 +12174,7 @@ territory: geo,
       customerAddress: customer.city || '',
       customerPhone: customer.phone || '',
       statementDate: today(),
+      period: monthFilter || (scopeStart ? `${scopeStart} to ${scopeEnd || 'Present'}` : 'All time'),
       openingBalance: 0,
       closingBalance: runningBalance,
       totalInvoiced: invoices.reduce((s, i) => s + num(i.total), 0),
@@ -12082,10 +12186,27 @@ territory: geo,
       currentBalance: runningBalance,
       salesOwner: customer.salesOwner || customer.salesPerson || '',
       purchases: sales.map(s => ({ saleNo: s.saleNo, date: s.date, total: num(s.total), paid: num(s.paid), balance: num(s.balance), status: s.status, deliveryStatus: s.deliveryStatus || '' })),
+      productsPurchased: sales.flatMap(s => (d.saleItems || []).filter(i => i.saleId === s.id).map(i => ({ productName: i.productName, quantity: i.quantity, unitPrice: i.unitPrice, total: i.total }))),
       deliveries: deliveries.map(x => ({ deliveryNo: x.deliveryNo, date: x.date || x.createdAt, status: x.status, destination: x.destination, method: x.deliveryMethod || x.method })),
       followUps: calls.filter(c => c.followUpDate || c.comments).map(c => ({ date: c.followUpDate || c.date, stage: c.stage, comments: c.comments || c.notes, phone: c.phone, assignedTo: c.assignedTo })),
       customer
     };
+  },
+  exportCustomerStatement(user, customerId, format = 'CSV', options = {}) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT, ROLES.SALES);
+    const statement = api.generateCustomerStatement(u, customerId, options || {});
+    const rows = (statement.lines || []).map(l => ({ date: l.date, type: l.type, reference: l.reference || '', description: l.description || '', debit: num(l.debit), credit: num(l.credit), balance: num(l.balance) }));
+    const name = `customer-statement-${String(statement.customerName || 'customer').replace(/[^a-z0-9]/gi, '-').toLowerCase()}`;
+    if (format === 'CSV' || format.toLowerCase() === 'excel') {
+      const header = ['Date', 'Type', 'Reference', 'Description', 'Debit', 'Credit', 'Balance'];
+      const csv = [header.join(','), ...rows.map(r => [r.date, r.type, r.reference, `"${String(r.description).replace(/"/g, '""')}"`, r.debit, r.credit, r.balance].join(','))].join('\n');
+      return { success: true, data: Buffer.from(csv).toString('base64'), mimeType: 'text/csv', filename: `${name}.csv` };
+    }
+    // Print / PDF → printable HTML
+    const esc = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const htmlRows = rows.map(r => `<tr><td>${esc(r.date)}</td><td>${esc(r.type)}</td><td>${esc(r.reference)}</td><td>${esc(r.description)}</td><td>${currency(r.debit)}</td><td>${currency(r.credit)}</td><td>${currency(r.balance)}</td></tr>`).join('');
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Customer statement</title><style>*{font-family:Arial,sans-serif}body{padding:32px}h1{font-size:20px}h2{font-size:14px;color:#374151}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #d1d5db;padding:8px 10px;text-align:left;font-size:13px}th{background:#f3f4f6}.totals{margin-top:16px;font-weight:700}.kv{display:inline-block;margin-right:24px}</style></head><body><h1>Customer Statement</h1><p class="kv"><strong>Customer:</strong> ${esc(statement.customerName)}</p><p class="kv"><strong>Statement date:</strong> ${esc(statement.statementDate)}</p><p class="kv"><strong>Period:</strong> ${esc(statement.period || 'All time')}</p><h2>Closing balance: ${currency(statement.closingBalance)} · Total invoiced: ${currency(statement.totalInvoiced)} · Total paid: ${currency(statement.totalPaid)}</h2><table><thead><tr><th>Date</th><th>Type</th><th>Reference</th><th>Description</th><th>Debit</th><th>Credit</th><th>Balance</th></tr></thead><tbody>${htmlRows || '<tr><td colspan="7">No transactions in this period.</td></tr>'}</tbody></table></body></html>`;
+    return { success: true, data: Buffer.from(html).toString('base64'), mimeType: 'text/html', filename: `${name}.html` };
   },
   getAuditTrail(user, filters = {}) {
     reqRole(user, ROLES.ADMIN, ROLES.MANAGER);
@@ -12184,7 +12305,8 @@ territory: geo,
       })),
       warehouses: [{ id: 'WH1', name: 'Njiru Store' }],
       users: list('users').map(u => ({ id: u.id, name: u.name, role: u.role })),
-      roles: Object.values(ROLES)
+      roles: Object.values(ROLES),
+      taxSettings: (d.taxSettings && d.taxSettings[0]) || { taxName: 'VAT', vatRate: 16, vatEnabled: true, vatInclusive: false, defaultTaxStatus: 'Taxable', active: true }
     };
   },
   getStockAgingReport: user => (reqRole(user), { summary: [{ label: '0-30 days', qty: data().inventory.reduce((s, i) => s + num(i.quantity), 0) }], details: data().inventory.map(i => ({ product: i.productName, batch: i.batchNo, qty: num(i.quantity), days: 1 })) }),
@@ -13593,7 +13715,8 @@ territory: geo,
     });
     const price = unitPrice || num(product?.price || product?.sellingPrice || 0);
     const subtotal = Math.round(qty * price * 100) / 100;
-    const tax = Math.round(subtotal * 0.16 * 100) / 100;
+    const vatCalc = computeInvoiceTax(d, subtotal, { taxStatus: form.taxStatus, vatRate: form.vatRate });
+    const tax = vatCalc.tax;
     const total = Math.round((subtotal + tax) * 100) / 100;
     const saleId = gid();
     const saleNo = 'SO-' + Date.now().toString(36).toUpperCase();
@@ -13774,6 +13897,480 @@ territory: geo,
     app.decidedAt = new Date().toISOString();
     log(u, `Cancel leave ${app.applicantName}`, 'Leaves');
     return { success: true, application: app };
+  },
+
+  configureTax(user, taxConfig) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.ACCOUNTANT);
+    const d = data();
+    d.taxSettings ||= [];
+    const existing = d.taxSettings[0] || {};
+    const record = {
+      id: existing.id || gid(),
+      // Core configurable VAT / tax settings (never hard-coded).
+      taxName: clean(taxConfig.taxName) || existing.taxName || 'VAT',
+      vatRate: num(taxConfig.vatRate) >= 0 ? num(taxConfig.vatRate) : (existing.vatRate >= 0 ? existing.vatRate : 16),
+      vatEnabled: taxConfig.vatEnabled !== false,
+      // Tax-inclusive vs tax-exclusive ('exclusive' = add VAT on top; 'inclusive' = VAT included in price)
+      vatInclusive: taxConfig.vatInclusive === true,
+      // Default tax status (applied to new invoices unless overridden)
+      defaultTaxStatus: ['Taxable', 'Exempt', 'Zero Rated', 'Custom'].includes(taxConfig.defaultTaxStatus) ? taxConfig.defaultTaxStatus : (existing.defaultTaxStatus || 'Taxable'),
+      // Active/inactive status for the rate
+      active: taxConfig.active !== false,
+      vatNumber: clean(taxConfig.vatNumber) || existing.vatNumber || '',
+      effectiveDate: taxConfig.effectiveDate || existing.effectiveDate || today(),
+      updatedAt: new Date().toISOString()
+    };
+    if (existing.id) Object.assign(existing, record);
+    else d.taxSettings.unshift(record);
+    emitBusinessEvent(u, 'tax.configured', 'taxSettings', record.id, { vatRate: record.vatRate, vatEnabled: record.vatEnabled, defaultTaxStatus: record.defaultTaxStatus });
+    log(u, 'Configure Tax Settings', 'Finance', `${record.taxName} ${record.vatRate}% (${record.defaultTaxStatus})`);
+    return { success: true, tax: record };
+  },
+
+  getTaxSettings(user) {
+    reqRole(user);
+    const d = data();
+    const settings = (d.taxSettings || [])[0] || { taxName: 'VAT', vatRate: 16, vatEnabled: true, vatInclusive: false, defaultTaxStatus: 'Taxable', active: true, vatNumber: '' };
+    return { success: true, tax: settings };
+  },
+
+  async createCreditNote(user, row) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT);
+    const d = data();
+    const invoice = d.invoices.find(i => i.id === row.invoiceId);
+    if (!invoice) throw new Error('Invoice not found');
+    const customer = d.customers.find(c => c.id === invoice.customerId || c.name === invoice.customerName) || {};
+    const now = new Date().toISOString();
+    const cnNo = `CN-${String((d.creditNotes || []).length + 1).padStart(5, '0')}`;
+    const amount = num(row.amount) || num(invoice.balance);
+    // VAT adjustment on the credit (pro-rata of the invoice's VAT treatment).
+    const invoiceVatRate = num(invoice.vatRate);
+    const vatAdjustment = invoice.vatRate !== undefined && invoice.tax > 0
+      ? Math.round(amount * (invoiceVatRate / 100) * 100) / 100
+      : (row.vatAdjustment || 0);
+    const creditHandling = ['Customer credit balance', 'Refund', 'Apply to another invoice', 'Carry forward'].includes(row.creditHandling)
+      ? row.creditHandling : (invoice.balance > 0 ? 'Apply to invoice balance' : 'Customer credit balance');
+    const creditNote = {
+      id: gid(),
+      creditNo: cnNo,
+      invoiceId: invoice.id,
+      invoiceNo: invoice.invNo,
+      invoiceTotal: num(invoice.total),
+      customerId: customer.id || invoice.customerId,
+      customerName: invoice.customerName,
+      date: row.date || today(),
+      amount,
+      vatAdjustment,
+      vatRate: invoiceVatRate,
+      reason: clean(row.reason) || 'Customer adjustment',
+      notes: clean(row.notes) || '',
+      status: 'Draft',
+      approvalStatus: 'Pending',
+      creditHandling,
+      refundMethod: row.refundMethod || '',
+      refundReference: clean(row.refundReference) || '',
+      createdBy: u.name,
+      createdAt: now,
+      updatedAt: now
+    };
+    d.creditNotes ||= [];
+    d.creditNotes.unshift(creditNote);
+    if (row.items && Array.isArray(row.items)) {
+      d.creditNoteItems ||= [];
+      row.items.forEach(item => {
+        const product = d.products.find(p => p.id === item.productId);
+        d.creditNoteItems.unshift({
+          id: gid(),
+          creditNoteId: creditNote.id,
+          productId: item.productId,
+          productName: item.productName || product?.name || '',
+          quantity: num(item.quantity),
+          unitPrice: num(item.unitPrice),
+          total: num(item.quantity) * num(item.unitPrice),
+          returnReason: clean(item.returnReason) || row.reason || 'Return',
+          warehouseId: item.warehouseId || '',
+          createdAt: now
+        });
+      });
+    }
+    if (invoice) {
+      invoice.balance = num(invoice.balance) - amount;
+      invoice.creditNotesApplied = num(invoice.creditNotesApplied || 0) + amount;
+      if (invoice.balance <= 0) {
+        invoice.status = 'Paid';
+        invoice.balance = 0;
+      } else if (invoice.status !== 'Draft' && invoice.status !== 'Cancelled') {
+        invoice.status = 'Partially Credited';
+      }
+      invoice.updatedAt = now;
+    }
+    if (customer.id) {
+      customer.balance = num(customer.balance || 0) - amount;
+      customer.updatedAt = now;
+    }
+    d.invoiceHistory ||= [];
+    d.invoiceHistory.unshift({
+      id: gid(),
+      invoiceId: invoice.id,
+      action: 'Credit Note Created',
+      oldValue: { balance: num(invoice.total) - num(invoice.paid) + amount },
+      newValue: { balance: invoice.balance, creditNoteId: creditNote.id, creditNo: cnNo },
+      userName: u.name,
+      timestamp: now,
+      notes: `Credit note ${cnNo} for ${money(amount)} - ${creditNote.reason}`
+    });
+    ensureFinanceData();
+    const arAccount = d.financeAccounts.find(a => a.name === 'Accounts Receivable');
+    const revenueAccount = d.financeAccounts.find(a => a.type === 'Revenue');
+    if (arAccount && revenueAccount) {
+      api.postManualJournal(u, {
+        amount,
+        description: `Credit note ${cnNo} for ${invoice.invNo} - ${creditNote.reason}`,
+        reference: cnNo,
+        debitAccountId: revenueAccount.id,
+        creditAccountId: arAccount.id
+      });
+    }
+    emitBusinessEvent(u, 'credit_note.created', 'invoices', invoice.id, { creditNoteId: creditNote.id, creditNo: cnNo, amount, reason: creditNote.reason });
+    log(u, 'Create Credit Note', 'Accounts', `${cnNo} — ${money(amount)}`);
+    await saveState();
+    return { success: true, creditNote };
+  },
+
+  approveCreditNote(user, creditNoteId, action) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT);
+    const d = data();
+    const cn = d.creditNotes.find(c => c.id === creditNoteId);
+    if (!cn) throw new Error('Credit note not found');
+    const now = new Date().toISOString();
+    if (action === 'approve' || action === 'post') {
+      cn.approvalStatus = 'Approved';
+      cn.approvedBy = u.name;
+      cn.approvedAt = now;
+      if (action === 'post') {
+        cn.status = 'Posted';
+        cn.postedBy = u.name;
+      }
+    } else if (action === 'reject') {
+      cn.approvalStatus = 'Rejected';
+      cn.approvedBy = u.name;
+      cn.approvedAt = now;
+    } else {
+      throw new Error('Invalid action. Use approve, post, or reject');
+    }
+    cn.updatedAt = now;
+    emitBusinessEvent(u, `credit_note.${action}d`, 'creditNotes', cn.id, { creditNo: cn.creditNo, action });
+    log(u, `${action === 'reject' ? 'Reject' : action === 'post' ? 'Post' : 'Approve'} Credit Note`, 'Accounts', `${cn.creditNo} — ${action}`);
+    return { success: true, creditNote: cn };
+  },
+
+  processReturn(user, row) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT, ROLES.WAREHOUSE);
+    const d = data();
+    const invoice = d.invoices.find(i => i.id === row.invoiceId);
+    if (!invoice) throw new Error('Invoice not found');
+    const product = d.products.find(p => p.id === row.productId);
+    const returnQty = num(row.quantity);
+    const now = new Date().toISOString();
+    const returnNo = `RET-${String((d.productReturns || []).length + 1).padStart(5, '0')}`;
+    d.productReturns ||= [];
+    const returnRecord = {
+      id: gid(),
+      returnNo,
+      invoiceId: invoice.id,
+      customerId: invoice.customerId,
+      productId: row.productId,
+      quantity: returnQty,
+      reason: clean(row.reason) || 'Return',
+      warehouseId: row.warehouseId || '',
+      condition: clean(row.condition) || 'Resalable',
+      status: 'Received',
+      receivedBy: u.name,
+      receivedAt: now,
+      createdBy: u.name,
+      createdAt: now
+    };
+    d.productReturns.unshift(returnRecord);
+    if (returnRecord.condition === 'Resalable' && product) {
+      d.inventory ||= [];
+      const existingStock = d.inventory.find(item => item.productId === product.id && item.warehouseId === returnRecord.warehouseId);
+      if (existingStock) {
+        existingStock.quantity = num(existingStock.quantity) + returnQty;
+      } else {
+        d.inventory.unshift({
+          id: gid(),
+          productId: product.id,
+          productName: product.name,
+          quantity: returnQty,
+          warehouseId: returnRecord.warehouseId,
+          warehouseName: d.warehouses?.find(w => w.id === returnRecord.warehouseId)?.name || 'Main Store',
+          batchNo: '',
+          expiryDate: '',
+          status: 'Active',
+          createdAt: now
+        });
+      }
+      d.inventoryTransactions ||= [];
+      d.inventoryTransactions.unshift({
+        id: gid(),
+        productId: product.id,
+        productName: product.name,
+        warehouseId: returnRecord.warehouseId,
+        txnType: 'Return',
+        quantity: returnQty,
+        unitCost: num(product.costPrice),
+        referenceType: 'Product Return',
+        referenceId: returnRecord.id,
+        notes: `Return ${returnNo} - ${returnRecord.reason}`,
+        createdBy: u.name,
+        createdAt: now
+      });
+    }
+    const unitPrice = (d.creditNoteItems || []).find(i => i.productId === row.productId)?.unitPrice || (product?.sellingPrice || 0);
+    const creditAmount = returnQty * num(unitPrice);
+    const cnResult = api.createCreditNote(u, {
+      invoiceId: invoice.id,
+      amount: creditAmount,
+      reason: row.reason || 'Product return',
+      items: [{ productId: row.productId, productName: product?.name || '', quantity: returnQty, unitPrice, returnReason: row.reason }]
+    });
+    returnRecord.creditNoteId = cnResult.creditNote.id;
+    emitBusinessEvent(u, 'return.processed', 'sales', invoice.id, { returnNo, returnId: returnRecord.id, creditNoteId: cnResult.creditNote.id, quantity: returnQty });
+    log(u, 'Process Product Return', 'Inventory', `${returnNo} — ${product?.name || 'Item'} x${returnQty}`);
+    return { success: true, returnRecord, creditNote: cnResult.creditNote };
+  },
+
+  updateInvoiceStatuses(user) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.ACCOUNTANT);
+    const d = data();
+    const now = new Date();
+    let updatedCount = 0;
+    (d.invoices || []).forEach(inv => {
+      if (inv.status === 'Cancelled' || inv.status === 'Deleted') return;
+      const total = num(inv.total);
+      const paid = num(inv.paid);
+      const balance = num(inv.balance);
+      if (balance <= 0 && total > 0) {
+        if (inv.status !== 'Paid') { inv.status = 'Paid'; updatedCount++; }
+      } else if (paid > 0 && balance > 0) {
+        if (inv.status !== 'Partially Paid') { inv.status = 'Partially Paid'; updatedCount++; }
+      } else if (balance > 0 && new Date(inv.dueDate || inv.date) < now) {
+        if (inv.status !== 'Overdue') { inv.status = 'Overdue'; updatedCount++; }
+      }
+    });
+    if (updatedCount > 0) {
+      emitBusinessEvent(u, 'invoice.statuses.updated', 'invoices', 'batch', { updatedCount });
+      log(u, 'Update Invoice Statuses', 'Accounts', `${updatedCount} invoices updated`);
+    }
+    return { success: true, updatedCount };
+  },
+
+  getInvoiceHistory(user, invoiceId) {
+    reqRole(user);
+    const d = data();
+    const history = (d.invoiceHistory || []).filter(h => h.invoiceId === invoiceId).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    const invoice = d.invoices.find(i => i.id === invoiceId);
+    const payments = (d.payments || []).filter(p => p.invoiceId === invoiceId);
+    const creditNotes = (d.creditNotes || []).filter(c => c.invoiceId === invoiceId);
+    const journals = (d.financeManualJournals || []).filter(j => j.reference === invoice?.invNo || j.description?.includes(invoice?.invNo || ''));
+    return {
+      success: true,
+      invoice,
+      history,
+      payments,
+      creditNotes,
+      journals,
+      timeline: [
+        ...history.map(h => ({ type: 'history', ...h })),
+        ...payments.map(p => ({ type: 'payment', date: p.date, reference: p.paymentNo, description: `Payment ${p.method}`, amount: p.amount, status: p.status })),
+        ...creditNotes.map(c => ({ type: 'credit_note', date: c.date, reference: c.creditNo, description: `Credit Note ${c.reason}`, amount: c.amount, status: c.status }))
+      ].sort((a, b) => String(a.date || a.timestamp).localeCompare(String(b.date || b.timestamp)))
+    };
+  },
+
+  generateMonthlyStatement(user, customerId, month) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.ACCOUNTANT, ROLES.RECEPTION, ROLES.DEV, ROLES.EXECUTIVE);
+    const d = data();
+    const customer = (d.customers || []).find(c => c.id === customerId || String(c.name).toLowerCase() === String(customerId || '').toLowerCase());
+    if (!customer) throw new Error('Customer not found');
+    const monthStr = String(month || '').slice(0, 7);
+    if (!monthStr) throw new Error('Month is required (YYYY-MM)');
+    const monthStart = `${monthStr}-01`;
+    const monthEnd = new Date(new Date(monthStart).getFullYear(), new Date(monthStart).getMonth() + 1, 0).toISOString().slice(0, 10);
+    const invoices = (d.invoices || []).filter(i => (i.customerId === customer.id || i.customerName === customer.name) && i.date >= monthStart && i.date <= monthEnd);
+    const payments = (d.payments || []).filter(p => (p.customerId === customer.id || p.customerName === customer.name) && p.date >= monthStart && p.date <= monthEnd);
+    const credits = (d.creditNotes || []).filter(c => (c.customerId === customer.id || c.customerName === customer.name) && c.date >= monthStart && c.date <= monthEnd);
+    const sales = (d.sales || []).filter(s => (s.customerId === customer.id || s.customerName === customer.name) && s.date >= monthStart && s.date <= monthEnd);
+    const totalInvoiced = invoices.reduce((s, i) => s + num(i.total), 0);
+    const totalPaid = payments.reduce((s, p) => s + num(p.amount), 0);
+    const totalCredits = credits.reduce((s, c) => s + num(c.amount), 0);
+    const closingBalance = totalInvoiced - totalPaid - totalCredits;
+    return {
+      success: true,
+      customerName: customer.name,
+      period: monthStr,
+      monthStart,
+      monthEnd,
+      openingBalance: 0,
+      closingBalance,
+      totalInvoiced,
+      totalPaid,
+      totalCredits,
+      invoices,
+      payments,
+      credits,
+      sales,
+      lines: [
+        ...invoices.map(inv => ({ type: 'Invoice', date: inv.date, reference: inv.invNo, description: `Invoice ${inv.invNo}`, debit: num(inv.total), credit: 0 })),
+        ...payments.map(pay => ({ type: 'Payment', date: pay.date, reference: pay.paymentNo, description: `Payment - ${pay.method}`, debit: 0, credit: num(pay.amount) })),
+        ...credits.map(c => ({ type: 'Credit Note', date: c.date, reference: c.creditNo, description: `Credit Note ${c.creditNo}`, debit: 0, credit: num(c.amount) }))
+      ].sort((a, b) => String(a.date).localeCompare(String(b.date)))
+    };
+  },
+
+  getPaymentAccountSummary(user, filters = {}) {
+    reqRole(user);
+    const d = data();
+    const scope = filters && filters.period ? { ...periodRange(filters.period), ...filters } : (filters || {});
+    const payments = (d.payments || []).filter(p => inDateRange(p, scope));
+    const byMethod = payments.reduce((acc, p) => {
+      const method = p.method || 'Unknown';
+      acc[method] ||= { method, count: 0, total: 0 };
+      acc[method].count++;
+      acc[method].total += num(p.amount);
+      return acc;
+    }, {});
+    const byAccount = payments.reduce((acc, p) => {
+      const account = p.bankAccount || (p.method === 'M-Pesa' ? 'M-Pesa Till' : p.method === 'Cash' ? 'Cash on Hand' : 'KCB Bank');
+      acc[account] ||= { account, count: 0, total: 0 };
+      acc[account].count++;
+      acc[account].total += num(p.amount);
+      return acc;
+    }, {});
+    return {
+      success: true,
+      totalPayments: payments.length,
+      totalAmount: payments.reduce((s, p) => s + num(p.amount), 0),
+      byMethod: Object.values(byMethod),
+      byAccount: Object.values(byAccount),
+      payments
+    };
+  },
+
+  getVATReport(user, filters = {}) {
+    reqRole(user);
+    const d = data();
+    const taxSettings = (d.taxSettings || [])[0] || { taxName: 'VAT', vatRate: 16, vatEnabled: true };
+    const scope = filters && filters.period ? { ...periodRange(filters.period), ...filters } : (filters || {});
+    const invoices = (d.invoices || []).filter(inv => inDateRange(inv, scope));
+    const creditNotes = (d.creditNotes || []).filter(cn => inDateRange(cn, scope));
+    // Taxable vs exempt/zero-rated based on recorded status (not re-guessed).
+    const taxableInvoices = invoices.filter(inv => inv.taxStatus !== 'Exempt' && inv.taxStatus !== 'Zero Rated' && num(inv.tax || 0) > 0);
+    const exemptInvoices = invoices.filter(inv => inv.taxStatus === 'Exempt' || inv.taxStatus === 'Zero Rated' || num(inv.tax || 0) === 0);
+    const taxableSales = taxableInvoices.reduce((s, inv) => s + num(inv.total), 0);
+    const vatOnSales = invoices.reduce((s, inv) => s + num(inv.tax || 0), 0);
+    // Credit notes carry a VAT adjustment; derive it per credit note when available.
+    const vatOnCredits = creditNotes.reduce((s, cn) => s + num(cn.vatAdjustment || (cn.amount <= num(cn.invoiceTotal) ? (num(cn.amount) * (cn.vatRate !== undefined ? num(cn.vatRate) : 0) / 100) : num(cn.amount))), 0);
+    const netTaxable = taxableSales - creditNotes.reduce((s, cn) => s + num(cn.amount), 0);
+    const vatLiability = Math.max(0, vatOnSales - vatOnCredits);
+    return {
+      success: true,
+      period: scope.startDate ? `${scope.startDate} to ${scope.endDate}` : 'All time',
+      taxName: taxSettings.taxName || 'VAT',
+      vatRate: taxSettings.vatRate,
+      vatEnabled: taxSettings.vatEnabled,
+      taxableSales,
+      vatExempt: exemptInvoices.reduce((s, inv) => s + num(inv.total), 0),
+      exemptInvoices: exemptInvoices.length,
+      vatOnSales,
+      vatOnCredits,
+      netTaxable,
+      vatLiability,
+      invoices: invoices.length,
+      creditNotes: creditNotes.length
+    };
+  },
+
+  recordAuditEvent(user, action, details) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT);
+    const d = data();
+    const entry = {
+      id: gid(),
+      userName: u.name,
+      userRole: u.role,
+      action: clean(action),
+      module: details.module || 'Accounting',
+      entityType: details.entityType || 'General',
+      entityId: details.entityId || '',
+      oldValue: details.oldValue || null,
+      newValue: details.newValue || null,
+      notes: clean(details.notes) || '',
+      ipAddress: details.ipAddress || '',
+      timestamp: new Date().toISOString(),
+      immutable: true
+    };
+    d.accountingAuditTrail ||= [];
+    d.accountingAuditTrail.unshift(entry);
+    log(u, action, details.module || 'Accounting', details.notes || '');
+    return { success: true, audit: entry };
+  },
+
+  createInvoiceFromSalesOrder(user, salesOrderId) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT);
+    const d = data();
+    const sale = d.sales.find(s => s.id === salesOrderId);
+    if (!sale) throw new Error('Sales order not found');
+    const taxSettings = (d.taxSettings || [])[0] || { vatRate: 16, vatEnabled: true };
+    const subtotal = num(sale.subtotal) || num(sale.total);
+    const tax = taxSettings.vatEnabled ? Math.round(subtotal * (num(taxSettings.vatRate) / 100) * 100) / 100 : 0;
+    const total = subtotal + tax;
+    const invoice = {
+      id: gid(),
+      invNo: nextInvoiceNo(d),
+      saleId: sale.id,
+      customerId: sale.customerId,
+      customerName: sale.customerName,
+      date: today(),
+      dueDate: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+      subtotal,
+      tax,
+      total,
+      paid: 0,
+      balance: total,
+      status: 'Draft',
+      paymentTerms: 'Net 30',
+      approvalStatus: 'Auto Approved',
+      type: 'Sales',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    d.invoices.unshift(invoice);
+    emitBusinessEvent(u, 'invoice.created_from_so', 'invoices', invoice.id, { saleId: sale.id, invNo: invoice.invNo, total });
+    log(u, 'Create Invoice from Sales Order', 'Accounts', `${invoice.invNo} — ${money(total)}`);
+    return { success: true, invoice };
+  },
+
+  updateCustomerBalances(user) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.ACCOUNTANT);
+    const d = data();
+    let updated = 0;
+    (d.customers || []).forEach(customer => {
+      const invoices = (d.invoices || []).filter(i => (i.customerId === customer.id || i.customerName === customer.name) && i.status !== 'Cancelled' && i.status !== 'Deleted');
+      const payments = (d.payments || []).filter(p => (p.customerId === customer.id || p.customerName === customer.name));
+      const credits = (d.creditNotes || []).filter(c => (c.customerId === customer.id || c.customerName === customer.name) && c.status !== 'Cancelled');
+      const totalInvoiced = invoices.reduce((s, i) => s + num(i.total), 0);
+      const totalPaid = payments.reduce((s, p) => s + num(p.amount), 0);
+      const totalCredits = credits.reduce((s, c) => s + num(c.amount), 0);
+      const newBalance = totalInvoiced - totalPaid - totalCredits;
+      if (num(customer.balance) !== newBalance) {
+        customer.balance = newBalance;
+        customer.updatedAt = new Date().toISOString();
+        updated++;
+      }
+    });
+    emitBusinessEvent(u, 'customer.balances.updated', 'customers', 'batch', { updated });
+    log(u, 'Update Customer Balances', 'Accounts', `${updated} customers updated`);
+    return { success: true, updated };
   }
 };
 
@@ -13831,6 +14428,13 @@ const SYNC_AFTER_RPC = {
   updateQuotationStatus: ['Sales', 'Quotations', 'Dashboard', 'Activity'],
   recordPayment: ['Payments', 'Invoices', 'Finance', 'Accounts', 'Dashboard', 'Activity'],
   generateCustomerStatement: ['Accounts', 'Customers', 'Finance', 'Dashboard', 'Activity'],
+  configureTax: ['Finance', 'Accounts', 'Dashboard', 'Activity'],
+  createCreditNote: ['Accounts', 'Invoices', 'Customers', 'Finance', 'Dashboard', 'Activity'],
+  approveCreditNote: ['Accounts', 'Invoices', 'Finance', 'Dashboard', 'Activity'],
+  processReturn: ['Inventory', 'Inventory Movements', 'Accounts', 'Invoices', 'Finance', 'Dashboard', 'Activity'],
+  updateInvoiceStatuses: ['Accounts', 'Invoices', 'Dashboard', 'Activity'],
+  createInvoiceFromSalesOrder: ['Sales', 'Invoices', 'Inventory', 'Finance', 'Accounts', 'Dashboard', 'Activity'],
+  updateCustomerBalances: ['Accounts', 'Customers', 'Finance', 'Dashboard', 'Activity'],
   importAccountingBundle: ['Accounts', 'Customers', 'Products', 'Suppliers', 'Sales', 'Inventory', 'Finance', 'Dashboard', 'Reports', 'Activity'],
   getAuditTrail: ['Administrator', 'Audit', 'Dashboard', 'Activity']
 };
