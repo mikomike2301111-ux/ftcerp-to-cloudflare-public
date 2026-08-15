@@ -4185,6 +4185,33 @@ function pushManualNotification(d, alert) {
   return n;
 }
 
+/**
+ * Push a notification to the Admin Office audience (Admin / Developer / Executive / Manager).
+ * Optionally targets admin@farmtrack.co.ke for the supplied email template.
+ */
+function pushAdminNotification(d, alert) {
+  const n = pushManualNotification(d, {
+    ...alert,
+    audienceRoles: Array.isArray(alert.audienceRoles) ? alert.audienceRoles : [ROLES.ADMIN, ROLES.DEV, ROLES.EXECUTIVE, ROLES.MANAGER],
+    priority: alert.priority || 'medium',
+    category: alert.category || 'admin'
+  });
+  // Queue an administrative email (fire-and-forget) to the office admin inbox.
+  const adminEmail = String(process.env.ADMIN_NOTIFY_EMAIL || 'admin@farmtrack.co.ke').toLowerCase();
+  if (alert.title && adminEmail && typeof deliverEmail === 'function') {
+    try {
+      deliverEmail({ name: 'System', email: '', role: ROLES.DEV }, 'admin_ops_notification', adminEmail, () => EmailService.sendCustomEmail({
+        to: adminEmail,
+        subject: String(alert.title).slice(0, 120),
+        html: `<div style="font-family:Arial,sans-serif;padding:24px"><h2 style="margin:0 0 8px">${String(alert.title).replace(/</g, '&lt;')}</h2><p style="color:#475467;font-size:14px">${String(alert.message || '').replace(/</g, '&lt;')}</p><p style="color:#98a2b3;font-size:12px">Farmtrack Enterprise ERP · Admin Office</p></div>`,
+        from: ERP_FROM,
+        replyTo: ERP_REPLY_TO
+      }), { subject: String(alert.title).slice(0, 120), relatedModule: alert.sourceModule || 'admin', relatedId: alert.sourceId || '' }).catch(() => {});
+    } catch (e) { console.error('Admin notification email error:', e.message); }
+  }
+  return n;
+}
+
 function stripDecorations(text) {
   return String(text || '')
     .replace(/[\u{1F000}-\u{1FAFF}]/gu, '')
@@ -7414,22 +7441,54 @@ const api = {
     d.requisitions = Array.isArray(d.requisitions) ? d.requisitions : [];
     d.purchaseOrders = Array.isArray(d.purchaseOrders) ? d.purchaseOrders : [];
     d.quotations = Array.isArray(d.quotations) ? d.quotations : [];
+    d.incomingPurchaseOrders = Array.isArray(d.incomingPurchaseOrders) ? d.incomingPurchaseOrders : [];
+    d.approvals = Array.isArray(d.approvals) ? d.approvals : [];
+    d.leaveApplications = Array.isArray(d.leaveApplications) ? d.leaveApplications : [];
+    d.employees = Array.isArray(d.employees) ? d.employees : [];
+    d.tasks = Array.isArray(d.tasks) ? d.tasks : [];
+    d.notifications = Array.isArray(d.notifications) ? d.notifications : [];
     const pendingReq = d.requisitions.filter(r => ['Pending', 'Submitted', 'Open'].includes(String(r.status || 'Pending')));
+    const pendingApps = d.approvals.filter(a => String(a.status || 'Pending').toLowerCase() === 'pending');
+    const pendingLeave = d.leaveApplications.filter(l => String(l.status || 'Pending').toLowerCase() === 'pending');
+    const lowStock = (d.inventory || []).filter(item => num(item.quantity) <= num(item.reorderPoint || item.minStock || 0) && num(item.reorderPoint || item.minStock || 0) > 0);
+    const overdueInvoices = (d.invoices || []).filter(inv => num(inv.balance || 0) > 0 && reportDaysOverdue(inv.dueDate) > 0);
+    const overdueBills = (Array.isArray(d.supplierInvoices) ? d.supplierInvoices : (Array.isArray(d.financeAccountsPayable) ? d.financeAccountsPayable : (Array.isArray(d.accountsPayable) ? d.accountsPayable : []))).filter(b => num(b.outstandingBalance || b.balance) > 0 && reportDaysOverdue(b.dueDate) > 0);
+    const openIncomingPOs = d.incomingPurchaseOrders.filter(p => !['Converted to Order', 'Cancelled'].includes(String(p.status)));
     return {
       overview: {
         meetingsUpcoming: d.meetings.filter(m => String(m.status) !== 'Done' && String(m.status) !== 'Cancelled').length,
         massEmailsSent: d.massEmails.length,
         pendingRequisitions: pendingReq.length,
+        pendingApprovals: pendingApps.length,
+        hrRequests: pendingLeave.length + d.employees.filter(e => e.onboardingStatus === 'Pending').length,
         suppliers: d.suppliers.length,
         openPOs: d.purchaseOrders.filter(p => !['Received', 'Closed', 'Cancelled'].includes(String(p.status))).length,
-        openQuotes: d.quotations.filter(q => String(q.status) !== 'Accepted' && String(q.status) !== 'Rejected').length
+        incomingPOs: openIncomingPOs.length,
+        openQuotes: d.quotations.filter(q => String(q.status) !== 'Accepted' && String(q.status) !== 'Rejected').length,
+        pendingBills: (d.supplierInvoices || []).filter(b => String(b.status) === 'Unpaid' || String(b.status) === 'Partially Paid').length,
+        lowStock: lowStock.length,
+        overdueInvoices: overdueInvoices.length,
+        overdueBills: overdueBills.length,
+        notificationsUnread: d.notifications.filter(n => !n.read).length,
+        tasks: d.tasks.filter(t => String(t.status || 'Pending').toLowerCase() !== 'done').length,
+        departments: d.departments ? d.departments.length : 0
       },
       meetings: d.meetings.slice(0, 50),
       massEmails: d.massEmails.slice(0, 30),
-      requisitions: pendingReq.slice(0, 40),
+      requisitions: (d.requisitions || []).slice(0, 60),
       suppliers: d.suppliers.slice(0, 50),
       purchaseOrders: d.purchaseOrders.slice(0, 40),
+      incomingPurchaseOrders: openIncomingPOs.slice(0, 40),
       quotations: d.quotations.slice(0, 40),
+      approvals: pendingApps.slice(0, 40),
+      leaveRequests: pendingLeave.slice(0, 30),
+      lowStockRows: lowStock.slice(0, 30).map(item => ({ product: item.productName, quantity: num(item.quantity), reorderPoint: num(item.reorderPoint || item.minStock), warehouse: item.warehouseName })),
+      overdueInvoices: overdueInvoices.slice(0, 20).map(inv => ({ invNo: inv.invNo || inv.invoiceNo, customerName: inv.customerName, balance: num(inv.balance), daysOverdue: reportDaysOverdue(inv.dueDate) })),
+      overdueBills: overdueBills.slice(0, 20).map(b => ({ invoiceNo: b.invoiceNo, supplierName: b.supplierName, outstandingBalance: num(b.outstandingBalance || b.balance), daysOverdue: reportDaysOverdue(b.dueDate) })),
+      notifications: d.notifications.slice(0, 30),
+      tasks: d.tasks.slice(0, 30),
+      departments: d.departments || [],
+      billStatusSummary: ['Draft', 'Awaiting Approval', 'Approved', 'Unpaid', 'Partially Paid', 'Paid', 'Overdue', 'Cancelled'].map(s => ({ status: s, count: (d.supplierInvoices || []).filter(b => String(b.status) === s || (s === 'Overdue' && num(b.outstandingBalance || 0) > 0 && reportDaysOverdue(b.dueDate) > 0)).length })),
       staff: (d.users || []).filter(x => x.status === 'Active').map(x => ({ id: x.id, name: x.name, email: x.email, role: x.role, department: x.department }))
     };
   },
@@ -8671,6 +8730,155 @@ const api = {
     emitBusinessEvent(u, 'accounts.non_po_invoice_created', 'supplierInvoices', invoice.id, invoice);
     log(u, 'Create Non-PO invoice', 'Accounts', invoice.invoiceNo);
     return { success: true, invoice };
+  },
+
+  createSupplierBill(user, payload = {}) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT, ROLES.PROCUREMENT);
+    const d = data();
+    d.supplierInvoices ||= [];
+    d.accountsPayable ||= [];
+    d.supplierInvoiceItems ||= [];
+    assertRequired(payload.supplierName || payload.supplierId, 'Supplier');
+    const lines = Array.isArray(payload.lines) ? payload.lines : [];
+    if (!lines.length) throw new Error('Add at least one product/service line');
+    const subtotal = lines.reduce((sum, l) => sum + num(l.quantity) * num(l.unitCost || l.unitPrice), 0);
+    if (subtotal <= 0) throw new Error('Bill total must be greater than zero');
+    const discount = num(payload.discount || 0);
+    const taxable = Math.max(0, subtotal - discount);
+    const vatCalc = computeInvoiceTax(d, taxable, { taxStatus: payload.taxStatus, vatRate: payload.vatRate });
+    const tax = num(payload.tax !== undefined && payload.tax !== '' ? payload.tax : vatCalc.tax);
+    const total = Math.round(num(payload.total) || (taxable + tax));
+    const supplier = (d.suppliers || []).find(s => s.id === payload.supplierId || s.name === payload.supplierName);
+    const billNo = payload.invoiceNo || `BL-${Date.now()}`;
+    const bill = {
+      id: gid(), invoiceNo: billNo, billNo,
+      poId: payload.poId || '', poNo: payload.poNo || '',
+      goodsReceivedNo: payload.goodsReceivedNo || payload.grnNo || '',
+      supplierId: supplier?.id || payload.supplierId || '',
+      supplierName: supplier?.name || payload.supplierName,
+      invoiceDate: payload.invoiceDate || payload.billDate || today(),
+      dueDate: payload.dueDate || new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+      paymentTerms: payload.paymentTerms || 'Net 30',
+      subtotal, discount, tax, vatRate: vatCalc.rate, taxStatus: vatCalc.taxStatus,
+      invoiceAmount: total, paidAmount: 0, outstandingBalance: total,
+      status: 'Unpaid', approvalStatus: payload.approvalStatus || 'Approved',
+      paymentAccount: payload.paymentAccount || (payload.paymentMethod === 'M-Pesa' ? 'M-Pesa Till' : payload.paymentMethod === 'Cash' ? 'Cash on Hand' : 'KCB Bank'),
+      department: clean(payload.department) || '', costCentre: clean(payload.costCentre || payload.costCenter) || '',
+      debitAccountName: payload.debitAccountName || 'Inventory Asset',
+      category: payload.category || 'Inventory purchase',
+      notes: payload.notes || '', attachment: payload.attachment || '',
+      createdBy: u.name, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+    };
+    d.supplierInvoices.unshift(bill);
+    lines.forEach(l => {
+      d.supplierInvoiceItems.unshift({
+        id: gid(), invoiceId: bill.id, invoiceNo: bill.invoiceNo,
+        productName: l.productName || l.description || 'Item',
+        quantity: num(l.quantity || 1), unitCost: num(l.unitCost || l.unitPrice),
+        discount: num(l.discount || 0), total: num(l.quantity || 1) * num(l.unitCost || l.unitPrice - num(l.discount || 0))
+      });
+    });
+    d.accountsPayable.unshift({
+      id: gid(), supplierInvoiceId: bill.id, invoiceNo: bill.invoiceNo,
+      supplierId: bill.supplierId, supplierName: bill.supplierName,
+      dueDate: bill.dueDate, invoiceAmount: total, paidAmount: 0,
+      outstandingBalance: total, paymentStatus: 'Unpaid', agingBucket: '0-30',
+      isNonPo: true, partialPayments: 0, credits: 0, adjustments: 0,
+      department: bill.department, costCentre: bill.costCentre
+    });
+    try {
+      // Bill on credit → Dr Inventory/Expense, Cr Accounts Payable
+      postFinanceJournal(u, {
+        date: bill.invoiceDate, sourceModule: 'Procurement', sourceId: bill.id,
+        reference: bill.invoiceNo, description: `Supplier bill ${billNo} — ${bill.supplierName}`,
+        debitAccountName: payload.debitAccountName || 'Inventory Asset',
+        creditAccountName: 'Accounts Payable', amount: total
+      });
+    } catch {}
+    pushAdminNotification(d, {
+      category: 'accounts', priority: 'normal',
+      title: `Supplier bill ${billNo}`, message: `${bill.supplierName} · Ksh${total.toLocaleString()} · due ${bill.dueDate || '—'}`,
+      sourceModule: 'accounts', sourceId: bill.id, sourceLabel: billNo
+    });
+    emitBusinessEvent(u, 'accounts.supplier_bill_created', 'supplierInvoices', bill.id, bill);
+    log(u, 'Create supplier bill', 'Accounts', `${billNo} — Ksh${total.toLocaleString()}`);
+    return { success: true, bill };
+  },
+
+  saveIncomingPurchaseOrder(user, row) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.PROCUREMENT, ROLES.SALES, ROLES.RECEPTION, ROLES.DEV, ROLES.EXECUTIVE);
+    const d = data();
+    d.incomingPurchaseOrders ||= [];
+    d.incomingPoItems ||= [];
+    const now = new Date().toISOString();
+    const id = gid();
+    const poNo = row.poNo || `IPO-${Date.now().toString(36).toUpperCase()}`;
+    const items = (Array.isArray(row.items) ? row.items : []).map(item => ({
+      id: gid(), incomingPoId: id,
+      productName: clean(item.productName) || 'Item',
+      quantity: num(item.quantity || 1),
+      unitPrice: num(item.unitPrice || item.price || 0),
+      total: num(item.quantity || 1) * num(item.unitPrice || item.price || 0)
+    }));
+    const subtotal = items.reduce((s, i) => s + i.total, 0);
+    const vat = row.vat !== undefined && row.vat !== '' ? num(row.vat) : Math.round(subtotal * (num(d.taxSettings?.[0]?.vatRate) || 16) / 100);
+    const total = num(row.total) || subtotal + vat;
+    assertRequired(row.company || row.customerName, 'External company / customer');
+    const po = {
+      id, poNo, incoming: true, direction: 'incoming', items,
+      company: clean(row.company || row.customerName),
+      companyEmail: clean(row.companyEmail || row.email || ''),
+      companyPhone: clean(row.companyPhone || row.phone || ''),
+      contactPerson: clean(row.contactPerson || ''),
+      theirPoNumber: clean(row.theirPoNumber || row.customerPoNo || ''),
+      date: row.date || today(),
+      requestedDelivery: clean(row.requestedDelivery || ''),
+      deliveryLocation: clean(row.deliveryLocation || ''),
+      paymentTerms: clean(row.paymentTerms || 'Net 30'),
+      subtotal, vat, total, currency: clean(row.currency || 'KES'),
+      status: row.status || 'Received',
+      notes: clean(row.notes || ''), attachment: row.attachment || '',
+      salesperson: clean(row.salesperson || u.name),
+      createdBy: u.name, createdAt: now, updatedAt: now, isDeleted: 'No'
+    };
+    d.incomingPurchaseOrders.unshift(po);
+    items.forEach(i => d.incomingPoItems.unshift({ ...i, id: gid() }));
+    pushAdminNotification(d, {
+      category: 'sales', priority: 'high',
+      title: `Purchase order received from ${po.company}`,
+      message: `${po.poNo} · Ksh${(total || 0).toLocaleString()} · ${po.theirPoNumber || ''}`,
+      sourceModule: 'incoming-purchase-orders', sourceId: id, sourceLabel: poNo
+    });
+    emitBusinessEvent(u, 'purchase.incoming_po_received', 'incomingPurchaseOrders', id, po);
+    log(u, 'Receive incoming PO', 'Procurement', `${po.company} — Ksh${(total || 0).toLocaleString()}`);
+    return { success: true, po };
+  },
+
+  async convertIncomingPoToSale(user, incomingPoId) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.SALES, ROLES.RECEPTION, ROLES.ACCOUNTANT, ROLES.EXECUTIVE);
+    const d = data();
+    const po = (d.incomingPurchaseOrders || []).find(p => p.id === incomingPoId);
+    if (!po) throw new Error('Incoming PO not found');
+    const items = (d.incomingPoItems || []).filter(i => i.incomingPoId === po.id);
+    if (!items.length) throw new Error('Incoming PO has no products to convert');
+    const converted = {
+      customerName: po.company,
+      customerEmail: po.companyEmail,
+      customerPhone: po.companyPhone,
+      destination: po.deliveryLocation,
+      paymentMethod: 'Credit',
+      paid: 0,
+      skipStockCheck: true,
+      items: items.map(i => ({ productName: i.productName, quantity: num(i.quantity), unitPrice: num(i.unitPrice), cost: 0 })),
+      notes: `Converted from incoming PO ${po.poNo} (${po.theirPoNumber || ''})`
+    };
+    const sale = await api.saveSale(u, converted);
+    po.convertedToSaleId = sale.id;
+    po.status = 'Converted to Order';
+    po.updatedAt = new Date().toISOString();
+    emitBusinessEvent(u, 'purchase.incoming_po_converted', 'incomingPurchaseOrders', po.id, { saleId: sale.id, customerName: po.company });
+    log(u, 'Convert incoming PO to sale', 'Sales', `${po.company} → ${sale.saleNo}`);
+    return { success: true, sale };
   },
 
   adjustInventory(user, row = {}) {
@@ -11230,7 +11438,7 @@ territory: geo,
     try {
     reqRole(user);
     const d = data() || {};
-    ['purchaseOrders','purchaseRequests','procurementDeliveries','goodsReceipts','accountsPayable','creditPurchases','suppliers','supplierPerformance','supplierContacts','supplierPayments','purchaseOrderItems','procurementForecasts','procurementReports','products','inventory'].forEach(k => {
+    ['purchaseOrders','purchaseRequests','procurementDeliveries','goodsReceipts','accountsPayable','creditPurchases','suppliers','supplierPerformance','supplierContacts','supplierPayments','purchaseOrderItems','procurementForecasts','procurementReports','products','inventory','incomingPurchaseOrders','incomingPoItems'].forEach(k => {
       if (!Array.isArray(d[k])) d[k] = [];
     });
     const scope = filters && filters.period ? { ...periodRange(filters.period), ...filters } : (filters || {});
@@ -11374,6 +11582,8 @@ territory: geo,
       goodsReceiptItems: d.goodsReceiptItems,
       supplierInvoices: d.supplierInvoices,
       supplierPayments: d.supplierPayments,
+      incomingPurchaseOrders: d.incomingPurchaseOrders,
+      incomingPoItems: d.incomingPoItems,
       creditPurchases: credit,
       accountsPayable: ap,
       agingBuckets,

@@ -694,21 +694,56 @@ function AdminOpsWorkspace({ user, setPage }) {
 
       {view === 'overview' && (
         <div className="dashboard-grid">
+          <div className="span-12 analytics-kpi-row">
+            {[
+              ['Requisitions', ov.pendingRequisitions || 0, ClipboardCheck, 'Pending across departments'],
+              ['Approvals', ov.pendingApprovals || 0, ShieldCheck, 'Awaiting admin action'],
+              ['HR Requests', ov.hrRequests || 0, Users, 'Leave + onboarding pending'],
+              ['Outgoing POs', ov.openPOs || 0, Send, 'Purchase orders in progress'],
+              ['Incoming POs', ov.incomingPOs || 0, Package, 'Received from companies'],
+              ['Bills (AP)', ov.pendingBills || 0, ReceiptText, 'Unpaid / partially paid'],
+              ['Low Stock', ov.lowStock || 0, AlertTriangle, 'Below reorder point'],
+              ['Overdue Invoices', ov.overdueInvoices || 0, FileText, 'Customer receivables'],
+              ['Overdue Bills', ov.overdueBills || 0, ClipboardCheck, 'Supplier payables'],
+              ['Unread Notices', ov.notificationsUnread || 0, Bell, 'Admin Office inbox']
+            ].map(([title, value, Icon, detail]) => (
+              <article key={title} className="kpi-align-card">
+                <div className="kpi-align-top"><span>{title}</span><Icon size={18} /></div>
+                <strong>{num(value).toLocaleString()}</strong>
+                <em>{detail}</em>
+              </article>
+            ))}
+          </div>
+          <Panel className="span-4" title="Pending Approvals" action={`${(data?.approvals || []).length}`}>
+            <SimpleTable rows={data?.approvals || []} columns={['reference', 'type', 'requestedBy', 'status', 'module']} pageSize={8} />
+            {!(data?.approvals || []).length && <div className="quiet-state">No pending approvals.</div>}
+          </Panel>
+          <Panel className="span-4" title="HR / Leave Requests" action={`${(data?.leaveRequests || []).length}`}>
+            <SimpleTable rows={(data?.leaveRequests || []).map(l => ({ name: l.employeeName || l.applicantName, type: l.type || l.leaveType || 'Leave', from: l.startDate || l.from, status: l.status }))} columns={['name', 'type', 'from', 'status']} pageSize={8} />
+          </Panel>
+          <Panel className="span-4" title="Incoming POs" action={`${(data?.incomingPurchaseOrders || []).length}`}>
+            <SimpleTable rows={(data?.incomingPurchaseOrders || []).map(po => ({ poNo: po.poNo, company: po.company, total: num(po.total), status: po.status }))} columns={['poNo', 'company', 'total', 'status']} pageSize={8} />
+          </Panel>
+          <Panel className="span-4" title="Overdue Customer Invoices" action={`${(data?.overdueInvoices || []).length}`}>
+            <SimpleTable rows={data?.overdueInvoices || []} columns={['invNo', 'customerName', 'balance', 'daysOverdue']} pageSize={8} />
+          </Panel>
+          <Panel className="span-4" title="Overdue Supplier Bills" action={`${(data?.overdueBills || []).length}`}>
+            <SimpleTable rows={data?.overdueBills || []} columns={['invoiceNo', 'supplierName', 'outstandingBalance', 'daysOverdue']} pageSize={8} />
+          </Panel>
+          <Panel className="span-4" title="Low Stock Alerts" action={`${(data?.lowStockRows || []).length}`}>
+            <SimpleTable rows={data?.lowStockRows || []} columns={['product', 'quantity', 'reorderPoint', 'warehouse']} pageSize={8} />
+          </Panel>
+          <Panel className="span-6" title="Recent Requisitions">
+            <SimpleTable rows={data?.requisitions || []} columns={['reqNo', 'module', 'requester', 'estimatedCost', 'status', 'priority']} pageSize={10} />
+          </Panel>
+          <Panel className="span-6" title="Pending Approvals / Bills status">
+            <SimpleTable rows={(data?.billStatusSummary || []).map(b => ({ ...b, count: num(b.count) }))} columns={['status', 'count']} pageSize={10} />
+          </Panel>
           <Panel className="span-6" title="Upcoming meetings">
             <SimpleTable rows={data?.meetings || []} columns={['title', 'when', 'location', 'status', 'createdBy']} pageSize={10} />
           </Panel>
-          <Panel className="span-6" title="Pending requisitions">
-            <SimpleTable rows={data?.requisitions || []} columns={['reqNo', 'module', 'requestedBy', 'status', 'priority']} pageSize={10} />
-          </Panel>
-          <Panel className="span-12" title="Active staff directory">
-            <SimpleTable rows={staff} columns={['name', 'email', 'role', 'department']} pageSize={25} />
-          </Panel>
-          <Panel className="span-12" title="Company car requisition" action="4 vehicles">
-            <div className="inline-actions">
-              <button type="button" className="primary-action" onClick={() => setVehicleOpen(true)}><Truck size={16} /> New car movement</button>
-              <button type="button" onClick={() => setView('requisitions')}><ClipboardCheck size={16} /> Review car requests</button>
-            </div>
-            <SimpleTable rows={(data?.requisitions || []).filter(r => r.vehicleRequest || r.module === 'Vehicle Requisition').slice(0, 8)} columns={['reqNo', 'requester', 'requestDate', 'status', 'priority']} />
+          <Panel className="span-6" title="Active staff directory">
+            <SimpleTable rows={staff} columns={['name', 'email', 'role', 'department']} pageSize={12} />
           </Panel>
         </div>
       )}
@@ -4650,9 +4685,97 @@ function InventoryTransferModal({ user, items, warehouses, onClose, onSaved }) {
   );
 }
 
+function ProcurementIncomingPOs({ user, rows = [], itemRows = [], onChanged }) {
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({ company: '', companyEmail: '', companyPhone: '', contactPerson: '', theirPoNumber: '', date: new Date().toISOString().slice(0, 10), requestedDelivery: '', deliveryLocation: '', paymentTerms: '', salesperson: user?.name || '', items: [{ productName: '', quantity: 1, unitPrice: 0 }], notes: '' });
+  const [busy, setBusy] = useState(false);
+  const [converting, setConverting] = useState('');
+  function updateItems(next) { setForm(prev => ({ ...prev, items: next })); }
+  function itemTotal(items = form.items) { return items.reduce((s, i) => s + num(i.quantity) * num(i.unitPrice), 0); }
+  async function save(e) {
+    e.preventDefault();
+    if (!form.company) return alert('External company is required');
+    if (!form.items.some(i => i.productName && num(i.quantity) > 0)) return alert('Add at least one product line');
+    setBusy(true);
+    try {
+      await rpc('saveIncomingPurchaseOrder', [user, { ...form, items: form.items.filter(i => i.productName).map(i => ({ productName: i.productName, quantity: num(i.quantity), unitPrice: num(i.unitPrice) })) }]);
+      setOpen(false);
+      setForm({ company: '', companyEmail: '', companyPhone: '', contactPerson: '', theirPoNumber: '', date: new Date().toISOString().slice(0, 10), requestedDelivery: '', deliveryLocation: '', paymentTerms: '', salesperson: user?.name || '', items: [{ productName: '', quantity: 1, unitPrice: 0 }], notes: '' });
+      onChanged?.();
+    } catch (err) { alert(err.message); }
+    finally { setBusy(false); }
+  }
+  async function convert(id) {
+    if (!window.confirm('Convert this incoming PO into a Sales Order + Invoice?')) return;
+    setConverting(id);
+    try {
+      await rpc('convertIncomingPoToSale', [user, id]);
+      alert('Converted to Sales Order + invoice. Check Sales.');
+      onChanged?.();
+    } catch (err) { alert(err.message); }
+    finally { setConverting(''); }
+  }
+  const itemFor = po => (itemRows || []).filter(i => i.incomingPoId === po.id);
+  return (
+    <div className="dashboard-grid">
+      <Panel className="span-12" title="Incoming Purchase Orders" action={<button className="mini-action" onClick={() => setOpen(v => !v)}><Plus size={15} /> {open ? 'Close' : 'New Incoming PO'}</button>}>
+        {open && (
+          <form className="settings-form-grid" onSubmit={save}>
+            <fieldset className="settings-fieldset"><legend>External company purchase order</legend><div>
+              <label>Company / Customer<input value={form.company} onChange={e => setForm({ ...form, company: e.target.value })} placeholder="e.g. ABC Ltd" required /></label>
+              <label>Their PO Number<input value={form.theirPoNumber} onChange={e => setForm({ ...form, theirPoNumber: e.target.value })} placeholder="Their reference / PO no" /></label>
+              <label>Contact Person<input value={form.contactPerson} onChange={e => setForm({ ...form, contactPerson: e.target.value })} /></label>
+              <label>Email<input type="email" value={form.companyEmail} onChange={e => setForm({ ...form, companyEmail: e.target.value })} /></label>
+              <label>Phone<input value={form.companyPhone} onChange={e => setForm({ ...form, companyPhone: e.target.value })} /></label>
+              <label>Date<input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></label>
+              <label>Requested Delivery<input type="date" value={form.requestedDelivery} onChange={e => setForm({ ...form, requestedDelivery: e.target.value })} /></label>
+              <label>Delivery Location<input value={form.deliveryLocation} onChange={e => setForm({ ...form, deliveryLocation: e.target.value })} /></label>
+              <label>Payment Terms<input value={form.paymentTerms} onChange={e => setForm({ ...form, paymentTerms: e.target.value })} placeholder="Net 30" /></label>
+              <label>Salesperson<input value={form.salesperson} onChange={e => setForm({ ...form, salesperson: e.target.value })} /></label>
+            </div></fieldset>
+<fieldset className="settings-fieldset"><legend>Products (quote lines)</legend>
+              {(form.items || []).map((item, index) => (
+                <div key={index} className="modal-grid" style={{ gridTemplateColumns: '2fr 1fr 1fr auto', gap: 8, alignItems: 'end' }}>
+                  <label>Product<input value={item.productName} onChange={e => updateItems(form.items.map((it, i) => i === index ? { ...it, productName: e.target.value } : it))} placeholder="Product / service" /></label>
+                  <label>Qty<input type="number" min="1" value={item.quantity} onChange={e => updateItems(form.items.map((it, i) => i === index ? { ...it, quantity: e.target.value } : it))} /></label>
+                  <label>Unit Price<input type="number" min="0" value={item.unitPrice} onChange={e => updateItems(form.items.map((it, i) => i === index ? { ...it, unitPrice: e.target.value } : it))} /></label>
+                  <button type="button" className="mini-action" onClick={() => updateItems(form.items.filter((_, i) => i !== index))}>Remove</button>
+                </div>
+              ))}
+              <button type="button" className="mini-action" onClick={() => updateItems([...form.items, { productName: '', quantity: 1, unitPrice: 0 }])}><Plus size={14} /> Add line</button>
+              <div style={{ marginTop: 10, background: '#f0f9ff', borderRadius: 8, padding: 12 }}><strong>Subtotal: {currency(itemTotal(form.items))}</strong></div>
+            </fieldset>
+            <label>Notes<textarea rows={2} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} /></label>
+            <button type="submit" className="primary-action" disabled={busy}>{busy ? 'Saving...' : 'Record Incoming PO'}</button>
+          </form>
+        )}
+        <SimpleTable
+          rows={(rows || []).map(po => ({
+            poNo: po.poNo,
+            company: po.company,
+            theirPoNumber: po.theirPoNumber || '—',
+            date: po.date,
+            total: num(po.total),
+            status: po.status,
+            lines: itemFor(po).length,
+            actions: (
+              <span className="inline-actions" style={{ gap: 6 }} onClick={e => e.stopPropagation()}>
+                {String(po.status) !== 'Converted to Order' && <button className="mini-action" disabled={converting === po.id} onClick={() => convert(po.id)}>{converting === po.id ? 'Converting...' : '→ Sales Order/Invoice'}</button>}
+                <button className="mini-action" onClick={() => printText(po.poNo, `${po.company}\nTheir PO: ${po.theirPoNumber || '—'}\nDate: ${po.date}\nTotal: ${currency(po.total)}\nStatus: ${po.status}`)}>View</button>
+              </span>
+            )
+          }))}
+          columns={['poNo', 'company', 'theirPoNumber', 'date', 'total', 'status', 'lines', 'actions']}
+        />
+        {!(rows || []).length && <div className="quiet-state">No incoming purchase orders yet — companies send POs here, then convert them to Sales Orders/Invoices.</div>}
+      </Panel>
+    </div>
+  );
+}
 function ProcurementWorkspace({ user, setPage, globalPeriod }) {
-  const tabs = ['overview', 'requests', 'orders', 'suppliers', 'deliveries', 'receiving', 'credit', 'payables', 'reports', 'analytics', 'ai'];
-  const workspace = useServer(user, 'getProcurementWorkspaceData', [{ period: globalPeriod }], [globalPeriod]);
+  const tabs = ['overview', 'requests', 'orders', 'suppliers', 'deliveries', 'receiving', 'incoming', 'credit', 'payables', 'reports', 'analytics', 'ai'];
+  const [refreshKey, setRefreshKey] = useState(0);
+  const workspace = useServer(user, 'getProcurementWorkspaceData', [{ period: globalPeriod }], [globalPeriod, refreshKey]);
   const [view, setView] = useRouteTab('purchasing', tabs, 'overview');
   const [metric, setMetric] = useState('spend');
   const [query, setQuery] = useState('');
@@ -4726,6 +4849,7 @@ function ProcurementWorkspace({ user, setPage, globalPeriod }) {
       {view === 'suppliers' && <ProcurementSuppliers suppliers={data.suppliers} />}
       {view === 'deliveries' && <ProcurementDeliveries deliveries={data.deliveries} counties={data.deliveryCounty} />}
       {view === 'receiving' && <ProcurementReceiving receipts={data.goodsReceiving} items={data.goodsReceiptItems} />}
+      {view === 'incoming' && <ProcurementIncomingPOs user={user} rows={data.incomingPurchaseOrders || []} itemRows={data.incomingPoItems || []} onChanged={() => setRefreshKey(k => k + 1)} />}
       {view === 'credit' && <Panel title="Credit Purchases" action="Risk Scored"><SimpleTable rows={data.creditPurchases} columns={['supplierName', 'invoiceNo', 'invoiceAmount', 'outstandingBalance', 'dueDate', 'status', 'aiRiskScore']} /></Panel>}
       
       {view === 'timeline' && <FinanceInvoiceTimeline data={data} />}
