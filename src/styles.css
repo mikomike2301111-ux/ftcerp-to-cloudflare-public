@@ -188,6 +188,26 @@ th {
 .search-results-panel button:hover {
   background: #f8fafc;
 }
+.search-group-block {
+  margin-bottom: 4px;
+}
+.search-group-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #98a2b3;
+  padding: 6px 10px 2px;
+}
+.search-result-row {
+  min-height: 40px !important;
+  cursor: pointer;
+}
+.search-results-panel button.search-result-row.active {
+  background: #eef4ff;
+  outline: 1px solid #c7d7fe;
+}
 .search-results-panel strong {
   font-size: 14px;
 }
@@ -11366,3 +11386,27 @@ svg.sparkline path {
     padding-right: 44px !important;
   }
 }
+
+/* Accounts overflow () quick-actions menu */
+.accounts-more-wrap { position: relative; display: inline-block; }
+.accounts-more-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 38px; padding: 0 14px;
+  border: 1px solid #d0d5dd; border-radius: 9px; background: #fff;
+  font-size: 13px; font-weight: 600; color: #344054; cursor: pointer;
+}
+.accounts-more-btn:hover { border-color: #98a2b3; background: #f9fafb; }
+.accounts-more-menu {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 60;
+  min-width: 232px; background: #fff;
+  border: 1px solid #e4e7ec; border-radius: 12px;
+  box-shadow: 0 18px 48px rgba(16,24,40,.16);
+  padding: 6px; display: flex; flex-direction: column; gap: 2px;
+}
+.accounts-more-menu button {
+  display: flex; align-items: center; gap: 9px;
+  width: 100%; padding: 9px 10px; border: 0; background: transparent;
+  border-radius: 8px; font-size: 13px; color: #344054; text-align: left; cursor: pointer;
+}
+.accounts-more-menu button:hover { background: #f2f4f7; color: #101828; }
+.accounts-more-sep { height: 1px; background: #eef0f3; margin: 4px 8px; }

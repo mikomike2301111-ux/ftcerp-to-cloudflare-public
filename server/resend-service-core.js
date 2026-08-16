@@ -729,6 +729,46 @@ async function sendTaxInvoiceEmail({ to, customerName, invoiceNo, amount, dueDat
   });
 }
 
+async function sendCustomerStatementEmail({ to, customerName, closingBalance, openingBalance, totalInvoiced, totalPaid, period, attachmentContent, attachmentFileName, customerId }) {
+  const html = emailShell({
+    title: `Customer Statement — ${customerName}`,
+    subtitle: `Dear ${customerName}, please find your account statement attached.`,
+    bodyHtml: `
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin:12px 0 16px;background:#f9fafb;border-radius:8px;padding:12px;">
+        ${row(['Period', `<strong>${period || 'All time'}</strong>`])}
+        ${row(['Opening Balance', `<strong>${ksh(openingBalance || 0)}</strong>`])}
+        ${row(['Total Invoiced', `<strong>${ksh(totalInvoiced || 0)}</strong>`])}
+        ${row(['Total Received', `<strong>${ksh(totalPaid || 0)}</strong>`])}
+        ${row(['Balance Due', `<strong style="color:${Number(closingBalance || 0) > 0 ? '#d92d20' : '#175cd3'};">${ksh(closingBalance)}</strong>`])}
+      </table>
+      <p style="color:#667085;font-size:14px;margin:8px 0;">A branded PDF of your customer statement is attached to this email for your records.</p>`,
+    actionLabel: 'Open Accounts',
+    actionUrl: `${PLATFORM_URL}/#/accounts/statements`,
+    footerNote: 'Please remit payment by the due date to avoid late fees.'
+  });
+
+  const attachments = [];
+  if (attachmentContent && attachmentFileName) {
+    attachments.push({
+      filename: attachmentFileName,
+      content: attachmentContent,
+      contentType: 'application/pdf'
+    });
+  }
+
+  return sendWithTracking({
+    to,
+    from: SENDERS.finance,
+    subject: `Customer Statement — ${customerName} — ${ksh(closingBalance)}`,
+    html,
+    attachments,
+    module: 'invoices',
+    referenceType: 'customer-statement',
+    referenceId: customerId,
+    replyTo: 'support@staff.farmtrack.co.ke'
+  });
+}
+
 // =============================================
 // PURCHASE ORDER EMAIL TEMPLATES
 // =============================================
@@ -1582,6 +1622,7 @@ module.exports = {
   sendCreditNoteIssued,
   sendQuotationEmail,
   sendTaxInvoiceEmail,
+  sendCustomerStatementEmail,
   
   // Purchase Orders
   sendPurchaseRequisitionSubmitted,

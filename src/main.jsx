@@ -1475,6 +1475,7 @@ function Topbar({ user, onMenu, onToggleSidebar, sidebarCollapsed, onNew, onLogo
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const [bellOpen, setBellOpen] = useState(false);
   const [bellData, setBellData] = useState({ unread: 0, critical: 0, recent: [] });
   const [composeOpen, setComposeOpen] = useState(false);
@@ -1570,7 +1571,31 @@ function Topbar({ user, onMenu, onToggleSidebar, sidebarCollapsed, onNew, onLogo
     setPage(page);
     setQuery('');
     setResults([]);
+    setActiveIndex(-1);
   };
+  useEffect(() => { setActiveIndex(-1); }, [query]);
+  const onSearchKeyDown = e => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIndex(i => Math.min(results.length - 1, i + 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActiveIndex(i => Math.max(-1, i - 1)); }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      const target = activeIndex >= 0 && results[activeIndex] ? results[activeIndex] : results && results[0];
+      if (target) openResult(target);
+    } else if (e.key === 'Escape') {
+      setQuery('');
+      setResults([]);
+      setActiveIndex(-1);
+    }
+  };
+  const searchGrouped = (() => {
+    const groups = [];
+    let last = '';
+    (results || []).forEach((row, index) => {
+      if (row.type !== last) { groups.push({ type: row.type, rows: [] }); last = row.type; }
+      groups[groups.length - 1].rows.push({ ...row, index });
+    });
+    return groups;
+  })();
   return (
     <header className="topbar">
       <button className="menu-button" onClick={onMenu}><Menu size={22} /></button>
@@ -1582,18 +1607,29 @@ function Topbar({ user, onMenu, onToggleSidebar, sidebarCollapsed, onNew, onLogo
           onChange={e => setQuery(e.target.value)}
           placeholder={page ? `Search ${page} and all records…` : 'Search customers, stock, invoices, employees, visits…'}
           autoComplete="off"
+          onKeyDown={onSearchKeyDown}
         />
         <Command size={16} />
         {query.trim().length >= 1 && (
           <div className="search-results-panel">
             {searching && <div className="search-empty"><Loader2 className="spin" size={15} /> Searching…</div>}
             {!searching && results.length === 0 && <div className="search-empty">No matches for “{query.trim()}”</div>}
-            {!searching && results.map(result => (
-              <button key={`${result.type}-${result.id}-${result.label}`} type="button" onClick={() => openResult(result)}>
-                <em className="search-type-chip">{result.type}</em>
-                <strong>{result.label}</strong>
-                <span>{result.sub || result.page}{result.meta ? ` · ${result.meta}` : ''}</span>
-              </button>
+            {!searching && searchGrouped.map(group => (
+              <div key={group.type} className="search-group-block">
+                <em className="search-group-label">{group.type}</em>
+                {group.rows.map(result => (
+                  <button
+                    key={`${result.type}-${result.id}-${result.label}-${result.index}`}
+                    type="button"
+                    className={`search-result-row${activeIndex === result.index ? ' active' : ''}`}
+                    onMouseEnter={() => setActiveIndex(result.index)}
+                    onClick={() => openResult(result)}
+                  >
+                    <strong>{result.label}</strong>
+                    <span>{result.sub || result.page}{result.meta ? ` · ${result.meta}` : ''}</span>
+                  </button>
+                ))}
+              </div>
             ))}
           </div>
         )}
@@ -2523,6 +2559,7 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
   const [overlaySize, setOverlaySize] = useState('default');
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [sheetExporting, setSheetExporting] = useState(false);
+  const [statementOpen, setStatementOpen] = useState(false);
   const [sheetMessage, setSheetMessage] = useState('');
   const [followForm, setFollowForm] = useState({
     customerId: '', customerName: '', phone: '', followUpDate: '', nextStep: '', comments: '', assignedTo: user?.name || '', stage: 'To Be Called'
@@ -2589,6 +2626,7 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
         <button type="button" className="primary-action" onClick={() => setView('calls')}><Phone size={16} /> Reception Calls</button>
         <button type="button" onClick={() => setView('followups')}><Calendar size={16} /> Follow-ups</button>
         <button onClick={() => setView('reports')}><FileText size={16} /> CRM Reports</button>
+        <button type="button" className="primary-action" onClick={() => setStatementOpen(true)}><ReceiptText size={16} /> Generate Statement</button>
         <CreateRequisitionButton user={user} module="customers" />
       </div>
       {sheetMessage && <div className={`crm-sheet-message ${sheetMessage.toLowerCase().includes('failed') || sheetMessage.toLowerCase().includes('error') ? 'warn' : ''}`}>{sheetMessage}</div>}
@@ -2880,6 +2918,14 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
             }]);
             setRefreshKey(x => x + 1);
           }}
+        />
+      )}
+      {statementOpen && (
+        <CustomerStatementModal
+          user={user}
+          customers={allCustomers}
+          onClose={() => setStatementOpen(false)}
+          onSaved={() => { setStatementOpen(false); setRefreshKey(x => x + 1); }}
         />
       )}
     </section>
@@ -6855,6 +6901,14 @@ function AccountsWorkspace({ user, setPage, globalPeriod }) {
   const [deepInvoice, setDeepInvoice] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [auditQuery, setAuditQuery] = useState('');
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef(null);
+  useEffect(() => {
+    if (!moreOpen) return undefined;
+    const close = e => { if (moreRef.current && !moreRef.current.contains(e.target)) setMoreOpen(false); };
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [moreOpen]);
   const { loading, data, error } = useServer(user, 'getFinanceWorkspaceData', [{ period: globalPeriod }], [refreshKey, globalPeriod]);
   if (loading) return <Loading title="Accounts" />;
   if (error) return <ErrorState title="Accounts" error={error} />;
@@ -6903,6 +6957,24 @@ function AccountsWorkspace({ user, setPage, globalPeriod }) {
         <CreateRequisitionButton user={user} module="accounts" />
         <button onClick={() => downloadRowsFile('accounts-receivable', data.receivables, 'CSV')}><Download size={16} /> Receivables CSV</button>
         <button onClick={() => downloadRowsFile('accounts-payable', data.payables, 'CSV')}><Download size={16} /> Payables CSV</button>
+        <div className="accounts-more-wrap" ref={moreRef}>
+          <button type="button" className="accounts-more-btn" aria-label="More actions" onClick={e => { e.stopPropagation(); setMoreOpen(v => !v); }}><MoreVertical size={17} /> More</button>
+          {moreOpen && (
+            <div className="accounts-more-menu">
+              <button type="button" onClick={() => { setJournalOpen(true); setMoreOpen(false); }}><FileText size={14} /> New Journal</button>
+              <button type="button" onClick={() => { setAccountOpen(true); setMoreOpen(false); }}><Landmark size={14} /> Add / Edit Account</button>
+              <button type="button" onClick={() => { setBankOpen(true); setMoreOpen(false); }}><ArrowLeftRight size={14} /> Bank Transaction</button>
+              <div className="accounts-more-sep" />
+              <button type="button" onClick={() => { setView('reconciliation'); setMoreOpen(false); }}><RefreshCw size={14} /> Reconcile</button>
+              <button type="button" onClick={() => { setView('trial'); setMoreOpen(false); }}><SlidersHorizontal size={14} /> Trial Balance</button>
+              <button type="button" onClick={() => { setView('journals'); setMoreOpen(false); }}><FileText size={14} /> View Journals</button>
+              <button type="button" onClick={() => { setView('audit'); setMoreOpen(false); }}><ShieldCheck size={14} /> Audit Trail</button>
+              <button type="button" onClick={() => { setView('history'); setMoreOpen(false); }}><CalendarClock size={14} /> Invoice History</button>
+              <div className="accounts-more-sep" />
+              <button type="button" onClick={() => { refresh(); setMoreOpen(false); }}><RefreshCw size={14} /> Refresh Data</button>
+            </div>
+          )}
+        </div>
       </div>
       {nonPoOpen && (
         <ModalCard title="Non-PO supplier invoice" onClose={() => setNonPoOpen(false)}>
@@ -8937,6 +9009,7 @@ function CustomerStatementModal({ user, customers = [], onClose, onSaved }) {
   const [statement, setStatement] = useState(null);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [emailing, setEmailing] = useState(false);
   const [period, setPeriod] = useState('All time');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -8993,6 +9066,23 @@ function CustomerStatementModal({ user, customers = [], onClose, onSaved }) {
       alert(error.message || 'Export failed');
     } finally {
       setExporting(false);
+    }
+  }
+
+  async function emailStatement() {
+    if (!statement) return;
+    const suggested = statement.customerEmail || statement.customer?.email || '';
+    const to = window.prompt('Send statement to which email address?', suggested);
+    if (to === null) return;
+    if (!String(to || '').trim()) return alert('An email address is required to send the statement');
+    setEmailing(true);
+    try {
+      const result = await rpc('emailCustomerStatement', [user, customerId, { to: to.trim(), ...periodOptions() }]);
+      alert(result.sent ? `Statement emailed to ${result.to}` : 'Email was logged but not sent. Check Email Admin.');
+    } catch (error) {
+      alert(error.message || 'Could not email statement');
+    } finally {
+      setEmailing(false);
     }
   }
 
@@ -9059,6 +9149,7 @@ function CustomerStatementModal({ user, customers = [], onClose, onSaved }) {
                   <button className="primary-action" disabled={exporting} onClick={() => exportStatement('PDF')}><Download size={14} /> PDF</button>
                   <button className="secondary-action" disabled={exporting} onClick={() => exportStatement('CSV')}>CSV</button>
                   <button className="secondary-action" disabled={exporting} onClick={() => exportStatement('Print')}><Printer size={14} /> Print</button>
+                  <button className="secondary-action" disabled={exporting || emailing} onClick={emailStatement}><Mail size={14} /> {emailing ? 'Sending...' : 'Email'}</button>
                 </div>
                 <SimpleTable rows={statement.lines || []} columns={['date', 'type', 'reference', 'description', 'debit', 'credit', 'balance']} />
               </Panel>

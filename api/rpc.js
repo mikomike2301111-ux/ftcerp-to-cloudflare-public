@@ -761,6 +761,7 @@ async function customerStatementPdfBuffer({ statement, rows, aging, settings = {
     drawMeta('DATE', invoiceDate(statement.statementDate));
     if (statement.period && statement.period !== 'All time') drawMeta('PERIOD', statement.period);
     drawMeta('TOTAL DUE', `KES ${kesPlain(statement.closingBalance)}`);
+    if (num(statement.openingBalance)) drawMeta('OPENING BALANCE', `KES ${kesPlain(statement.openingBalance)}`);
     // TO block (left)
     doc.fillColor('#667085').fontSize(8).font('Helvetica-Bold').text('TO'.toUpperCase(), left, 150, { width: 120 });
     doc.fillColor('#222').fontSize(11).font('Helvetica-Bold').text(statement.customerName || '', left, 161, { width: width - metaWidth - 30 });
@@ -7194,12 +7195,19 @@ const api = {
       ...make('Call', 'customers', d.calls || [], 'customerName', 'stage', ['phone', 'notes', 'assignedTo']),
       ...make('Sale', 'sales', d.sales || [], 'saleNo', 'customerName', ['status', 'paymentMethod', 'salesRep']),
       ...make('Invoice', 'accounts', d.invoices || [], 'invNo', 'customerName', ['status', 'type', 'balance']),
+      ...make('Payment', 'accounts', d.payments || [], 'paymentNo', 'customerName', ['method', 'amount', 'status']),
+      ...make('Credit note', 'accounts', d.creditNotes || [], 'creditNo', 'customerName', ['amount', 'status']),
+      ...make('Account', 'accounts', d.financeAccounts || [], 'name', 'code', ['accountType', 'status']),
+      ...make('Bill', 'purchasing', (d.financeAccountsPayable && d.financeAccountsPayable.length ? d.financeAccountsPayable : d.accountsPayable) || [], 'supplierName', 'billNo', ['status', 'invoiceRef', 'amount']),
+      ...make('Expense', 'accounts', d.expenses || [], 'expNo', 'category', ['status', 'amount', 'vendor']),
+      ...make('Quotation', 'sales', d.quotations || [], 'quoteNo', 'customerName', ['status', 'total', 'validUntil']),
       ...make('Delivery', 'sales', d.deliveries || [], 'deliveryNo', 'customerName', ['status', 'destination', 'driver']),
       ...make('Supplier', 'purchasing', d.suppliers || [], 'name', 'phone', ['email', 'category']),
       ...make('Purchase order', 'purchasing', d.purchaseOrders || [], 'poNo', 'supplierName', ['status', 'warehouseName']),
-      ...make('Production', 'production', d.productionOrders || d.production || [], 'orderNo', 'productName', ['status', 'operator', 'jobNo']),
       ...make('Employee', 'hr', d.employees || [], 'name', 'department', ['position', 'email', 'phone', 'employeeNo']),
       ...make('Leave', 'leaves', d.leaveApplications || [], 'applicantName', 'type', ['status', 'startDate', 'endDate']),
+      ...make('Requisition', 'requisitions', d.requisitions || [], 'reqNo', 'requester', ['status', 'type', 'priority', 'department']),
+      ...make('Car booking', 'requisitions', (d.requisitions || []).filter(r => /car|vehicle|transport/i.test(`${r.type || ''} ${r.title || ''} ${r.purpose || ''}`)), 'reqNo', 'requester', ['status', 'pickup', 'destination']),
       ...make('Visit', 'sales', d.salesVisits || d.visits || [], 'shopOrCustomer', 'salesperson', ['outcome', 'location', 'productDiscussed']),
       ...make('Expense', 'accounts', d.expenses || [], 'expNo', 'category', ['status', 'amount', 'vendor']),
       ...make('Report', 'reports', d.reportArchive || [], 'reportName', 'module', ['format', 'status'])
@@ -12868,21 +12876,32 @@ territory: geo,
     let deliveries = (d.deliveries || []).filter(x => x.customerId === cid || x.customerName === cname);
     let calls = (d.calls || []).filter(x => x.customerId === cid || x.customerName === cname);
     let credits = (d.creditNotes || []).filter(c => c.customerId === cid || c.customerName === cname) || [];
+    // Period boundary used to compute the opening balance (activity BEFORE the statement period)
+    let periodStart = '';
     if (monthFilter) {
       const monthStart = `${monthFilter}-01`;
       const monthEnd = new Date(new Date(monthStart).getFullYear(), new Date(monthStart).getMonth() + 1, 0).toISOString().slice(0, 10);
+      periodStart = monthStart;
       invoices = invoices.filter(i => i.date >= monthStart && i.date <= monthEnd);
       payments = payments.filter(p => p.date >= monthStart && p.date <= monthEnd);
       credits = credits.filter(c => c.date >= monthStart && c.date <= monthEnd);
       sales = sales.filter(s => s.date >= monthStart && s.date <= monthEnd);
     } else if (scopeStart || scopeEnd) {
+      periodStart = scopeStart || '';
       invoices = invoices.filter(i => (!scopeStart || i.date >= scopeStart) && (!scopeEnd || i.date <= scopeEnd));
       payments = payments.filter(p => (!scopeStart || p.date >= scopeStart) && (!scopeEnd || p.date <= scopeEnd));
       credits = credits.filter(c => (!scopeStart || c.date >= scopeStart) && (!scopeEnd || c.date <= scopeEnd));
       sales = sales.filter(s => (!scopeStart || s.date >= scopeStart) && (!scopeEnd || s.date <= scopeEnd));
     }
+    // Opening balance = invoices − payments − credit notes BEFORE the period start (0 for all-time)
+    const invBefore = periodStart ? (d.invoices || []).filter(i => (i.customerId === cid || String(i.customerName || '').toLowerCase() === cname.toLowerCase()) && String(i.date || '') < periodStart) : [];
+    const payBefore = periodStart ? (d.payments || []).filter(p => (p.customerId === cid || String(p.customerName || '').toLowerCase() === cname.toLowerCase()) && String(p.date || '') < periodStart) : [];
+    const credBefore = periodStart ? (d.creditNotes || []).filter(c => (c.customerId === cid || String(c.customerName || '').toLowerCase() === cname.toLowerCase()) && String(c.date || '') < periodStart) : [];
+    const openingBalance = Math.round(
+      invBefore.reduce((s, i) => s + num(i.total), 0) - payBefore.reduce((s, p) => s + num(p.amount), 0) - credBefore.reduce((s, c) => s + num(c.amount), 0)
+    );
     const statementLines = [];
-    let runningBalance = 0;
+    let runningBalance = openingBalance;
     const allTxns = [
       ...invoices.map(inv => ({ type: 'Invoice', date: inv.date, reference: inv.invNo, description: `Invoice ${inv.invNo}`, debit: num(inv.total), credit: 0, balance: 0 })),
       ...payments.map(pay => ({ type: 'Payment', date: pay.date, reference: pay.paymentNo, description: `Payment - ${pay.method}`, debit: 0, credit: num(pay.amount), balance: 0 })),
@@ -12900,7 +12919,7 @@ territory: geo,
       customerPhone: customer.phone || '',
       statementDate: today(),
       period: monthFilter || (scopeStart ? `${scopeStart} to ${scopeEnd || 'Present'}` : 'All time'),
-      openingBalance: 0,
+      openingBalance,
       closingBalance: runningBalance,
       totalInvoiced: invoices.reduce((s, i) => s + num(i.total), 0),
       totalPaid: payments.reduce((s, p) => s + num(p.amount), 0),
@@ -13001,6 +13020,33 @@ territory: geo,
     const pdfBuffer = await customerStatementPdfBuffer({ statement: stmtForPdf, rows: invoiceRows, aging: buck, settings: d.settings || {} });
     return { success: true, data: pdfBuffer.toString('base64'), mimeType: 'application/pdf', filename: `${name}.pdf` };
 
+  },
+  async emailCustomerStatement(user, customerId, { to, ...options } = {}) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT, ROLES.SALES);
+    const d = data();
+    const customer = (d.customers || []).find(c => c.id === customerId || String(c.name).toLowerCase() === String(customerId || '').toLowerCase()) || {};
+    const recipientEmail = String(to || customer.email || '').trim();
+    if (!recipientEmail) throw new Error('No email address available for this customer. Add a customer email or specify a recipient.');
+    const statement = api.generateCustomerStatement(u, customerId, options || {});
+    const file = await api.exportCustomerStatement(u, customerId, 'PDF', options || {});
+    const result = await deliverEmail(u, 'customer_statement_sent', recipientEmail, () => EmailService.sendCustomerStatementEmail({
+      to: recipientEmail,
+      customerName: statement.customerName || customer.name || 'Valued Customer',
+      closingBalance: statement.closingBalance,
+      openingBalance: statement.openingBalance,
+      totalInvoiced: statement.totalInvoiced,
+      totalPaid: statement.totalPaid,
+      period: statement.period || 'All time',
+      attachmentContent: file.data,
+      attachmentFileName: file.filename,
+      customerId: customer.id
+    }), {
+      subject: `Customer Statement — ${statement.customerName}`,
+      relatedModule: 'invoices',
+      relatedId: customer.id
+    });
+    log(u, 'Email Customer Statement', 'Accounts', `${statement.customerName} — ${money(statement.closingBalance)}`);
+    return { success: true, sent: result.sent !== false, to: recipientEmail, closingBalance: statement.closingBalance, statement: file.filename };
   },
   getAuditTrail(user, filters = {}) {
     reqRole(user, ROLES.ADMIN, ROLES.MANAGER);
