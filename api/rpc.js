@@ -14998,6 +14998,27 @@ async function invokeRpc(fn, args = []) {
       await loadState();
     }
     if (!api[fn]) throw new Error('Unknown function: ' + fn);
+    // Idempotency: reject duplicate submissions that carry the same requestId.
+    const lastArg = args && args.length ? args[args.length - 1] : null;
+    const requestId = lastArg && typeof lastArg === 'object' && lastArg !== null
+      ? String(lastArg.requestId || (lastArg.row && lastArg.row.requestId) || '')
+      : '';
+    if (requestId) {
+      const d = data();
+      d.mutationLogs = Array.isArray(d.mutationLogs) ? d.mutationLogs : [];
+      const key = `${fn}:${requestId}`;
+      const existing = d.mutationLogs.find(m => m.key === key);
+      if (existing) {
+        return { success: true, duplicated: true, id: existing.id || '', requestId };
+      }
+      const result = await api[fn](...args);
+      const resultId = result && (result.id || result.row?.id || result.entry?.id || result.record?.id || result.bill?.id || result.invoice?.id || result.sale?.id || result.requisition?.id || result.application?.id);
+      d.mutationLogs.unshift({ key, fn, requestId, id: resultId || '', duplicatedAt: new Date().toISOString() });
+      if (d.mutationLogs.length > 500) d.mutationLogs.length = 500;
+      await saveState();
+      runBackgroundSyncAfterMutation(fn, args);
+      return result;
+    }
     const result = await api[fn](...args);
     await saveState();
     runBackgroundSyncAfterMutation(fn, args);

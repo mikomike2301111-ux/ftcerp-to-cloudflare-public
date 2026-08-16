@@ -294,6 +294,7 @@ const businessDaysBetween = (startDate, endDate) => {
 };
 
 async function rpc(fn, args = []) {
+  const t0 = performance.now();
   const res = await fetch('/api/rpc', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -307,12 +308,13 @@ async function rpc(fn, args = []) {
     const status = res.status ? `HTTP ${res.status}` : 'Network';
     throw new Error(text.includes('<') ? ` ${status}: server returned an HTML error page.` : text || ` ${status}: empty response from server.`);
   }
+  const took = performance.now() - t0;
+  trackPerformance(fn, took, mutatingRpc(fn));
   if (body.error) throw new Error(body.error);
   if (mutatingRpc(fn)) {
-    // Optimistic UX: keep showing last good data; mark cache entries stale instead of wiping
-    for (const [key, hit] of serverCache.entries()) {
-      if (hit) hit.time = 0;
-    }
+    // Scoped invalidation: only refresh the screens this mutation affects —
+    // previous behaviour wiped the whole cache so every screen refetched everything.
+    invalidateCacheFor(fn);
     serverInFlight.clear();
     window.dispatchEvent(new CustomEvent('erp:data-mutated', { detail: { fn } }));
   }
@@ -442,6 +444,186 @@ function useServer(user, fn, args = [], deps = []) {
   }, [cacheKey]);
   return state;
 }
+/** ═══ PERFORMANCE & OPTIMISTIC MUTATION INFRASTRUCTURE ═══
+ *  Shared building blocks used by every form in the ERP. */
+let __requestSeq = 0;
+const requestId = (prefix = 'op') => {
+  __requestSeq += 1;
+  return `${prefix}-${Date.now().toString(36)}-${__requestSeq}-${Math.random().toString(36).slice(2, 8)}`;
+};
+
+// Scope-based cache invalidation — a mutation should only refresh the screens it affects,
+// not wipe the whole cache (previous behaviour made every screen refetch everything).
+const MUTATION_INVALIDATES = {
+  saveCustomer: ['getCRMWorkspaceData', 'getSalesWorkspaceData', 'getLookupData', 'getCustomerWorkspaceData'],
+  saveLead: ['getCRMWorkspaceData', 'getSalesWorkspaceData', 'getLookupData'],
+  saveCall: ['getCRMWorkspaceData', 'getCustomerWorkspaceData'],
+  saveSupplier: ['getProcurementWorkspaceData', 'getInventoryWorkspaceData', 'getLookupData', 'getAdminOpsWorkspaceData'],
+  saveProduct: ['getInventoryWorkspaceData', 'getSalesWorkspaceData', 'getLookupData'],
+  saveInventoryItem: ['getInventoryWorkspaceData', 'getProcurementWorkspaceData'],
+  createSalesOrder: ['getSalesWorkspaceData', 'getFinanceWorkspaceData', 'getInventoryWorkspaceData', 'getCRMWorkspaceData', 'getDashboardData'],
+  saveSale: ['getSalesWorkspaceData', 'getFinanceWorkspaceData', 'getInventoryWorkspaceData', 'getCRMWorkspaceData', 'getDashboardData'],
+  recordPayment: ['getFinanceWorkspaceData', 'getSalesWorkspaceData', 'getCRMWorkspaceData', 'getDashboardData'],
+  recordCustomerPayment: ['getFinanceWorkspaceData', 'getSalesWorkspaceData', 'getCRMWorkspaceData', 'getDashboardData'],
+  recordFinanceExpense: ['getFinanceWorkspaceData', 'getDashboardData'],
+  saveExpense: ['getFinanceWorkspaceData', 'getDashboardData'],
+  postManualJournal: ['getFinanceWorkspaceData', 'getDashboardData'],
+  createCreditNote: ['getFinanceWorkspaceData', 'getSalesWorkspaceData', 'getCRMWorkspaceData', 'getInventoryWorkspaceData', 'getDashboardData'],
+  processReturn: ['getFinanceWorkspaceData', 'getInventoryWorkspaceData', 'getSalesWorkspaceData', 'getDashboardData'],
+  createSupplierBill: ['getFinanceWorkspaceData', 'getProcurementWorkspaceData', 'getAdminOpsWorkspaceData', 'getDashboardData'],
+  createNonPoInvoice: ['getFinanceWorkspaceData', 'getProcurementWorkspaceData', 'getAdminOpsWorkspaceData', 'getDashboardData'],
+  recordSupplierPayment: ['getFinanceWorkspaceData', 'getProcurementWorkspaceData', 'getAdminOpsWorkspaceData', 'getDashboardData'],
+  createRequisition: ['getAdminOpsWorkspaceData', 'getProcurementWorkspaceData', 'getNotificationsBell', 'getDashboardData'],
+  approveRequisition: ['getAdminOpsWorkspaceData', 'getProcurementWorkspaceData', 'getNotificationsBell', 'getDashboardData'],
+  rejectRequisition: ['getAdminOpsWorkspaceData', 'getProcurementWorkspaceData', 'getNotificationsBell', 'getDashboardData'],
+  applyLeave: ['getHRWorkspaceData', 'getLeaveWorkspaceData', 'getNotificationsBell', 'getDashboardData'],
+  saveQuotation: ['getSalesWorkspaceData', 'getFinanceWorkspaceData', 'getCRMWorkspaceData'],
+  saveEmployee: ['getHRWorkspaceData', 'getAdminOpsWorkspaceData', 'getDashboardData'],
+  saveSettingsUser: ['getSettingsWorkspaceData', 'getAdminOpsWorkspaceData']
+};
+const DEFAULT_INVALIDATES = ['getNotificationsBell', 'getDashboardData'];
+function invalidateCacheFor(fn) {
+  const wanted = new Set(MUTATION_INVALIDATES[fn] || DEFAULT_INVALIDATES);
+  let invalidated = 0;
+  for (const [key, hit] of serverCache.entries()) {
+    if (!hit) continue;
+    let parsed = null;
+    try { parsed = JSON.parse(key); } catch { /* ignore */ }
+    const hitFn = parsed && typeof parsed.fn === 'string' ? parsed.fn : '';
+    if (hitFn && wanted.has(hitFn)) { hit.time = 0; invalidated += 1; }
+  }
+  return invalidated;
+}
+// Inject an optimistic (temporary) record into cached payloads that hold the collection,
+// so the screen shows the result immediately without waiting for the server.
+function optimisticallyAddRecord(record, collection) {
+  if (!collection || !record) return 0;
+  let injected = 0;
+  for (const [key, hit] of serverCache.entries()) {
+    if (!hit || !hit.data) continue;
+    let parsed = null;
+    try { parsed = JSON.parse(key); } catch { /* ignore */ }
+    const hitFn = parsed && typeof parsed.fn === 'string' ? parsed.fn : '';
+    if (!hitFn || hitFn.startsWith('getLookup')) continue;
+    const container = hit.data[collection];
+    if (Array.isArray(container)) {
+      hit.data = { ...hit.data, [collection]: [record, ...container] };
+      injected += 1;
+    }
+  }
+  return injected;
+}
+function optimisticRemoveRecord(record, collection) {
+  if (!collection || !record) return 0;
+  const id = record && record.id;
+  const rid = record && record.requestId;
+  for (const [key, hit] of serverCache.entries()) {
+    if (!hit || !hit.data) continue;
+    const container = hit.data[collection];
+    if (Array.isArray(container)) {
+      hit.data = { ...hit.data, [collection]: container.filter(r => !(id && r && r.id === id) && !(rid && r && r.requestId === rid)) };
+    }
+  }
+  return 0;
+}
+function optimisticReconcile(tempRecord, result, collection, fn) {
+  const realId = result && (result.id || result.row?.id || result.entry?.id || result.record?.id || result.bill?.id || result.invoice?.id || result.sale?.id);
+  if (realId && collection && tempRecord) {
+    for (const [key, hit] of serverCache.entries()) {
+      if (!hit || !hit.data) continue;
+      const container = hit.data[collection];
+      if (Array.isArray(container)) {
+        hit.data = { ...hit.data, [collection]: container.map(r => (r && (r.id === tempRecord.id || r.requestId === tempRecord.requestId)) ? { ...r, id: realId, requestId: undefined, temp: false } : r) };
+      }
+    }
+  }
+  invalidateCacheFor(fn); // background refetch of the affected screens
+}
+/**
+ * Reusable optimistic mutation hook (single source of truth for form submissions).
+ *
+ *  - prevents double submissions (pendingRef guard)
+ *  - generates an idempotency requestId passed to the backend
+ *  - applies an optimistic record instantly (unless `confirm` = accounting-safe)
+ *  - reconciles with the real DB record on success (replaces temp id)
+ *  - rolls back cleanly on failure and reports the error
+ *  - `confirm:true` (financial) never shows a false final state — it reports
+ *    Saving → Pending synchronization → Posted from the actual DB response.
+ *
+ *  onArgs    : (payload, requestId) => args array sent to rpc()
+ *  makeTemp  : (payload, requestId) => optimistic record object (skip for confirm:true)
+ *  collection: the data[] key the optimistic record belongs to
+ *  confirm   : true for financial mutations that must wait for the DB to post
+ */
+function useOptimisticMutation({ fn, onArgs, makeTemp, collection, confirm = false }) {
+  const pendingRef = useRef(false);
+  const ridRef = useRef(null); // stable idempotency key across retries within this form
+  const [state, setState] = useState({ status: 'idle', error: '' });
+  const mutate = useCallback(async (payload = {}) => {
+    if (pendingRef.current) return { ok: false, duplicated: true };
+    pendingRef.current = true;
+    const rid = ridRef.current || requestId(fn);
+    ridRef.current = rid;
+    setState({ status: 'saving', error: '' });
+    let tempRecord = null;
+    if (!confirm && typeof makeTemp === 'function' && collection) {
+      try {
+        tempRecord = makeTemp(payload, rid);
+        if (tempRecord) optimisticallyAddRecord(tempRecord, collection);
+        setState({ status: 'applied' });
+      } catch (applyErr) { console.error('Optimistic apply failed', applyErr); }
+    }
+    try {
+      const t0 = performance.now();
+      const result = await rpc(fn, onArgs({ ...payload, requestId: rid }, rid));
+      if (confirm && confirm === 'accounting') {
+        invalidateCacheFor(fn);
+        setState({ status: 'success' });
+      } else if (tempRecord) {
+        optimisticReconcile(tempRecord, result, collection, fn);
+        setState({ status: 'success' });
+      } else {
+        invalidateCacheFor(fn);
+        setState({ status: 'success' });
+      }
+      trackPerformance(fn, performance.now() - t0, true);
+      return { ok: true, result, requestId: rid, ms: Math.round(performance.now() - t0) };
+    } catch (error) {
+      if (tempRecord && collection) optimisticRemoveRecord(tempRecord, collection);
+      else invalidateCacheFor(fn);
+      setState({ status: 'error', error: error.message });
+      return { ok: false, error, requestId: rid };
+    } finally {
+      pendingRef.current = false;
+    }
+  }, [fn, onArgs, makeTemp, collection, confirm]);
+  const reset = useCallback(() => { ridRef.current = null; setState({ status: 'idle', error: '' }); }, []);
+  return { mutate, state, reset, busy: state.status === 'saving' || state.status === 'applied' };
+}
+
+/** Debounced value for search inputs (avoid a request per keystroke). */
+function useDebouncedValue(value, delay = 300) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return debounced;
+}
+
+/** Lightweight performance reporter — records slow calls, logs slow mutations to console. */
+const perfLog = [];
+function trackPerformance(fn, ms, isMutation) {
+  if (typeof window === 'undefined') return;
+  if (ms >= 400) {
+    const entry = { fn, ms: Math.round(ms), mutation: !!isMutation, at: new Date().toLocaleTimeString() };
+    perfLog.unshift(entry);
+    if (perfLog.length > 60) perfLog.pop();
+  }
+  if (isMutation && ms >= 800) console.info(`[perf] mutation ${fn} took ${Math.round(ms)}ms`);
+}
+
+/** ═══ END PERFORMANCE & OPTIMISTIC MUTATION INFRASTRUCTURE ═══ */
 
 const nav = [
   { id: 'dashboard', label: 'Dashboard', icon: Gauge },
@@ -8653,14 +8835,19 @@ function FinanceExpenseModal({ user, onClose, onSaved }) {
   const categories = ['Salaries', 'Rent', 'Utilities', 'Manufacturing', 'Marketing', 'Transport', 'Fuel', 'Internet', 'Maintenance', 'Packaging', 'Office Supplies', 'Taxes', 'Miscellaneous', 'Insurance', 'Depreciation', 'Interest', 'Professional Fees', 'Repairs', 'Training', 'Travel', 'Entertainment', 'Donations', 'Subscriptions', 'Rent & Rates', 'Cleaning', 'Security', 'Staff Welfare', 'Raw Materials', 'Printing', 'Communication', 'Water', 'Electricity', 'Gas', 'Repairs & Maintenance', 'Vehicle Maintenance', 'Equipment Rental', 'IT Services', 'Legal Fees', 'Consulting', 'Advertising', 'Promotions', 'Research', 'Development', 'License Fees', 'Permits', 'Fines', 'Penalties', 'Bad Debt', 'Foreign Exchange Loss', 'Bank Charges', 'Card Fees', 'Loan Repayment', 'Dividends', 'Drawings', 'Capital Expenditure', 'Software Purchase', 'Hardware Purchase', 'Furniture Purchase', 'Vehicle Purchase', 'Other Asset Purchase'];
   const [form, setForm] = useState({ category: 'Salaries', date: new Date().toISOString().slice(0, 10), description: '', amount: 0, paymentMethod: 'Bank Transfer', reference: '', notes: '', expenseType: 'Fixed', department: '', branch: '', project: '', costCentre: '', supplier: '', employee: '' });
   const [saving, setSaving] = useState(false);
+  const expenseOptimistic = useOptimisticMutation({
+    fn: 'recordFinanceExpense',
+    onArgs: (payload, rid) => [user, { ...payload, requestId: rid }],
+    confirm: 'accounting'
+  });
   async function save(e) {
     e.preventDefault();
-    setSaving(true);
-    try {
-      await rpc('recordFinanceExpense', [user, form]);
+    if (expenseOptimistic.busy) return; // double-submit guard
+    const res = await expenseOptimistic.mutate(form);
+    if (res.ok) {
       onSaved?.();
-    } finally {
-      setSaving(false);
+    } else if (!res.duplicated) {
+      alert(res.error?.message || 'Could not record expense');
     }
   }
   return (
@@ -8696,14 +8883,19 @@ function FinancePaymentModal({ user, receivables, bankAccounts, onClose, onSaved
   const first = receivables.find(x => Number(x.balance || 0) > 0) || receivables[0];
   const [form, setForm] = useState({ invoiceId: first?.invoiceId || first?.id || '', amount: first?.balance || 0, method: 'Bank Transfer', bankAccount: bankAccounts?.[0]?.accountName || '', reference: '', cashier: user?.name || '', notes: '' });
   const [saving, setSaving] = useState(false);
+  const paymentOptimistic = useOptimisticMutation({
+    fn: 'recordCustomerPayment',
+    onArgs: (payload, rid) => [user, { ...payload, requestId: rid }],
+    confirm: 'accounting'
+  });
   async function save(e) {
     e.preventDefault();
-    setSaving(true);
-    try {
-      await rpc('recordCustomerPayment', [user, form]);
+    if (paymentOptimistic.busy) return; // double-submit guard — never post twice
+    const res = await paymentOptimistic.mutate(form);
+    if (res.ok) {
       onSaved?.();
-    } finally {
-      setSaving(false);
+    } else if (!res.duplicated) {
+      alert(res.error?.message || 'Could not record payment');
     }
   }
   return (
@@ -8956,20 +9148,37 @@ function RequisitionModal({ user, module, onClose, onSaved }) {
   }
   const estimatedCost = form.items.reduce((sum, i) => sum + (Number(i.quantity || 0) * Number(i.estimatedPrice || 0)), 0);
 
+  const optimistic = useOptimisticMutation({
+    fn: 'createRequisition',
+    onArgs: (payload, rid) => [user, { ...payload, requestId: rid }],
+    makeTemp: (payload, rid) => ({
+      id: `temp-${rid}`, reqNo: '…', requestDate: payload.requestDate || new Date().toISOString().slice(0, 10),
+      requester: user.name || payload.employee, module: payload.module || moduleLabel,
+      estimatedCost: payload.estimatedCost || 0, status: payload.priority === 'Urgent' ? 'Pending' : 'Draft',
+      priority: payload.priority || 'Low', requestId: rid, temp: true
+    }),
+    collection: 'requisitions'
+  });
+
   async function save(asDraft) {
     setSaving(true);
     try {
       const vehicle = form.vehicleRequest || {};
-      const result = await rpc('createRequisition', [user, {
+      const payload = {
         ...form,
         estimatedCost,
         reason: isVehicle ? (vehicle.reason || form.reason || 'Vehicle requisition') : form.reason,
         description: isVehicle ? `${vehicle.carRegistration || 'Vehicle'} to ${vehicle.destination || 'destination'} driven by ${vehicle.drivenBy || 'driver pending'}` : form.description
-      }]);
-      if (!asDraft) {
+      };
+      const res = await optimistic.mutate(payload);
+      if (!res.ok) {
+        if (!res.duplicated) alert(res.error?.message || 'Could not create requisition');
+        return;
+      }
+      if (!asDraft && res.result?.requisition?.id) {
         setSubmitting(true);
         try {
-          await rpc('submitRequisition', [user, result.requisition.id]);
+          await rpc('submitRequisition', [user, res.result.requisition.id]);
         } catch (e) {
           alert('Created but submission failed: ' + e.message);
         }
@@ -12436,12 +12645,25 @@ function LeaveWorkspace({ user, setPage, globalPeriod = 'Month' }) {
   const [leaveBusy, setLeaveBusy] = useState(false);
   const leaveBusyRef = useRef(false);
   const listStep = 50;
+  const leaveOptimistic = useOptimisticMutation({
+    fn: 'applyLeave',
+    onArgs: (payload, rid) => [user, { ...payload, requestId: rid }],
+    makeTemp: (payload, rid) => ({
+      id: `temp-${rid}`, applicantId: user.id, applicantEmail: user.email, applicantName: user.name,
+      type: payload.type, leaveType: payload.type, startDate: payload.startDate, endDate: payload.endDate || payload.startDate,
+      days: num(payload.days || 1), reason: payload.reason, status: 'Pending', requestId: rid, temp: true
+    }),
+    collection: 'leaveApplications'
+  });
   const handleApply = async (form) => {
-    if (leaveBusyRef.current) return;
-    leaveBusyRef.current = true;
-    setLeaveBusy(true);
-    try { await rpc('applyLeave', [user, form]); setApplyModal(false); setRefreshKey(k => k + 1); setView('requests'); } catch (err) { alert(err.message); }
-    finally { leaveBusyRef.current = false; setLeaveBusy(false); }
+    const res = await leaveOptimistic.mutate(form);
+    if (res.ok) {
+      setApplyModal(false);
+      setView('requests');
+      setRefreshKey(k => k + 1);
+    } else if (!res.duplicated) {
+      alert(res.error?.message || 'Could not submit leave request');
+    }
   };
   const handleDecision = async (id, decision) => {
     if (leaveBusyRef.current) return;
