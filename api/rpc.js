@@ -693,6 +693,184 @@ async function taxInvoicePdfBuffer({ invoice, items, customer, settings, options
     doc.end();
   });
 }
+let statementSeq = 1200;
+// Branded Farmtrack customer statement PDF — mirrors the FTC statement reference:
+// company header + FTC logo, TO block, STATEMENT NO / DATE / TOTAL DUE, a transaction
+// table (Date | Description | Amount | Received | Open Amount) with each invoice
+// expanded into its item sub-lines, an aging (Current/1-30/31-60/61-90/90+) table and a
+// KRA PIN footer. Server side only — never generated in the browser.
+async function customerStatementPdfBuffer({ statement, rows, aging, settings = {} }) {
+  const BLUE = '#2e7fd6';
+  const BLUE_DARK = '#2e6fa8';
+  const BLUE_TINT = '#dfeaf6';
+  const GREEN = '#3b8c5a';
+  const company = {
+    name: settings.company_name || 'Farmtrack Biosciences Ltd',
+    pin: FARMTRACK_KRA_PIN,
+    addressLine1: settings.company_address_line1 || settings.company_address || 'Nairobi',
+    city: settings.company_city || 'Nairobi',
+    postal: settings.company_postal || '00100',
+    country: settings.company_country || 'KE',
+    phone: settings.company_phone || '+2540711495522',
+    email: settings.company_email || 'farmtrack.consulting@gmail.com'
+  };
+  let remoteLogoBuffer = null;
+  const savedLogoUrl = clean(settings.invoice_logo_url || settings.company_logo_url || settings.company_qr_url || FARMTRACK_LOGO_URL);
+  const configuredLogoUrl = /logo-ftc\.webp|FTC-LOGO|postimg|erp-logo-black/i.test(savedLogoUrl) ? FARMTRACK_LOGO_URL : savedLogoUrl;
+  if (/^https?:\/\//i.test(configuredLogoUrl)) {
+    try { const res = await fetch(configuredLogoUrl); if (res.ok) remoteLogoBuffer = Buffer.from(await res.arrayBuffer()); } catch {}
+  }
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 30, size: 'A4', layout: 'portrait' });
+    const chunks = [];
+    doc.on('data', chunk => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+    const left = doc.page.margins.left;
+    const right = doc.page.width - doc.page.margins.right;
+    const width = right - left;
+    const kesPlain = v => Number(v || 0).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    let pageNo = 1;
+    const pageBottom = () => doc.page.height - 64;
+    // Company header (left) + FTC logo (right)
+    doc.fillColor('#222').fontSize(11).font('Helvetica-Bold').text(company.name, left, 26, { width: width * 0.52 });
+    doc.fontSize(8.5).font('Helvetica').fillColor('#444');
+    doc.text(company.addressLine1, left, 40, { width: width * 0.52 });
+    doc.text(`${company.city}, ${company.postal} ${company.country}`, left, 51, { width: width * 0.52 });
+    doc.text(company.phone, left, 62, { width: width * 0.52 });
+    doc.text(company.email, left, 73, { width: width * 0.52 });
+    doc.save();
+    doc.roundedRect(right - 134, 24, 134, 58, 8).fill('#ffffff');
+    doc.restore();
+    const logoFit = [126, 52];
+    if (remoteLogoBuffer) doc.image(remoteLogoBuffer, right - 130, 27, { fit: logoFit, align: 'center' });
+    else if (fs.existsSync(invoiceLogoPath)) doc.image(invoiceLogoPath, right - 130, 27, { fit: logoFit, align: 'center' });
+    else { doc.roundedRect(right - 84, 32, 30, 30, 6).fill(GREEN); doc.fillColor('#ffffff').fontSize(16).font('Helvetica-Bold').text('F', right - 72, 33, { width: 16, align: 'center' }); }
+    doc.moveTo(left, 92).lineTo(right, 92).strokeColor(GREEN).lineWidth(2).stroke();
+    // Title
+    doc.fillColor(BLUE).fontSize(26).font('Helvetica').text('STATEMENT', left, 104, { width: width * 0.5 });
+    doc.font('Helvetica');
+    let y = 150;
+    const metaWidth = 200;
+    const metaX = right - metaWidth;
+    const drawMeta = (label, value) => {
+      doc.fillColor('#667085').fontSize(8).font('Helvetica-Bold').text(label.toUpperCase(), metaX, y, { width: metaWidth });
+      doc.fillColor('#222').fontSize(9.5).font('Helvetica').text(String(value ?? ''), metaX, y + 11, { width: metaWidth, align: 'right' });
+      y += 26;
+    };
+    drawMeta('STATEMENT NO.', `ST-${String(++statementSeq).padStart(4, '0')}`);
+    drawMeta('DATE', invoiceDate(statement.statementDate));
+    if (statement.period && statement.period !== 'All time') drawMeta('PERIOD', statement.period);
+    drawMeta('TOTAL DUE', `KES ${kesPlain(statement.closingBalance)}`);
+    // TO block (left)
+    doc.fillColor('#667085').fontSize(8).font('Helvetica-Bold').text('TO'.toUpperCase(), left, 150, { width: 120 });
+    doc.fillColor('#222').fontSize(11).font('Helvetica-Bold').text(statement.customerName || '', left, 161, { width: width - metaWidth - 30 });
+    doc.fillColor('#333').fontSize(9).font('Helvetica');
+    let toY = 176;
+    if (statement.customerPhone) { doc.text(statement.customerPhone, left, toY, { width: width - metaWidth - 30 }); toY += 13; }
+    const cAddr = statement.customerAddress || statement.customer?.billingAddress || statement.customer?.location || '';
+    const addrLines = String(cAddr).split(/[,;\n]/).map(s => s.trim()).filter(Boolean);
+    addrLines.forEach(line => { doc.text(line, left, toY, { width: width - metaWidth - 30 }); toY += 13; });
+    y = Math.max(y, toY + 8);
+
+    // Transaction table (Date | Description | Amount | Received | Open Amount)
+    const cX = left; const cDesc = left + 74; const cAmt = right - 228; const cRec = right - 120; const cOpen = right - 40;
+    const cColW = 104; const cRecW = 78; const cOpenW = 40;
+    const headerY = y;
+    doc.roundedRect(left, headerY, width, 22, 3).fill(BLUE_TINT);
+    doc.fillColor(BLUE_DARK).fontSize(7.5).font('Helvetica-Bold');
+    doc.text('DATE', cX, headerY + 7);
+    doc.text('DESCRIPTION', cDesc, headerY + 7);
+    doc.text('AMOUNT', cAmt, headerY + 7, { width: cColW, align: 'right' });
+    doc.text('RECEIVED', cRec, headerY + 7, { width: cRecW, align: 'right' });
+    doc.text('OPEN AMOUNT', cOpen, headerY + 7, { width: cOpenW, align: 'right' });
+    doc.font('Helvetica');
+    y = headerY + 22;
+    const drawRepeatHeader = () => {
+      doc.roundedRect(left, y, width, 20, 3).fill(BLUE_TINT);
+      doc.fillColor(BLUE_DARK).fontSize(7).font('Helvetica-Bold');
+      doc.text('DATE', cX, y + 7); doc.text('DESCRIPTION', cDesc, y + 7);
+      doc.text('AMOUNT', cAmt, y + 7, { width: cColW, align: 'right' });
+      doc.text('RECEIVED', cRec, y + 7, { width: cRecW, align: 'right' });
+      doc.text('OPEN AMOUNT', cOpen, y + 7, { width: cOpenW, align: 'right' });
+      doc.font('Helvetica');
+      y += 20;
+    };
+    const moneyCell = (val, yy, colX, colW) => { doc.fillColor('#222').fontSize(8.5).font('Helvetica').text(kesPlain(val), colX, yy, { width: colW, align: 'right' }); };
+    const rowTitle = (text, yy) => { doc.fillColor('#111').fontSize(8.5).font('Helvetica-Bold').text(text, cDesc, yy, { width: right - cDesc - 4 }); doc.font('Helvetica'); };
+    const subLineTxt = (text, yy) => { doc.fillColor('#444').fontSize(7.5).font('Helvetica').text(text, cDesc + 8, yy, { width: right - cDesc - 10 }); doc.font('Helvetica'); };
+    const gridColor = '#e5e7eb';
+    const rowsList = Array.isArray(rows) ? rows : [];
+    const lineH = 9.5;
+    rowsList.forEach(row => {
+      if (y + 16 > pageBottom()) {
+        doc.addPage(); pageNo += 1;
+        y = doc.page.margins.top + 6;
+        doc.fillColor('#8892a0').fontSize(8).font('Helvetica-Bold').text(`${company.name}  |  STATEMENT  |  Page ${pageNo}`, left, y, { width, align: 'right' });
+        doc.font('Helvetica');
+        y += 12;
+        drawRepeatHeader();
+      }
+      const subs = Array.isArray(row.sub) ? row.sub.filter(s => s && s.text) : [];
+      const descLines = 1 + subs.length;
+      const rowH = Math.max(16, 13 + descLines * lineH + (subs.length ? 6 : 0));
+      doc.fillColor('#222').fontSize(8.5).font('Helvetica').text(row.date || '', cX, y + 3, { width: 68 });
+      doc.font('Helvetica');
+      rowTitle(row.description || '', y + 3);
+      let subY = y + 14;
+      subs.forEach(s => { subLineTxt(`${s.date ? `${s.date} ` : ''}${s.text}`, subY); subY += lineH; });
+      moneyCell(row.amount, y + 3, cAmt, cColW);
+      moneyCell(row.received, y + 3, cRec, cRecW);
+      moneyCell(row.open, y + 3, cOpen, cOpenW);
+      y += rowH;
+      if (row.sep) { doc.moveTo(left, y).lineTo(right, y).strokeColor(gridColor).lineWidth(0.6).stroke(); }
+    });
+    if (rowsList.length === 0) { doc.fillColor('#888').fontSize(9).font('Helvetica').text('No transactions in this period.', cDesc, y + 3); doc.font('Helvetica'); y += 20; }
+
+// Totals row (TOTAL AMOUNT / TOTAL RECEIVED / balance due)
+    y += 8;
+    if (y + 26 > doc.page.height - 46) { doc.addPage(); pageNo += 1; y = doc.page.margins.top + 24; }
+    doc.moveTo(left, y).lineTo(right, y).strokeColor('#d9dde3').lineWidth(0.8).stroke();
+    const totalY = y + 6;
+    doc.fillColor('#667085').fontSize(7.5).font('Helvetica-Bold');
+    doc.text('TOTAL AMOUNT', cAmt - 74, totalY, { width: 70, align: 'right' });
+    doc.fillColor('#222').fontSize(9).font('Helvetica-Bold');
+    doc.text(`KES ${kesPlain(statement.totalInvoiced)}`, cAmt, totalY + 9, { width: cColW, align: 'right' });
+    doc.fillColor('#667085').fontSize(7.5).font('Helvetica-Bold').text('TOTAL RECEIVED', cRec, totalY, { width: cRecW, align: 'right' });
+    doc.fillColor('#222').fontSize(9).font('Helvetica-Bold');
+    doc.text(`KES ${kesPlain(statement.totalPaid)}`, cRec, totalY + 9, { width: cRecW, align: 'right' });
+    doc.fillColor('#667085').fontSize(7.5).font('Helvetica-Bold').text('BALANCE DUE', cOpen - 70, totalY, { width: 34, align: 'right' });
+    doc.fillColor('#222').fontSize(9).font('Helvetica-Bold');
+    doc.text(`KES ${kesPlain(statement.closingBalance)}`, cOpen, totalY + 9, { width: cOpenW, align: 'right' });
+    doc.font('Helvetica');
+    y += 30;
+    // Aging summary table
+    y += 14;
+    if (y + 60 > doc.page.height - 46) { doc.addPage(); pageNo += 1; y = doc.page.margins.top + 24; }
+    const buck = aging || {};
+    const bucketDefs = [['Current Due', 'current'], ['1-30 Days', 'd1to30'], ['31-60 Days', 'd31to60'], ['61-90 Days', 'd61to90'], ['90+ Days', 'd90plus']];
+    const colW = width / 6;
+    doc.roundedRect(left, y, width, 20, 3).fill(BLUE_TINT);
+    doc.fillColor(BLUE_DARK).fontSize(7).font('Helvetica-Bold');
+    bucketDefs.forEach((b, i) => doc.text(b[0].toUpperCase(), left + i * colW + 4, y + 6, { width: colW - 8 }));
+    doc.text('AMOUNT DUE', left + colW * 5, y + 6, { width: colW - 6, align: 'right' });
+    doc.font('Helvetica');
+    y += 20;
+    doc.fillColor('#222').fontSize(8.5).font('Helvetica');
+    bucketDefs.forEach((b, i) => doc.text(kesPlain(buck[b[1]] || 0), left + i * colW + 4, y + 4, { width: colW - 8 }));
+    doc.font('Helvetica').fontSize(9);
+    doc.text(`KES ${kesPlain(buck.total != null ? buck.total : statement.closingBalance)}`, left + colW * 5, y + 4, { width: colW - 6, align: 'right' });
+    doc.font('Helvetica');
+
+    // Footer
+    y += 28;
+    doc.moveTo(left, doc.page.height - 46).lineTo(right, doc.page.height - 46).strokeColor('#d9dde3').lineWidth(0.8).stroke();
+    doc.fillColor(GREEN).fontSize(8).font('Helvetica-Bold').text(`KRA PIN: ${company.pin}`, left, doc.page.height - 38, { width, align: 'center' });
+    doc.fillColor('#888').fontSize(7.5).font('Helvetica-Oblique').text('"Goods once sold are not returnable"', left, doc.page.height - 27, { width, align: 'center' });
+    doc.fillColor('#999').fontSize(7).font('Helvetica').text(`Generated by Unity ERP | Page ${pageNo}`, left, doc.page.height - 16, { width, align: 'center' });
+    doc.end();
+  });
+}
 async function requisitionPdfBuffer({ req, items, settings }) {
   const DARK = '#050505';
   const GREEN = '#3b8c5a';
@@ -12751,7 +12929,7 @@ territory: geo,
       customer
     };
   },
-  exportCustomerStatement(user, customerId, format = 'CSV', options = {}) {
+  async exportCustomerStatement(user, customerId, format = 'CSV', options = {}) {
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT, ROLES.SALES);
     const statement = api.generateCustomerStatement(u, customerId, options || {});
     const rows = (statement.lines || []).map(l => ({ date: l.date, type: l.type, reference: l.reference || '', description: l.description || '', debit: num(l.debit), credit: num(l.credit), balance: num(l.balance) }));
@@ -12761,11 +12939,80 @@ territory: geo,
       const csv = [header.join(','), ...rows.map(r => [r.date, r.type, r.reference, `"${String(r.description).replace(/"/g, '""')}"`, r.debit, r.credit, r.balance].join(','))].join('\n');
       return { success: true, data: Buffer.from(csv).toString('base64'), mimeType: 'text/csv', filename: `${name}.csv` };
     }
-    // Print / PDF → printable HTML
-    const esc = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const htmlRows = rows.map(r => `<tr><td>${esc(r.date)}</td><td>${esc(r.type)}</td><td>${esc(r.reference)}</td><td>${esc(r.description)}</td><td>${currency(r.debit)}</td><td>${currency(r.credit)}</td><td>${currency(r.balance)}</td></tr>`).join('');
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Customer statement</title><style>*{font-family:Arial,sans-serif}body{padding:32px}h1{font-size:20px}h2{font-size:14px;color:#374151}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #d1d5db;padding:8px 10px;text-align:left;font-size:13px}th{background:#f3f4f6}.totals{margin-top:16px;font-weight:700}.kv{display:inline-block;margin-right:24px}</style></head><body><h1>Customer Statement</h1><p class="kv"><strong>Customer:</strong> ${esc(statement.customerName)}</p><p class="kv"><strong>Statement date:</strong> ${esc(statement.statementDate)}</p><p class="kv"><strong>Period:</strong> ${esc(statement.period || 'All time')}</p><h2>Closing balance: ${currency(statement.closingBalance)} · Total invoiced: ${currency(statement.totalInvoiced)} · Total paid: ${currency(statement.totalPaid)}</h2><table><thead><tr><th>Date</th><th>Type</th><th>Reference</th><th>Description</th><th>Debit</th><th>Credit</th><th>Balance</th></tr></thead><tbody>${htmlRows || '<tr><td colspan="7">No transactions in this period.</td></tr>'}</tbody></table></body></html>`;
-    return { success: true, data: Buffer.from(html).toString('base64'), mimeType: 'text/html', filename: `${name}.html` };
+    // PDF / Print → branded Farmtrack statement (matches the FTC reference)
+    const d = data();
+    const cid = statement.customer?.id;
+    const cname = statement.customerName;
+    const scopeStart = options.startDate || options.from || '';
+    const scopeEnd = options.endDate || options.to || '';
+    const monthFilter = options.month || '';
+    const inScope = rec => {
+      if (!rec || !rec.date) return false;
+      if (monthFilter) {
+        const mStart = `${monthFilter}-01`;
+        const mEnd = new Date(new Date(mStart).getFullYear(), new Date(mStart).getMonth() + 1, 0).toISOString().slice(0, 10);
+        return String(rec.date) >= mStart && String(rec.date) <= mEnd;
+      }
+      return (!scopeStart || String(rec.date) >= scopeStart) && (!scopeEnd || String(rec.date) <= scopeEnd);
+    };
+    const customerInvoices = (d.invoices || []).filter(i => (cid && i.customerId === cid) || (!cid && (String(i.customerName || '').toLowerCase() === String(cname || '').toLowerCase())));
+    const plain = v => num(v).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const invoiceRows = [];
+    let totalInvoiced = 0;
+    let totalReceived = 0;
+    customerInvoices.filter(inScope).sort((a, b) => String(a.date).localeCompare(String(b.date))).forEach(inv => {
+      const invItems = (d.invoiceItems || []).filter(it => it.invoiceId === inv.id);
+      const saleItems = inv.saleId ? (d.saleItems || []).filter(it => it.saleId === inv.saleId) : [];
+      const items = (invItems.length ? invItems : saleItems).map(it => ({
+        date: it.date || inv.date,
+        text: `${it.productName || it.description || 'Item'} = KES ${plain(it.total || num(it.quantity || 1) * num(it.unitPrice || it.rate || 0))}`
+      }));
+      const received = num(inv.paid);
+      const open = num(inv.balance);
+      totalInvoiced += num(inv.total);
+      totalReceived += received;
+      invoiceRows.push({
+        type: 'Invoice',
+        date: inv.date,
+        description: `Invoice No.${inv.invNo || ''}: Due ${inv.dueDate || '—'}.`,
+        amount: num(inv.total),
+        received,
+        open,
+        sub: items,
+        sep: true
+      });
+    });
+    const linkedIds = new Set(customerInvoices.filter(inScope).map(i => i.id));
+    (d.payments || []).filter(p => (cid && p.customerId === cid) || (String(p.customerName || '').toLowerCase() === String(cname || '').toLowerCase()))
+      .filter(p => inScope(p)).sort((a, b) => String(a.date).localeCompare(String(b.date))).forEach(p => {
+        if ((p.referenceId || p.invoiceId) && linkedIds.has(p.referenceId || p.invoiceId)) return;
+        if (!(p.referenceId || p.invoiceId)) totalReceived += num(p.amount);
+        invoiceRows.push({ type: 'Payment', date: p.date, description: `Payment - ${p.method || 'Unspecified'}`, amount: 0, received: num(p.amount), open: 0, sep: true });
+      });
+    (d.creditNotes || []).filter(c => (cid && c.customerId === cid) || (String(c.customerName || '').toLowerCase() === String(cname || '').toLowerCase()))
+      .filter(c => inScope(c)).sort((a, b) => String(a.date).localeCompare(String(b.date))).forEach(c => {
+        invoiceRows.push({ type: 'Credit Note', date: c.date, description: `Credit Note ${c.creditNo || ''}`.trim(), amount: -num(c.amount), received: 0, open: -num(c.amount), sep: true });
+      });
+    const buck = { current: 0, d1to30: 0, d31to60: 0, d61to90: 0, d90plus: 0 };
+    customerInvoices.filter(inScope).filter(i => num(i.balance) > 0).forEach(i => {
+      const days = reportDaysOverdue(i.dueDate);
+      if (days <= 0) buck.current += num(i.balance);
+      else if (days <= 30) buck.d1to30 += num(i.balance);
+      else if (days <= 60) buck.d31to60 += num(i.balance);
+      else if (days <= 90) buck.d61to90 += num(i.balance);
+      else buck.d90plus += num(i.balance);
+    });
+    Object.keys(buck).forEach(k => { buck[k] = Math.round(buck[k]); });
+    buck.total = buck.current + buck.d1to30 + buck.d31to60 + buck.d61to90 + buck.d90plus;
+    const stmtForPdf = {
+      ...statement,
+      totalInvoiced: statement.totalInvoiced != null ? statement.totalInvoiced : totalInvoiced,
+      totalPaid: statement.totalPaid != null ? statement.totalPaid : totalReceived,
+      closingBalance: statement.closingBalance != null ? statement.closingBalance : buck.total
+    };
+    const pdfBuffer = await customerStatementPdfBuffer({ statement: stmtForPdf, rows: invoiceRows, aging: buck, settings: d.settings || {} });
+    return { success: true, data: pdfBuffer.toString('base64'), mimeType: 'application/pdf', filename: `${name}.pdf` };
+
   },
   getAuditTrail(user, filters = {}) {
     reqRole(user, ROLES.ADMIN, ROLES.MANAGER);
