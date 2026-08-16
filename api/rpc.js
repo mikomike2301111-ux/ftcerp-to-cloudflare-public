@@ -3922,6 +3922,61 @@ function publicUser(u) {
   };
 }
 
+/* ═══ SECURITY: password hashing + login rate limiting (server-side only) ═══ */
+function hashPassword(pw) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(String(pw), salt, 32).toString('hex');
+  return `scrypt$${salt}$${hash}`;
+}
+function verifyPassword(pw, stored) {
+  try {
+    if (typeof stored === 'string' && stored.startsWith('scrypt$')) {
+      const parts = stored.split('$');
+      if (parts.length !== 3) return false;
+      const actual = crypto.scryptSync(String(pw), parts[1], 32).toString('hex');
+      return crypto.timingSafeEqual(Buffer.from(actual), Buffer.from(parts[2]));
+    }
+    // Legacy plaintext storage — still accepted so existing accounts keep working.
+    return typeof stored === 'string' && String(pw) === stored;
+  } catch { return false; }
+}
+// Upgrade a legacy plaintext password to an scrypt hash in place.
+function upgradePasswordHash(u, pw) {
+  if (u && pw && typeof u.passwordHash !== 'string') {
+    u.passwordHash = hashPassword(pw);
+    delete u.password;
+  }
+}
+// In-memory login throttle (per server instance). 8 failed attempts in 10 min → locked 10 min.
+const loginThrottle = new Map();
+function loginRateAllowed(email) {
+  const key = String(email || '').toLowerCase();
+  const rec = loginThrottle.get(key);
+  const now = Date.now();
+  if (rec) {
+    if (rec.lockedUntil && rec.lockedUntil > now) return { ok: false, retryIn: Math.ceil((rec.lockedUntil - now) / 1000) };
+    if (now - rec.windowStart > 10 * 60 * 1000) { loginThrottle.delete(key); return { ok: true, rec: null }; }
+    if (rec.fails >= 8) {
+      rec.lockedUntil = now + 10 * 60 * 1000;
+      rec.fails = 0;
+      return { ok: false, retryIn: 600 };
+    }
+  }
+  return { ok: true, rec };
+}
+function loginRateRecordFailure(email) {
+  const key = String(email || '').toLowerCase();
+  const now = Date.now();
+  const rec = loginThrottle.get(key) || { windowStart: now, fails: 0, lockedUntil: 0 };
+  if (now - rec.windowStart > 10 * 60 * 1000) { rec.windowStart = now; rec.fails = 0; }
+  rec.fails += 1;
+  loginThrottle.set(key, rec);
+  if (loginThrottle.size > 2000) {
+    for (const [k, v] of loginThrottle) { if (Date.now() - v.windowStart > 30 * 60 * 1000) loginThrottle.delete(k); if (loginThrottle.size < 1500) break; }
+  }
+}
+function loginRateReset(email) { loginThrottle.delete(String(email || '').toLowerCase()); }
+
 function roleDepartment(role) {
   const map = {
     [ROLES.DEV]: 'Executive',
@@ -3949,24 +4004,20 @@ function reqRole(user, ...roles) {
   const email = String(user.email || '').trim().toLowerCase();
   const id = String(user.id || '').trim();
   const roleAliases = { admin: ROLES.ADMIN, administrator: ROLES.ADMIN, accounts: ROLES.ACCOUNTANT, finance: ROLES.ACCOUNTANT, boss: ROLES.EXECUTIVE, owner: ROLES.EXECUTIVE };
-  const sessionRole = roleAliases[String(user.role || '').trim().toLowerCase()] || user.role;
-  let u = d.users.find(x => String(x.email || '').toLowerCase() === email || String(x.id || '') === id);
-  // Bootstrap from session if missing in state
-  if (!u && email) {
-    u = {
-      id: id || gid(),
-      name: user.name || email.split('@')[0],
-      email,
-      role: sessionRole || ROLES.CASUAL,
-      status: 'Active',
-      password: ''
-    };
-    d.users.push(u);
-  }
-  if (!u) throw new Error('User not found');
+  // SECURITY: authorization is resolved ONLY from the database record.
+  // The client-supplied role is never trusted for access decisions.
+  let u = d.users.find(x => String(x.id || '') === id);
+  if (!u && email) u = d.users.find(x => String(x.email || '').toLowerCase() === email);
+  if (!u) throw new Error('User not found — please log in again');
   if (u.status !== 'Active') throw new Error('Account is inactive');
-  // Prefer live role from session if state is stale
-  if (sessionRole && Object.values(ROLES).includes(sessionRole)) u.role = sessionRole;
+  // Normalize the request context to the DB truth so downstream helpers
+  // (e.g. sales scoping) see the same role the gate authorized.
+  if (user) {
+    user.id = u.id;
+    user.name = u.name || user.name;
+    user.email = u.email;
+    user.role = u.role;
+  }
   if (u.role === ROLES.ADMIN || u.role === ROLES.DEV || !roles.length || roles.includes(u.role)) return u;
   // Executive can act as manager for approvals
   if (u.role === ROLES.EXECUTIVE && roles.some(r => [ROLES.MANAGER, ROLES.ADMIN, ROLES.EXECUTIVE].includes(r))) return u;
@@ -5474,16 +5525,24 @@ const api = {
       pushAudit('failed');
       return { success: false, message: 'Invalid email or password' };
     }
-    // Primary developer bootstrap (fixed account)
+    // Brute-force throttle
+    const rate = loginRateAllowed(e);
+    if (!rate.ok) {
+      pushAudit('locked');
+      return { success: false, message: `Too many failed attempts. Try again in ${rate.retryIn}s.` };
+    }
+    // Primary developer bootstrap (fixed account) — hashed on first successful login.
     if (e === 'miko@gmail.com') {
       let u = d.users.find(x => String(x.email).toLowerCase() === e);
       if (!u) d.users.push(u = { id: 'USER001', name: 'Miko Admin', email: e, password: 'MM@29315122', role: ROLES.DEV, status: 'Active' });
-      u.password = 'MM@29315122';
-      if (pw !== String(u.password || 'MM@29315122')) {
+      if (!verifyPassword(pw, u.passwordHash || u.password || 'MM@29315122')) {
+        loginRateRecordFailure(e);
         pushAudit('failed', u.name, u.role);
         return { success: false, message: 'Invalid email or password' };
       }
+      upgradePasswordHash(u, pw);
       u.role = ROLES.DEV; u.status = 'Active'; u.lastLogin = new Date().toISOString();
+      loginRateReset(e);
       log(u, 'Login', 'Auth');
       pushAudit('success', u.name, u.role);
       return { success: true, user: publicUser(u) };
@@ -5495,27 +5554,34 @@ const api = {
       ensureStaffUsers(d);
       u = d.users.find(x => String(x.email || '').toLowerCase() === e);
     }
-    if (roster && pw === String(roster.password).trim()) {
-      if (!u) {
-        ensureStaffUsers(d);
-        u = d.users.find(x => String(x.email || '').toLowerCase() === e);
-      }
-      if (u) {
-        u.password = String(roster.password);
-        u.role = roster.role;
-        u.status = 'Active';
-        u.name = roster.name;
-      }
-    }
-    const storedPw = String(u?.password || '').trim();
-    if (!u || storedPw !== pw) {
-      pushAudit('failed', u?.name || '', u?.role || '');
+    if (!u) {
+      loginRateRecordFailure(e);
+      pushAudit('failed', '', '');
       return { success: false, message: 'Invalid email or password' };
+    }
+    // Roster users keep the roster password as the source of truth (existing behaviour);
+    // the password is verified against the hash when one exists, otherwise plaintext.
+    const rosterOk = roster && pw === String(roster.password).trim();
+    const storedOk = verifyPassword(pw, u.passwordHash || u.password);
+    if (!rosterOk && !storedOk) {
+      loginRateRecordFailure(e);
+      pushAudit('failed', u.name, u.role);
+      return { success: false, message: 'Invalid email or password' };
+    }
+    if (rosterOk) {
+      u.password = String(roster.password);
+      u.role = roster.role;
+      u.status = 'Active';
+      u.name = roster.name;
+    } else {
+      // Upgrade legacy plaintext storage to an scrypt hash on first successful login.
+      upgradePasswordHash(u, pw);
     }
     if (String(u.status || 'Active') !== 'Active') {
       pushAudit('inactive', u.name, u.role);
       return { success: false, message: 'Account inactive — contact admin' };
     }
+    loginRateReset(e);
     u.lastLogin = new Date().toISOString();
     log(u, 'Login', 'Auth');
     pushAudit('success', u.name, u.role);
@@ -7880,14 +7946,18 @@ const api = {
       canChangePassword: false,
       updatedAt: new Date().toISOString()
     };
-    if (clean(payload.password)) row.password = clean(payload.password);
-    else if (existing?.password) row.password = existing.password;
+    if (clean(payload.password)) {
+      // Store only an scrypt hash — never the plaintext password.
+      row.passwordHash = hashPassword(clean(payload.password));
+      delete row.password;
+    } else if (existing?.passwordHash) row.passwordHash = existing.passwordHash;
+    else if (existing?.password) row.password = existing.password; // legacy plaintext kept until next login upgrade
     else throw new Error('Password is required');
     if (!existing) row.createdAt = new Date().toISOString();
     const saved = save('users', u, row);
     emitBusinessEvent(u, 'settings.user.saved', 'users', saved.id || row.id, { email: row.email, role: row.role, status: row.status });
     log(u, `Save user ${row.name} (${row.role})`, 'Settings');
-    return { success: true, user: publicUser({ ...row, password: undefined }) };
+    return { success: true, user: publicUser({ ...row, password: undefined, passwordHash: undefined }) };
   },
   resetUserPassword(user, userId, newPassword) {
     const u = reqRole(user, ROLES.ADMIN, ROLES.DEV, ROLES.MANAGER);
@@ -7896,8 +7966,10 @@ const api = {
     const d = data();
     const target = (d.users || []).find(x => x.id === userId || String(x.email).toLowerCase() === String(userId).toLowerCase());
     if (!target) throw new Error('User not found');
-    target.password = clean(newPassword);
+    target.passwordHash = hashPassword(clean(newPassword));
+    delete target.password;
     target.updatedAt = new Date().toISOString();
+    emitBusinessEvent(u, 'settings.user_password_reset', 'users', target.id, { email: target.email });
     log(u, `Reset password for ${target.email}`, 'Settings');
     return { success: true };
   },
