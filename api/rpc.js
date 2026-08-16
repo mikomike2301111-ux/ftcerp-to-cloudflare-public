@@ -12893,25 +12893,49 @@ territory: geo,
       credits = credits.filter(c => (!scopeStart || c.date >= scopeStart) && (!scopeEnd || c.date <= scopeEnd));
       sales = sales.filter(s => (!scopeStart || s.date >= scopeStart) && (!scopeEnd || s.date <= scopeEnd));
     }
-    // Opening balance = invoices − payments − credit notes BEFORE the period start (0 for all-time)
-    const invBefore = periodStart ? (d.invoices || []).filter(i => (i.customerId === cid || String(i.customerName || '').toLowerCase() === cname.toLowerCase()) && String(i.date || '') < periodStart) : [];
-    const payBefore = periodStart ? (d.payments || []).filter(p => (p.customerId === cid || String(p.customerName || '').toLowerCase() === cname.toLowerCase()) && String(p.date || '') < periodStart) : [];
-    const credBefore = periodStart ? (d.creditNotes || []).filter(c => (c.customerId === cid || String(c.customerName || '').toLowerCase() === cname.toLowerCase()) && String(c.date || '') < periodStart) : [];
-    const openingBalance = Math.round(
-      invBefore.reduce((s, i) => s + num(i.total), 0) - payBefore.reduce((s, p) => s + num(p.amount), 0) - credBefore.reduce((s, c) => s + num(c.amount), 0)
-    );
-    const statementLines = [];
-    let runningBalance = openingBalance;
-    const allTxns = [
-      ...invoices.map(inv => ({ type: 'Invoice', date: inv.date, reference: inv.invNo, description: `Invoice ${inv.invNo}`, debit: num(inv.total), credit: 0, balance: 0 })),
-      ...payments.map(pay => ({ type: 'Payment', date: pay.date, reference: pay.paymentNo, description: `Payment - ${pay.method}`, debit: 0, credit: num(pay.amount), balance: 0 })),
-      ...credits.map(c => ({ type: 'Credit Note', date: c.date, reference: c.creditNo, description: `Credit Note ${c.creditNo}`, debit: 0, credit: num(c.amount), balance: 0 }))
-    ].sort((a, b) => String(a.date).localeCompare(String(b.date)));
-    allTxns.forEach(txn => {
-      runningBalance += txn.debit - txn.credit;
-      txn.balance = runningBalance;
-      statementLines.push(txn);
+    // Opening balance + closing are computed from invoice-level balances
+  // (total − paid − credit notes applied) — this matches the Farmtrack statement
+  // reference (a Received / Open amount per invoice) and is unaffected by any
+  // stray payment-collection records.
+  const arOk = inv => !['Deleted', 'Cancelled'].includes(String(inv.status || ''));
+  const invNet = inv => num(inv.total) - num(inv.paid) - num(inv.creditNotesApplied || 0);
+  const cInScope = inv => {
+    if (monthFilter) {
+      const mStart = `${monthFilter}-01`;
+      const mEnd = new Date(new Date(mStart).getFullYear(), new Date(mStart).getMonth() + 1, 0).toISOString().slice(0, 10);
+      return String(inv.date || '') >= mStart && String(inv.date || '') <= mEnd;
+    }
+    return (!scopeStart || String(inv.date || '') >= scopeStart) && (!scopeEnd || String(inv.date || '') <= scopeEnd);
+  };
+  const allAr = (d.invoices || []).filter(inv => (inv.customerId === cid || String(inv.customerName || '').toLowerCase() === cname.toLowerCase()) && arOk(inv));
+  const invBefore = periodStart ? allAr.filter(inv => String(inv.date || '') < periodStart) : [];
+  const openAr = allAr.filter(inv => cInScope(inv));
+  const openingBalance = Math.round(invBefore.reduce((s, inv) => s + invNet(inv), 0));
+  const closingBalance = Math.round(openingBalance + openAr.reduce((s, inv) => s + invNet(inv), 0));
+  const statementLines = [];
+  let runningBalance = openingBalance;
+  [...openAr]
+    .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
+    .forEach(inv => {
+      const credit = num(inv.paid) + num(inv.creditNotesApplied || 0);
+      runningBalance += num(inv.total) - credit;
+      statementLines.push({
+        type: 'Invoice',
+        date: inv.date,
+        reference: inv.invNo,
+        description: `Invoice ${inv.invNo}${inv.dueDate ? ` (due ${inv.dueDate})` : ''}`,
+        debit: num(inv.total),
+        credit,
+        balance: Math.round(runningBalance)
+      });
     });
+  if (statementLines.length === 0 && (payments.length || credits.length)) {
+    // No invoices on file — surface any unmatched payments / credit notes.
+    [...payments.map(p => ({ type: 'Payment', date: p.date, reference: p.paymentNo, description: `Payment - ${p.method}`, debit: 0, credit: num(p.amount), balance: 0 })),
+      ...credits.map(c => ({ type: 'Credit Note', date: c.date, reference: c.creditNo, description: `Credit Note ${c.creditNo}`, debit: 0, credit: num(c.amount), balance: 0 }))]
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+      .forEach(txn => { runningBalance += txn.debit - txn.credit; txn.balance = Math.round(runningBalance); statementLines.push(txn); });
+  }
     return {
       success: true,
       customerName: customer.name,
@@ -12920,14 +12944,14 @@ territory: geo,
       statementDate: today(),
       period: monthFilter || (scopeStart ? `${scopeStart} to ${scopeEnd || 'Present'}` : 'All time'),
       openingBalance,
-      closingBalance: runningBalance,
-      totalInvoiced: invoices.reduce((s, i) => s + num(i.total), 0),
-      totalPaid: payments.reduce((s, p) => s + num(p.amount), 0),
-      totalCredits: credits.reduce((s, c) => s + num(c.amount), 0),
+      closingBalance,
+      totalInvoiced: openAr.reduce((s, i) => s + num(i.total), 0),
+      totalPaid: openAr.reduce((s, p) => s + num(p.paid), 0),
+      totalCredits: openAr.reduce((s, c) => s + num(c.creditNotesApplied || 0), 0),
       lines: statementLines,
-      overdueInvoices: invoices.filter(i => num(i.balance) > 0 && reportDaysOverdue(i.dueDate) > 0).map(i => ({ invNo: i.invNo, date: i.date, dueDate: i.dueDate, total: num(i.total), balance: num(i.balance), daysOverdue: reportDaysOverdue(i.dueDate) })),
+      overdueInvoices: openAr.filter(i => num(i.balance) > 0 && reportDaysOverdue(i.dueDate) > 0).map(i => ({ invNo: i.invNo, date: i.date, dueDate: i.dueDate, total: num(i.total), balance: num(i.balance), daysOverdue: reportDaysOverdue(i.dueDate) })),
       creditLimit: num(customer.creditLimit),
-      currentBalance: runningBalance,
+      currentBalance: closingBalance,
       salesOwner: customer.salesOwner || customer.salesPerson || '',
       purchases: sales.map(s => ({ saleNo: s.saleNo, date: s.date, total: num(s.total), paid: num(s.paid), balance: num(s.balance), status: s.status, deliveryStatus: s.deliveryStatus || '' })),
       productsPurchased: sales.flatMap(s => (d.saleItems || []).filter(i => i.saleId === s.id).map(i => ({ productName: i.productName, quantity: i.quantity, unitPrice: i.unitPrice, total: i.total }))),
