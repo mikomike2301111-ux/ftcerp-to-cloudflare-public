@@ -68,10 +68,11 @@ begin
   end loop;
 end $$;
 
--- 4) Remove manufacturing data keys from the erp_state JSON bundle
+-- 4) Remove manufacturing data keys from the erp_state JSON bundle.
+--    Uses only the "- 'key'" operator, which works for both json and jsonb columns,
+--    so it never depends on jsonb-only functions (jsonb_strip_null).
 update public.erp_state
-set data = jsonb_strip_null(
-  data
+set data = data
   - 'rawMaterials' - 'rawMaterialBatches' - 'formulas' - 'formulaVersions' - 'formulaVersionItems'
   - 'bomVersionHistory' - 'productionOrders' - 'productionBatches' - 'productionJobs'
   - 'productionBatchMaterials' - 'productionBatchCosts' - 'productionBatchYields'
@@ -80,7 +81,6 @@ set data = jsonb_strip_null(
   - 'productionCalendar' - 'manufacturingDocuments' - 'batchRecalls'
   - 'productionMaterialRequests' - 'pendingProductionIssues' - 'productionReports'
   - 'production' - 'productionIntelligence'
-)
 where id is not null;
 
 -- 5) Verify the tables are gone
