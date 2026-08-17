@@ -5491,7 +5491,15 @@ const RESTORABLE_COLLECTIONS = {
   expenses: { module: 'Accounts', roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT, ROLES.DEV, ROLES.EXECUTIVE] },
   employees: { module: 'HR', roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.DEV, ROLES.EXECUTIVE] },
   attendance: { module: 'HR', roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.DEV, ROLES.EXECUTIVE] },
-  leaveApplications: { module: 'Leaves', roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.DEV, ROLES.EXECUTIVE] }
+  leaveApplications: { module: 'Leaves', roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.DEV, ROLES.EXECUTIVE] },
+  suppliers: { module: 'Purchases', roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.PROCUREMENT, ROLES.ACCOUNTANT, ROLES.DEV, ROLES.EXECUTIVE] },
+  products: { module: 'Inventory', roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.WAREHOUSE, ROLES.PROCUREMENT, ROLES.DEV, ROLES.EXECUTIVE] },
+  inventory: { module: 'Inventory', roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.WAREHOUSE, ROLES.DEV, ROLES.EXECUTIVE] },
+  stockItems: { module: 'Inventory', roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.WAREHOUSE, ROLES.DEV, ROLES.EXECUTIVE] },
+  financeAccounts: { module: 'Accounts', roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT, ROLES.DEV, ROLES.EXECUTIVE] },
+  financeAccountsPayable: { module: 'Accounts', roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT, ROLES.DEV, ROLES.EXECUTIVE] },
+  purchaseOrders: { module: 'Purchases', roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.PROCUREMENT, ROLES.ACCOUNTANT, ROLES.DEV, ROLES.EXECUTIVE] },
+  requisitions: { module: 'Requisitions', roles: [ROLES.ADMIN, ROLES.MANAGER, ROLES.DEV, ROLES.EXECUTIVE] }
 };
 
 function assertRestorableAccess(user, collection) {
@@ -5499,6 +5507,63 @@ function assertRestorableAccess(user, collection) {
   if (!meta) throw new Error('This record type is not configured for safe delete');
   const u = reqRole(user, ...meta.roles);
   return { u, meta };
+}
+
+// ── Site-wide delete service helpers ─────────────────────────────────────
+function recordClassName(collection) {
+  const c = String(collection);
+  if (c === 'customers') return 'customer';
+  if (c === 'suppliers') return 'supplier';
+  if (c === 'products') return 'product';
+  if (c === 'inventory' || c === 'stockItems') return 'inventory';
+  if (c === 'expenses') return 'expense';
+  if (c === 'invoices') return 'invoice';
+  if (c === 'payments') return 'payment';
+  if (c === 'financeAccounts') return 'account';
+  if (c === 'financeAccountsPayable' || c === 'accountsPayable' || c === 'bills') return 'bill';
+  if (c === 'financeManualEntries' || c === 'financeJournalEntries' || c === 'financeManualJournals') return 'journal';
+  if (c === 'requisitions' || c === 'requisitionItems') return 'requisition';
+  if (c === 'purchaseOrders') return 'purchaseOrder';
+  return 'generic';
+}
+function dependentCounts(d, kind, row) {
+  const id = row.id;
+  const lname = String(row.name || row.customerName || row.supplierName || row.productName || '').toLowerCase();
+  const mId = key => key && String(key).toLowerCase() === lname;
+  if (kind === 'customer') {
+    const f = r => r.customerId === id || mId(r.customerName);
+    return { invoices: (d.invoices || []).filter(f).length, payments: (d.payments || []).filter(f).length, sales: (d.sales || []).filter(f).length, creditNotes: (d.creditNotes || []).filter(f).length };
+  }
+  if (kind === 'supplier') {
+    const f = r => r.supplierId === id || mId(r.supplierName) || mId(r.supplier);
+    return { purchaseOrders: (d.purchaseOrders || []).filter(f).length, bills: (d.financeAccountsPayable || []).filter(f).length, expenses: (d.expenses || []).filter(e => mId(e.supplierName)).length };
+  }
+  if (kind === 'product') {
+    const f = r => r.productId === id || mId(r.productName);
+    return { saleItems: (d.saleItems || []).filter(f).length, invoiceItems: (d.invoiceItems || []).filter(f).length, inventory: (d.inventory || []).filter(f).length, movements: (d.inventoryTransactions || d.stockMovements || []).filter(f).length };
+  }
+  if (kind === 'inventory') {
+    const f = r => r.productId === id || r.inventoryId === id || mId(r.productName);
+    return { transactions: (d.inventoryTransactions || d.stockMovements || []).filter(f).length };
+  }
+  return {};
+}
+function recordIsPosted(d, kind, row) {
+  if (/^Posted$/i.test(String(row.status || ''))) return true;
+  const ids = String(row.id || '');
+  const refs = String(row.reference || row.invNo || row.saleNo || row.paymentNo || row.no || row.invoiceNo || '');
+  const srcJ = j => (j.sourceId && String(j.sourceId) === ids) || (j.reference && refs && String(j.reference) === refs);
+  return (d.financeJournalEntries || []).some(srcJ) || (d.financeManualJournals || []).some(srcJ);
+}
+function auditDeletion(u, module, recordType, id, name, action, reason) {
+  const d = data();
+  d.accountingAuditTrail = Array.isArray(d.accountingAuditTrail) ? d.accountingAuditTrail : [];
+  d.accountingAuditTrail.unshift({
+    id: gid(), module: module || 'System', recordType, recordId: id, recordName: name,
+    action, detail: action + (reason ? ' — ' + reason : ''), userName: u.name, userEmail: u.email,
+    createdAt: new Date().toISOString()
+  });
+  emitBusinessEvent(u, action === 'deleted' ? 'record.deleted' : action === 'blocked' ? 'record.delete_blocked' : 'record.deactivated', recordType || module || 'record', id, { name, reason });
 }
 
 async function buildNormalizedAnalytics() {
@@ -5786,14 +5851,69 @@ const api = {
       .sort((a, b) => String(b.deletedAt).localeCompare(String(a.deletedAt)));
   },
   deleteRecord(user, collection, id) {
+    // Site-wide guarded delete service. Permission gate first.
     const { u, meta } = assertRestorableAccess(user, collection);
-    const row = (data()[collection] || []).find(x => x.id === id || x.invNo === id || x.invoiceNo === id || x.saleNo === id);
+    const d = data();
+    const arr = Array.isArray(d[collection]) ? d[collection] : [];
+    const row = arr.find(x => x.id === id || x.invNo === id || x.invoiceNo === id || x.saleNo === id || x.reqNo === id || x.poNo === id || x.paymentNo === id || x.creditNo === id || x.employeeNo === id);
     if (!row) throw new Error('Record not found');
-    row.isDeleted = 'Yes';
-    row.deletedAt = new Date().toISOString();
-    row.deletedBy = u.name;
-    log(u, `Delete ${collection}`, meta.module, row.name || row.customerName || row.saleNo || row.invNo || row.id);
-    return { success: true, record: row };
+    const kind = recordClassName(collection);
+    const name = row.name || row.customerName || row.supplierName || row.productName || row.saleNo || row.invNo || row.reqNo || row.poNo || row.id;
+    const block = reason => { auditDeletion(u, meta.module, collection, id, name, 'blocked', reason); log(u, `Blocked delete ${collection}`, meta.module, name); return { success: false, action: 'blocked', reason }; };
+    const deactivate = () => {
+      row.status = 'Inactive'; row.isActive = 'Inactive';
+      row.deactivatedAt = new Date().toISOString(); row.deactivatedBy = u.name; row.updatedAt = new Date().toISOString();
+      auditDeletion(u, meta.module, collection, id, name, 'deactivated'); log(u, `Deactivate ${collection}`, meta.module, name);
+      return { success: true, action: 'deactivated', record: row };
+    };
+    const softDeleteIt = () => {
+      row.isDeleted = 'Yes'; row.deletedAt = new Date().toISOString(); row.deletedBy = u.name; row.updatedAt = new Date().toISOString();
+      auditDeletion(u, meta.module, collection, id, name, 'deleted'); log(u, `Delete ${collection}`, meta.module, name);
+      return { success: true, action: 'deleted', record: row };
+    };
+    const hardDeleteIt = () => {
+      const idx = arr.indexOf(row); if (idx >= 0) arr.splice(idx, 1);
+      auditDeletion(u, meta.module, collection, id, name, 'deleted'); log(u, `Delete ${collection}`, meta.module, name);
+      return { success: true, action: 'deleted', record: row };
+    };
+    const depsTotal = k => Object.values(dependentCounts(d, k, row)).reduce((s, n) => s + n, 0);
+
+    switch (kind) {
+      case 'customer':
+      case 'supplier':
+        return depsTotal(kind) > 0 ? deactivate() : softDeleteIt();
+      case 'product':
+      case 'inventory':
+        if (depsTotal(kind) > 0) return block(kind === 'product'
+          ? 'This product has transaction history (sales, invoices, stock movements) and cannot be permanently deleted. Use Deactivate instead.'
+          : 'This inventory item has transaction history and cannot be permanently deleted. Use Deactivate instead.');
+        return kind === 'product' ? hardDeleteIt() : softDeleteIt();
+      case 'expense':
+        return recordIsPosted(d, 'expense', row) ? block('This expense has been posted to the General Ledger. It cannot be permanently deleted. Void/Reverse it instead.') : hardDeleteIt();
+      case 'invoice':
+        return recordIsPosted(d, 'invoice', row) ? block('This invoice has been posted to the General Ledger. It cannot be permanently deleted. Use Void/Reversal instead.') : softDeleteIt();
+      case 'payment':
+        return recordIsPosted(d, 'payment', row) ? block('This payment has been posted to the General Ledger. It cannot be permanently deleted. Use Void/Reversal instead.') : softDeleteIt();
+      case 'journal':
+        return block('Posted journal entries are part of accounting history and cannot be permanently deleted. Use Void/Reversal instead.');
+      case 'account':
+        {
+          const used = (d.financeJournalLines || []).some(l => (l.accountCode && l.accountCode === row.code) || (l.accountName && l.accountName === row.name))
+            || (d.financeManualJournalLines || []).some(l => (l.accountCode && l.accountCode === row.code) || (l.accountName && l.accountName === row.name));
+          return used ? deactivate() : hardDeleteIt();
+        }
+      case 'bill':
+        return recordIsPosted(d, 'financeAccountsPayable', row) ? block('This bill has been posted to the General Ledger. It cannot be permanently deleted. Use Void/Reversal instead.') : softDeleteIt();
+      case 'requisition':
+        return ['Approved', 'Completed', 'Partially Delivered', 'Delivered', 'Converted to Order', 'In Progress', 'Rejected'].includes(String(row.status))
+          ? block('This requisition has progressed through the workflow; its history should be preserved. Cancel/reject rather than delete.')
+          : hardDeleteIt();
+      case 'purchaseOrder':
+        return ['Sent', 'Approved', 'Converted to Sales Order', 'Received', 'Partially Received', 'Closed'].includes(String(row.status))
+          ? block('This purchase order has progressed; preserve its history.') : hardDeleteIt();
+      default:
+        return softDeleteIt();
+    }
   },
   restoreRecord(user, collection, id) {
     const { u, meta } = assertRestorableAccess(user, collection);

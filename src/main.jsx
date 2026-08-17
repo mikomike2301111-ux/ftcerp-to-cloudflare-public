@@ -3083,6 +3083,76 @@ function CRMPipelineBoard({ leads = [], stages = [], onMoveLead, onAddLead }) {
   );
 }
 
+function DeleteConfirmationOverlay({ open, recordType, recordName, warning, confirmLabel = 'Delete', loading = false, error = '', onConfirm, onCancel }) {
+  if (!open) return null;
+  return (
+    <div className="modal-scrim retractable-overlay" onClick={loading ? undefined : onCancel}>
+      <div className="modal-card" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
+        <header>
+          <h2>Delete {recordType}?</h2>
+          <button type="button" onClick={onCancel} disabled={loading}><X size={18} /></button>
+        </header>
+        <div className="modal-card-body">
+          <p style={{ margin: '0 0 6px', fontWeight: 700, fontSize: 16, color: '#101828' }}>{recordName}</p>
+          <p style={{ color: '#667085', fontSize: 13, margin: '0 0 16px', lineHeight: 1.5 }}>
+            {warning || 'This action will remove this record from the system. Where the record has financial or transaction history it will be deactivated or blocked instead of destroyed.'}
+          </p>
+          {error && <div className="crm-sheet-message warn" style={{ marginBottom: 12, whiteSpace: 'pre-line' }}>{error}</div>}
+          <div className="inline-actions" style={{ justifyContent: 'flex-end', margin: 0 }}>
+            <button type="button" onClick={onCancel} disabled={loading}>Cancel</button>
+            <button type="button" className="primary-action" style={{ background: '#d92d20', borderColor: '#d92d20' }} disabled={loading} onClick={onConfirm}>{loading ? 'Deleting…' : confirmLabel}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function useDeleteRecord(user, { onDeleted } = {}) {
+  const [state, setState] = useState(null); // { collection, id, recordType, recordName, warning, confirmLabel }
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const askDelete = (collection, id, opts = {}) => setState({
+    collection, id,
+    recordType: opts.recordType || collection,
+    recordName: opts.recordName || id,
+    warning: opts.warning || '',
+    confirmLabel: opts.confirmLabel || 'Delete'
+  });
+  const confirm = async () => {
+    if (!state) return;
+    setLoading(true); setError('');
+    try {
+      const res = await rpc('deleteRecord', [user, state.collection, state.id]);
+      if (!res || res.success === false || res.action === 'blocked') {
+        setError(res?.reason || 'Unable to delete this record.');
+        return; // keep overlay open showing the reason
+      }
+      setState(null);
+      if (res.action === 'deactivated') alert('Record deactivated to protect its history.');
+      onDeleted?.(res);
+    } catch (err) {
+      setError(err.message || 'Unable to delete this record.');
+    } finally {
+      setLoading(false);
+    }
+  };
+  const overlay = (
+    <DeleteConfirmationOverlay
+      open={!!state}
+      recordType={state?.recordType}
+      recordName={state?.recordName}
+      warning={state?.warning}
+      confirmLabel={state?.confirmLabel}
+      loading={loading}
+      error={error}
+      onConfirm={confirm}
+      onCancel={() => { setState(null); setError(''); }}
+    />
+  );
+  return { askDelete, overlay };
+}
+
 function CRMCallsList({ calls, onStageChange }) {
   const stageClass = s => s === 'Already Called' ? 'status active' : s === 'To Be Called' || s === 'Pending Calls' ? 'status pending' : 'status partial';
   return (
@@ -3195,6 +3265,7 @@ function CRMCustomersGrid({ customers, query, setQuery, title = 'Customer Direct
   const currentPage = Math.min(page, totalPages - 1);
   const shown = customers.slice(currentPage * pageSize, currentPage * pageSize + pageSize);
   useEffect(() => setPage(0), [query, pageSize]);
+  const del = useDeleteRecord(user, { onDeleted: () => onChanged && onChanged() });
   return (
     <Panel title={title} action={`${customers.length} records`}>
       <div className="crm-directory-toolbar">
@@ -3229,7 +3300,7 @@ function CRMCustomersGrid({ customers, query, setQuery, title = 'Customer Direct
                   { label: 'Edit customer', icon: <UserCog size={15} />, onClick: () => onEdit?.(customer) },
                   customer.isDeleted === 'Yes'
                     ? { label: 'Restore customer', icon: <CheckCircle2 size={15} />, onClick: async () => { try { await rpc('restoreCustomer', [user, customer.id]); onChanged?.(); } catch (err) { alert(err.message); } } }
-                    : { label: 'Delete customer', icon: <X size={15} />, onClick: async () => { if (!confirm(`Delete ${customer.name}? It can be restored from audit.`)) return; try { await rpc('deleteCustomer', [user, customer.id]); onChanged?.(); } catch (err) { alert(err.message); } } }
+                    : { label: 'Delete customer', icon: <X size={15} />, onClick: () => del.askDelete('customers', customer.id, { recordType: 'Customer', recordName: customer.name, warning: customer.isDeleted === 'Yes' ? '' : 'If this customer has invoices, payments or orders, it will be deactivated instead of deleted to protect financial history.' }) }
                 ]}
               />
             </div>
@@ -3244,6 +3315,7 @@ function CRMCustomersGrid({ customers, query, setQuery, title = 'Customer Direct
           <button type="button" disabled={currentPage >= totalPages - 1} onClick={() => setPage(x => Math.min(totalPages - 1, x + 1))}>Next 10</button>
         </div>
       )}
+      {del.overlay}
     </Panel>
   );
 }
