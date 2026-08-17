@@ -5958,6 +5958,12 @@ const api = {
   getDashboardData(user) {
     const u = reqRole(user);
     const d = data();
+    // Guard every collection the dashboard reads so a missing key never crashes the UI
+    // (e.g. "Cannot read properties of undefined (reading 'filter')").
+    ['sales', 'expenses', 'invoices', 'customers', 'products', 'saleItems', 'inventory',
+      'leads', 'purchaseOrders', 'deliveries', 'quotations', 'approvals', 'calls',
+      'production', 'productionOrders', 'financeJournalEntries', 'financeManualJournals'
+    ].forEach(k => { if (!Array.isArray(d[k])) d[k] = []; });
     // No auto-demo dashboard seed — charts use live sales/expenses only.
 
     const cy = new Date().getFullYear();
@@ -15341,14 +15347,19 @@ territory: geo,
     const items = (Array.isArray(row.items) ? row.items : []).map(it => {
       const qty = num(it.quantity || 1);
       const price = num(it.unitPrice || it.rate || it.price || 0);
+      const discount = num(it.discount || 0);
       const productName = clean(it.productName) || clean(it.description) || 'Item';
-      return { id: gid(), productId: it.productId || '', productName, description: clean(it.description) || productName, quantity: qty, unitPrice: price, total: qty * price };
+      const total = Math.max(0, qty * price - discount);
+      return { id: gid(), productId: it.productId || '', productName, description: clean(it.description) || productName, quantity: qty, unitPrice: price, discount, total };
     });
     if (!items.length) throw new Error('At least one invoice line item is required');
     const subtotal = items.reduce((s, i) => s + i.total, 0);
-    const vatCalc = computeInvoiceTax(d, subtotal, { taxStatus: row.taxStatus, vatRate: row.vatRate });
+    const invoiceDiscount = Math.max(0, num(row.discount || row.invoiceDiscount || 0));
+    const shipping = Math.max(0, num(row.shipping || row.freight || 0));
+    const taxBase = Math.max(0, subtotal - invoiceDiscount);
+    const vatCalc = computeInvoiceTax(d, taxBase, { taxStatus: row.taxStatus, vatRate: row.vatRate });
     const tax = vatCalc.tax;
-    const total = subtotal + tax;
+    const total = Math.max(0, taxBase + tax + shipping);
     const paid = Math.max(0, num(row.paid));
     const id = gid();
     const invNo = nextInvoiceNo(d);
@@ -15357,10 +15368,15 @@ territory: geo,
       customerId: row.customerId || '', customerName: row.customerName,
       customerEmail: clean(row.customerEmail || ''), customerPhone: clean(row.customerPhone || ''),
       date: row.date || today(), dueDate: row.dueDate || new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
-      subtotal, tax, total, paid, balance: Math.max(0, total - paid),
+      subtotal, discount: invoiceDiscount, shipping, tax, total, paid, balance: Math.max(0, total - paid),
       status: paid >= total ? 'Paid' : paid > 0 ? 'Partial' : 'Pending',
       paymentTerms: clean(row.paymentTerms) || 'Net 30', type: 'Sales', approvalStatus: 'Auto Approved',
       taxStatus: vatCalc.taxStatus, vatRate: vatCalc.rate, vatExempt: vatCalc.isExempt,
+      salesRep: clean(row.salesRep || row.salesperson || ''), poReference: clean(row.poReference || ''),
+      orderNumber: clean(row.orderNumber || row.ordNo || ''),
+      memo: clean(row.memo || row.notes || ''), billingAddress: clean(row.billingAddress || ''),
+      shipTo: clean(row.shipTo || row.shippingAddress || ''),
+      currency: clean(row.currency) || 'KES',
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), isDeleted: 'No'
     };
     d.invoices = Array.isArray(d.invoices) ? d.invoices : [];

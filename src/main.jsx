@@ -6984,38 +6984,41 @@ function CreditHealthDonut({ data = [] }) {
 
 function AccountsInvoiceModal({ user, products = [], customers = [], onClose, onSaved }) {
   const [form, setForm] = useState({
-    customerId: '', customerName: '', customerPhone: '', customerEmail: '',
-    productId: '', quantity: 1, unitPrice: 0,
-    taxStatus: 'Taxable', paymentMethod: 'Bank', paid: 0,
-    dueDate: '', paymentTerms: 'Net 30'
+    customerId: '', customerName: '', customerPhone: '', customerEmail: '', billingAddress: '', shipTo: '',
+    salesRep: '', poReference: '', orderNumber: '', memo: '', currency: 'KES',
+    invoiceDate: new Date().toISOString().slice(0, 10), dueDate: '', paymentTerms: 'Net 30',
+    taxStatus: 'Taxable', vatRate: 16, paymentMethod: 'Bank', paid: 0, discount: 0, shipping: 0,
+    items: [{ productId: '', productName: '', description: '', quantity: 1, unitPrice: 0, discount: 0 }]
   });
   const [saving, setSaving] = useState(false);
-  const selectedProduct = products.find(p => p.id === form.productId) || {};
-  const unitPrice = num(form.unitPrice) || num(selectedProduct.sellingPrice || selectedProduct.price) || 0;
-  const qty = num(form.quantity) || 1;
-  const subtotal = qty * unitPrice;
-  const vatRate = num(form.vatRate) || num(selectedProduct.taxRate) || 16;
-  const vat = form.taxStatus === 'Taxable' ? Math.round(subtotal * vatRate) / 100 : 0;
-  const total = subtotal + vat;
-  const pickCustomer = c => setForm(f => ({ ...f, customerId: c.customerId || c.id || '', customerName: c.customerName || c.name || '', customerPhone: c.phone || '', customerEmail: c.email || '' }));
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const addItem = () => setForm(f => ({ ...f, items: [...(f.items || []), { productId: '', productName: '', description: '', quantity: 1, unitPrice: 0, discount: 0 }] }));
+  const removeItem = i => setForm(f => ({ ...f, items: (f.items || []).filter((_, idx) => idx !== i) }));
+  const setItem = (i, k, v) => setForm(f => ({ ...f, items: (f.items || []).map((row, idx) => idx === i ? { ...row, [k]: v } : row) }));
+  const chooseProduct = (i, productId) => { const p = products.find(x => x.id === productId); setForm(f => ({ ...f, items: (f.items || []).map((row, idx) => idx === i ? { ...row, productId, productName: p ? p.name : '', unitPrice: p ? (num(p.sellingPrice || p.price) || 0) : row.unitPrice } : row) })); };
+  const lines = (form.items || []).map(it => ({ ...it, amount: Math.max(0, (num(it.quantity) || 0) * (num(it.unitPrice) || 0) - (num(it.discount) || 0)) }));
+  const subtotal = lines.reduce((s, it) => s + it.amount, 0);
+  const discount = num(form.discount) || 0;
+  const shipping = num(form.shipping) || 0;
+  const vatRate = num(form.vatRate) || 16;
+  const vat = form.taxStatus === 'Taxable' ? Math.round((subtotal - discount) * vatRate) / 100 : 0;
+  const total = Math.max(0, subtotal - discount + vat + shipping);
+  const paid = num(form.paid) || 0;
+  const pickCustomer = c => setForm(f => ({ ...f, customerId: c.customerId || c.id || '', customerName: c.customerName || c.name || '', customerPhone: c.phone || '', customerEmail: c.email || '', billingAddress: c.billingAddress || c.shipTo || c.city || '' }));
   async function submit(e) {
     e.preventDefault();
     if (!form.customerName) return alert('Customer name is required');
-    if (!form.productId) return alert('Select a product to invoice');
+    if (!lines.filter(l => l.productName).length) return alert('Add at least one line item');
+    if (total <= 0) return alert('Invoice total must be above zero');
     setSaving(true);
+    const items = lines.filter(l => l.productName).map(l => ({ productId: l.productId || undefined, productName: l.productName, description: l.description, quantity: num(l.quantity) || 1, unitPrice: num(l.unitPrice) || 0, discount: num(l.discount) || 0 }));
     try {
       await rpc('createInvoiceFromEntry', [user, {
-        customerId: form.customerId || undefined,
-        customerName: form.customerName,
-        customerPhone: form.customerPhone,
-        customerEmail: form.customerEmail,
-        items: [{ productId: form.productId, productName: selectedProduct.name || form.customerName, description: selectedProduct.name || 'Invoice item', quantity: qty, unitPrice }],
-        taxStatus: form.taxStatus,
-        paymentMethod: form.paymentMethod,
-        paid: num(form.paid) || 0,
-        dueDate: form.dueDate,
-        paymentTerms: form.paymentTerms,
-        date: new Date().toISOString().slice(0, 10)
+        customerId: form.customerId || undefined, customerName: form.customerName, customerPhone: form.customerPhone, customerEmail: form.customerEmail,
+        billingAddress: form.billingAddress, shipTo: form.shipTo, salesRep: form.salesRep, poReference: form.poReference, orderNumber: form.orderNumber,
+        memo: form.memo, currency: form.currency, items, discount, shipping,
+        taxStatus: form.taxStatus, vatRate, paymentMethod: form.paymentMethod, paid,
+        date: form.invoiceDate, dueDate: form.dueDate, paymentTerms: form.paymentTerms
       }]);
       onSaved?.();
     } catch (err) {
@@ -7032,43 +7035,72 @@ function AccountsInvoiceModal({ user, products = [], customers = [], onClose, on
           <button type="button" onClick={onClose}><X size={18} /></button>
         </header>
         <div className="modal-card-body overlay-scroll-body">
-          <form className="settings-form-grid" onSubmit={submit}>
-            <label>Customer
-              <input list="acct-invoice-customers" value={form.customerName} onChange={e => setForm({ ...form, customerName: e.target.value, customerId: '' })} placeholder="Type customer name" required />
+          <form onSubmit={submit}>
+            <div className="settings-kv-grid" style={{ gridTemplateColumns: '1fr 1.4fr 1fr', gap: 10 }}>
+              <label>Invoice date<input type="date" value={form.invoiceDate} onChange={e => set('invoiceDate', e.target.value)} /></label>
+              <label>Customer name<input list="acct-invoice-customers" value={form.customerName} onChange={e => setForm({ ...form, customerName: e.target.value, customerId: '' })} placeholder="Type customer name" required /></label>
               <datalist id="acct-invoice-customers">{customers.map(c => <option key={c.customerId || c.id} value={c.customerName || c.name} />)}</datalist>
-            </label>
-            <label>Pick from list
-              <select defaultValue="" onChange={e => { const c = customers.find(x => (x.customerId || x.id) === e.target.value); if (c) pickCustomer(c); }}>
-                <option value="">Select a customer…</option>
-                {customers.map(c => <option key={c.customerId || c.id} value={c.customerId || c.id}>{c.customerName || c.name} · {c.phone || ''}</option>)}
-              </select>
-            </label>
-            <div className="modal-grid">
-              <label>Customer phone<input value={form.customerPhone} onChange={e => setForm({ ...form, customerPhone: e.target.value })} /></label>
-              <label>Customer email<input type="email" value={form.customerEmail} onChange={e => setForm({ ...form, customerEmail: e.target.value })} /></label>
-            </div>
-            <label>Product
-              <select value={form.productId} onChange={e => { const p = products.find(x => x.id === e.target.value); setForm({ ...form, productId: e.target.value, unitPrice: p ? (num(p.sellingPrice || p.price) || 0) : form.unitPrice }); }} required>
-                <option value="">Select product</option>
-                {products.map(p => <option key={p.id} value={p.id}>{p.name} — {currency(num(p.sellingPrice || p.price))}</option>)}
-              </select>
-            </label>
-            <div className="modal-grid">
-              <label>Quantity<input type="number" min="1" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} /></label>
-              <label>Unit Price<input type="number" min="0" value={form.unitPrice} onChange={e => setForm({ ...form, unitPrice: e.target.value })} /></label>
-            </div>
-            <div className="sales-order-pricing">
-              <article><span>Subtotal</span><strong>{currency(subtotal)}</strong></article>
-              <article><span>VAT ({vatRate}%)</span><strong>{currency(vat)}</strong></article>
-              <article><span>Invoice Total</span><strong>{currency(total)}</strong></article>
+              <label>Pick from list
+                <select defaultValue="" onChange={e => { const c = customers.find(x => (x.customerId || x.id) === e.target.value); if (c) pickCustomer(c); }}>
+                  <option value="">Select a customer…</option>
+                  {customers.map(c => <option key={c.customerId || c.id} value={c.customerId || c.id}>{c.customerName || c.name} · {c.phone || ''}</option>)}
+                </select>
+              </label>
             </div>
             <div className="modal-grid">
-              <label>VAT / Tax Status<select value={form.taxStatus} onChange={e => setForm({ ...form, taxStatus: e.target.value })}>{['Taxable', 'Exempt', 'Zero Rated'].map(x => <option key={x} value={x}>{x}</option>)}</select></label>
-              <label>Payment Method<select value={form.paymentMethod} onChange={e => setForm({ ...form, paymentMethod: e.target.value })}>{['Bank', 'Cash', 'M-Pesa', 'Mobile Money', 'Cheque', 'Credit', 'Direct Transfer'].map(x => <option key={x}>{x}</option>)}</select></label>
-              <label>Amount Paid<input type="number" min="0" step="0.01" value={form.paid} onChange={e => setForm({ ...form, paid: e.target.value })} /></label>
-              <label>Due Date<input type="date" value={form.dueDate} onChange={e => setForm({ ...form, dueDate: e.target.value })} /></label>
+              <label>Customer phone<input value={form.customerPhone} onChange={e => set('customerPhone', e.target.value)} /></label>
+              <label>Customer email<input type="email" value={form.customerEmail} onChange={e => set('customerEmail', e.target.value)} /></label>
+              <label>Sales Rep<input value={form.salesRep} onChange={e => set('salesRep', e.target.value)} /></label>
+              <label>Customer PO #<input value={form.poReference} onChange={e => set('poReference', e.target.value)} /></label>
+              <label>Order / Ref #<input value={form.orderNumber} onChange={e => set('orderNumber', e.target.value)} /></label>
+              <label>Currency<select value={form.currency} onChange={e => set('currency', e.target.value)}>{['KES', 'USD', 'EUR', 'GBP'].map(x => <option key={x}>{x}</option>)}</select></label>
             </div>
-            <label>Payment Terms<input value={form.paymentTerms} onChange={e => setForm({ ...form, paymentTerms: e.target.value })} /></label>
+            <label>Bill to address<textarea value={form.billingAddress} onChange={e => set('billingAddress', e.target.value)} rows={2} placeholder="Customer billing address" /></label>
+            <label>Ship to<textarea value={form.shipTo} onChange={e => set('shipTo', e.target.value)} rows={2} placeholder="Delivery / shipping address" /></label>
+            <div style={{ borderTop: '1px solid var(--line)', paddingTop: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <strong>Line Items</strong>
+                <select style={{ maxWidth: 220 }} value="" onChange={e => { const p = products.find(x => x.id === e.target.value); if (p) { addItem(); const n = (form.items || []).length; setItem(n, 'productId', p.id); setItem(n, 'productName', p.name); setItem(n, 'unitPrice', num(p.sellingPrice || p.price) || 0); } }}>
+                  <option value="">+ Add product…</option>
+                  {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+              <div className="settings-kv-grid" style={{ gridTemplateColumns: '2.2fr 0.8fr 1fr 1fr 1fr 34px', gap: 8, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: '#98a2b3' }}>
+                <span>Item</span><span>Qty</span><span>Rate</span><span>Disc</span><span>Amount</span><span />
+              </div>
+              {lines.map((it, i) => (
+                <div key={i} className="settings-kv-grid" style={{ gridTemplateColumns: '2.2fr 0.8fr 1fr 1fr 1fr 34px', gap: 8, alignItems: 'center', marginTop: 6 }}>
+                  <input value={it.productName} onChange={e => setItem(i, 'productName', e.target.value)} placeholder="Item / service" />
+                  <input type="number" min="0" value={it.quantity} onChange={e => setItem(i, 'quantity', e.target.value)} />
+                  <input type="number" min="0" step="0.01" value={it.unitPrice} onChange={e => setItem(i, 'unitPrice', e.target.value)} />
+                  <input type="number" min="0" step="0.01" value={it.discount} onChange={e => setItem(i, 'discount', e.target.value)} />
+                  <strong>{currency(it.amount)}</strong>
+                  <button type="button" className="mini-action danger" onClick={() => removeItem(i)}>×</button>
+                </div>
+              ))}
+              <button type="button" className="mini-action" onClick={addItem}>+ Add line</button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
+              <div className="sales-order-pricing">
+                <article><span>Subtotal</span><strong>{currency(subtotal)}</strong></article>
+                <article><span>Discount (−)</span><strong style={{ color: '#d92d20' }}>{currency(discount)}</strong></article>
+                <article><span>Shipping</span><strong>{currency(shipping)}</strong></article>
+                <article><span>VAT ({vatRate}%)</span><strong>{currency(vat)}</strong></article>
+                <article><span>Total</span><strong>{currency(total)}</strong></article>
+                <article><span>Balance due</span><strong>{currency(Math.max(0, total - paid))}</strong></article>
+              </div>
+              <div className="modal-grid">
+                <label>Discount<input type="number" min="0" step="0.01" value={form.discount} onChange={e => set('discount', e.target.value)} /></label>
+                <label>Shipping / Freight<input type="number" min="0" step="0.01" value={form.shipping} onChange={e => set('shipping', e.target.value)} /></label>
+                <label>VAT / Tax<select value={form.taxStatus} onChange={e => set('taxStatus', e.target.value)}>{['Taxable', 'Exempt', 'Zero Rated'].map(x => <option key={x} value={x}>{x}</option>)}</select></label>
+                <label>VAT rate %<input type="number" min="0" step="0.1" value={form.vatRate} onChange={e => set('vatRate', e.target.value)} /></label>
+                <label>Payment Method<select value={form.paymentMethod} onChange={e => set('paymentMethod', e.target.value)}>{['Bank', 'Cash', 'M-Pesa', 'Mobile Money', 'Cheque', 'Credit', 'Direct Transfer'].map(x => <option key={x}>{x}</option>)}</select></label>
+                <label>Amount Paid<input type="number" min="0" step="0.01" value={form.paid} onChange={e => set('paid', e.target.value)} /></label>
+                <label>Due Date<input type="date" value={form.dueDate} onChange={e => set('dueDate', e.target.value)} /></label>
+                <label>Payment Terms<select value={form.paymentTerms} onChange={e => set('paymentTerms', e.target.value)}>{['Net 7', 'Net 15', 'Net 30', 'Net 45', 'Net 60', 'Due on receipt', 'COD'].map(x => <option key={x}>{x}</option>)}</select></label>
+              </div>
+            </div>
+            <label>Memo / Notes<textarea value={form.memo} onChange={e => set('memo', e.target.value)} rows={2} placeholder="Memo shown on the invoice" /></label>
             <button type="submit" className="primary-action" disabled={saving}>{saving ? 'Creating invoice…' : `Create Invoice — ${currency(total)}`}</button>
           </form>
         </div>
