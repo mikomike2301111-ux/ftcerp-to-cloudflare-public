@@ -11410,3 +11410,30 @@ svg.sparkline path {
 }
 .accounts-more-menu button:hover { background: #f2f4f7; color: #101828; }
 .accounts-more-sep { height: 1px; background: #eef0f3; margin: 4px 8px; }
+
+/* ── Sales top: mobile responsiveness ── */
+@media (max-width: 900px) {
+  .sales-hero { grid-template-columns: 1fr; gap: 16px; padding: 20px; min-height: 0; }
+  .sales-hero > div:first-child::after { display: none; }
+  .sales-hero h1 { font-size: clamp(26px, 6.5vw, 34px); }
+  .sales-hero p { font-size: 14px; }
+  .sales-hero-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .sales-hero-stats .hero-stat,
+  .sales-hero-stats > strong { min-height: 0; padding: 12px 10px 12px 54px; }
+  .sales-hero-stats .hero-stat:before,
+  .sales-hero-stats > strong:before { left: 10px; width: 30px; height: 30px; border-radius: 8px; }
+  .inline-actions, .sales-filter-bar { flex-wrap: wrap; }
+  .inline-actions button, .sales-filter-bar button { min-height: 40px; white-space: normal; }
+  .sales-tabs { overflow-x: auto; flex-wrap: nowrap; }
+  .sales-tabs button { flex: 0 0 auto; }
+  .control-grid { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+  .sales-workspace, .page-stack { overflow-x: hidden; }
+}
+@media (max-width: 480px) {
+  .sales-hero { padding: 16px 14px; }
+  .sales-hero h1 { font-size: 24px; }
+  .sales-hero-stats { grid-template-columns: 1fr 1fr; }
+  .sales-hero-stats .hero-stat { padding-left: 48px; }
+  .sales-filter-bar { gap: 6px; }
+  .sales-filter-bar button { flex: 1 1 auto; justify-content: center; }
+}

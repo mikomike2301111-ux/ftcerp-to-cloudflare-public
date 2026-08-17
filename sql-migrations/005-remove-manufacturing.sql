@@ -14,32 +14,39 @@
 -- a full database-level cleanup.
 -- ============================================================
 
--- 1) Drop manufacturing tables (order respects FKs where present)
-drop table if exists public.production_batch_yields;
-drop table if exists public.production_batch_materials;
-drop table if exists public.production_batch_costs;
-drop table if exists public.production_quality_checks;
-drop table if exists public.production_storage_history;
-drop table if exists public.production_material_requests;
-drop table if exists public.production_downtime;
-drop table if exists public.production_capacity;
-drop table if exists public.production_calendar;
-drop table if exists public.production_output;
-drop table if exists public.production_jobs;
-drop table if exists public.quality_control_records;
-drop table if exists public.waste_records;
-drop table if exists public.batch_recalls;
-drop table if exists public.manufacturing_documents;
-drop table if exists public.formula_versions;
-drop table if exists public.bom_version_history;
-drop table if exists public.product_formulas;
-drop table if exists public.raw_materials;
-drop table if exists public.unit_conversions;
+-- 1) Drop the manufacturing analytics materialized view (it depends on the tables below)
+drop materialized view if exists public.analytics_production_metrics cascade;
+
+-- 2) Drop manufacturing tables in FK-safe order (children before parents).
+--    CASCADE is a safety net so any unlisted dependent object is also removed
+--    instead of raising 2BP01 "cannot drop ... because other objects depend on it".
+drop table if exists public.material_consumption cascade;
+drop table if exists public.production_batch_yields cascade;
+drop table if exists public.production_batch_materials cascade;
+drop table if exists public.production_batch_costs cascade;
+drop table if exists public.production_quality_checks cascade;
+drop table if exists public.production_storage_history cascade;
+drop table if exists public.production_material_requests cascade;
+drop table if exists public.production_downtime cascade;
+drop table if exists public.production_capacity cascade;
+drop table if exists public.production_calendar cascade;
+drop table if exists public.production_output cascade;
+drop table if exists public.production_batches cascade;
+drop table if exists public.production_jobs cascade;
+drop table if exists public.quality_control_records cascade;
+drop table if exists public.waste_records cascade;
+drop table if exists public.batch_recalls cascade;
+drop table if exists public.manufacturing_documents cascade;
+drop table if exists public.formula_versions cascade;
+drop table if exists public.bom_version_history cascade;
+drop table if exists public.product_formulas cascade;
+drop table if exists public.raw_materials cascade;
+drop table if exists public.unit_conversions cascade;
 -- unit_of_measure is kept: it is used as generic configuration for
 -- product units across Inventory/Procurement.
 -- drop table if exists public.unit_of_measure;
 
--- 2) Drop any policies that referenced the removed tables
+-- 3) Drop any policies that referenced the removed tables
 do $$
 declare
   t text;
@@ -49,14 +56,15 @@ begin
     'production_batch_yields','production_calendar','production_capacity','production_downtime',
     'production_material_requests','production_storage_history','quality_control_records',
     'waste_records','batch_recalls','manufacturing_documents','product_formulas','formula_versions',
-    'bom_version_history','raw_materials','unit_conversions','production_output','unit_of_measure'
+    'bom_version_history','raw_materials','unit_conversions','production_output','unit_of_measure',
+    'material_consumption'
   ]
   loop
     execute format('drop policy if exists %I on public.%I', 'manufacturing access ' || t, t);
   end loop;
 end $$;
 
--- 3) Remove manufacturing data keys from the erp_state JSON bundle
+-- 4) Remove manufacturing data keys from the erp_state JSON bundle
 update public.erp_state
 set data = jsonb_strip_null(
   data
@@ -71,9 +79,10 @@ set data = jsonb_strip_null(
 )
 where id is not null;
 
--- 4) Verify the tables are gone
+-- 5) Verify the tables are gone
 select table_name
 from information_schema.tables
 where table_schema = 'public'
-  and table_name in ('raw_materials','production_jobs','production_batches','product_formulas')
+  and table_name in ('raw_materials','production_jobs','production_batches',
+                     'product_formulas','material_consumption')
 order by table_name;
