@@ -20,6 +20,7 @@ drop policy if exists "authenticated read" on public.erp_state;
 drop policy if exists "authenticated all" on public.erp_state;
 drop policy if exists "erp_state anon select" on public.erp_state;
 drop policy if exists "erp_state anon all" on public.erp_state;
+drop policy if exists "erp_state service role all" on public.erp_state;
 
 -- 3) Service-role only access (the app's server path)
 create policy "erp_state service role all"

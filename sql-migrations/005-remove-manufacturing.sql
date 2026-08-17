@@ -60,7 +60,11 @@ begin
     'material_consumption'
   ]
   loop
-    execute format('drop policy if exists %I on public.%I', 'manufacturing access ' || t, t);
+    -- Only touch the policy if the table still exists (it may already be gone
+    -- from an earlier run — DROP POLICY IF EXISTS still errors if the relation is missing).
+    if to_regclass('public.' || t) is not null then
+      execute format('drop policy if exists %I on public.%I', 'manufacturing access ' || t, t);
+    end if;
   end loop;
 end $$;
 
