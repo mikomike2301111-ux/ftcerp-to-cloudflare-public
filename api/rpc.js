@@ -2038,6 +2038,33 @@ async function fetchPublicView(name, query = 'select=*') {
   }
 }
 
+// ── Offline resilience: last-known-good state cache ─────────────────────
+// If Supabase is unreachable, loadState falls back to the most recent
+// successfully-loaded ERP state instead of seeding an empty instance, so
+// Finance/Accounts never appear "lost". The disk snapshot also survives
+// Vercel cold starts (the function's writable filesystem).
+let lastGoodState = null;
+let lastGoodStateAt = 0;
+const LAST_GOOD_STATE_PATH = path.join(process.cwd(), 'tmp', 'erp-last-good.json');
+
+function loadLastGoodStateFromDisk() {
+  try {
+    if (fs.existsSync(LAST_GOOD_STATE_PATH)) {
+      const parsed = JSON.parse(fs.readFileSync(LAST_GOOD_STATE_PATH, 'utf8'));
+      if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 2) return parsed;
+    }
+  } catch {}
+  return null;
+}
+function persistLastGoodState(state) {
+  try {
+    if (Date.now() - lastGoodStateAt < 120000) return; // throttle writes
+    const dir = path.dirname(LAST_GOOD_STATE_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(LAST_GOOD_STATE_PATH, JSON.stringify(state));
+  } catch {}
+}
+
 async function loadState() {
   if (db) return;
   const stateLoadTimeout = Symbol('state-load-timeout');
@@ -2056,7 +2083,17 @@ async function loadState() {
     ]);
   }
   if (rows === stateLoadTimeout || rows === null) {
-    // Keep empty in-memory seed ONLY for this instance — do NOT write back and wipe Supabase
+    // Supabase unreachable — use the last known good state instead of an empty seed,
+    // so Finance/Accounts keep showing the REAL data until the connection returns.
+    const cached = lastGoodState || loadLastGoodStateFromDisk();
+    if (cached && typeof cached === 'object' && Object.keys(cached).length > 2) {
+      db = cached;
+      ensureFarmtrackCatalogue(db);
+      db._skipPersistUntilRemoteLoad = true; // never write the cached/stale state back over remote
+      console.warn('[ERP] Supabase unreachable — serving last known good state (offline cache).');
+      return;
+    }
+    // No cache yet: keep empty in-memory seed ONLY for this instance — do NOT write back and wipe Supabase
     seed();
     applyQuickBooksSeed();
     if (db) db._skipPersistUntilRemoteLoad = true;
@@ -2065,6 +2102,10 @@ async function loadState() {
   if (Array.isArray(rows) && rows[0] && rows[0].data && typeof rows[0].data === 'object') {
     db = rows[0].data;
     ensureFarmtrackCatalogue(db);
+    lastGoodState = db;
+    persistLastGoodState(db); // snapshot so a later cold start can also fall back offline
+    lastGoodStateAt = Date.now();
+    db._offlineCached = false;
     // Do not auto-save on load (prevents wiping remote with partial seed merges)
     return;
   }
