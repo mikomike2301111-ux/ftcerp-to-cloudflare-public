@@ -15214,6 +15214,53 @@ territory: geo,
     return { success: true, invoice };
   },
 
+  createInvoiceFromEntry(user, row = {}) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT, ROLES.SALES);
+    const d = data();
+    assertRequired(row.customerName || row.customerId, 'Customer');
+    const items = (Array.isArray(row.items) ? row.items : []).map(it => {
+      const qty = num(it.quantity || 1);
+      const price = num(it.unitPrice || it.rate || it.price || 0);
+      const productName = clean(it.productName) || clean(it.description) || 'Item';
+      return { id: gid(), productId: it.productId || '', productName, description: clean(it.description) || productName, quantity: qty, unitPrice: price, total: qty * price };
+    });
+    if (!items.length) throw new Error('At least one invoice line item is required');
+    const subtotal = items.reduce((s, i) => s + i.total, 0);
+    const vatCalc = computeInvoiceTax(d, subtotal, { taxStatus: row.taxStatus, vatRate: row.vatRate });
+    const tax = vatCalc.tax;
+    const total = subtotal + tax;
+    const paid = Math.max(0, num(row.paid));
+    const id = gid();
+    const invNo = nextInvoiceNo(d);
+    const invoice = {
+      id, invNo,
+      customerId: row.customerId || '', customerName: row.customerName,
+      customerEmail: clean(row.customerEmail || ''), customerPhone: clean(row.customerPhone || ''),
+      date: row.date || today(), dueDate: row.dueDate || new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+      subtotal, tax, total, paid, balance: Math.max(0, total - paid),
+      status: paid >= total ? 'Paid' : paid > 0 ? 'Partial' : 'Pending',
+      paymentTerms: clean(row.paymentTerms) || 'Net 30', type: 'Sales', approvalStatus: 'Auto Approved',
+      taxStatus: vatCalc.taxStatus, vatRate: vatCalc.rate, vatExempt: vatCalc.isExempt,
+      createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), isDeleted: 'No'
+    };
+    d.invoices = Array.isArray(d.invoices) ? d.invoices : [];
+    d.invoiceItems = Array.isArray(d.invoiceItems) ? d.invoiceItems : [];
+    d.invoices.unshift(invoice);
+    items.forEach(it => { it.invoiceId = id; d.invoiceItems.push(it); });
+    // Double-entry: Dr Accounts Receivable / Cr Sales Revenue (+ VAT), and payment receipt when paid
+    postFinanceJournal(u, { date: invoice.date, sourceModule: 'Sales', sourceId: id, reference: invNo, description: `Sales invoice ${invNo}`, debitAccountName: 'Accounts Receivable', creditAccountName: 'Sales Revenue', amount: subtotal });
+    if (tax) postFinanceJournal(u, { date: invoice.date, sourceModule: 'Taxes', sourceId: id, reference: invNo, description: `Output VAT ${invNo}`, debitAccountName: 'Accounts Receivable', creditAccountName: 'Tax Payable', amount: tax });
+    if (paid) {
+      const method = row.paymentMethod || row.method || 'Bank';
+      const creditAcct = /m.pesa|mobile/i.test(method) ? 'M-Pesa Till' : /cash/i.test(method) ? 'Cash on Hand' : 'KCB Bank';
+      postFinanceJournal(u, { date: invoice.date, sourceModule: 'Banking', sourceId: id, reference: invNo, description: `Customer receipt ${invNo}`, debitAccountName: creditAcct, creditAccountName: 'Accounts Receivable', amount: paid });
+    }
+    const customer = (d.customers || []).find(c => c.id === row.customerId || String(c.name || '').toLowerCase() === String(row.customerName || '').toLowerCase());
+    if (customer) { customer.balance = num(customer.balance) + total - paid; customer.updatedAt = new Date().toISOString(); }
+    emitBusinessEvent(u, 'invoice.created_from_entry', 'invoices', id, { invNo, customerName: invoice.customerName, total });
+    log(u, 'Create Invoice', 'Accounts', `${invNo} — ${total}`);
+    return { success: true, invoice };
+  },
   updateCustomerBalances(user) {
     const u = reqRole(user, ROLES.ADMIN, ROLES.ACCOUNTANT);
     const d = data();
@@ -15298,6 +15345,7 @@ const SYNC_AFTER_RPC = {
   processReturn: ['Inventory', 'Inventory Movements', 'Accounts', 'Invoices', 'Finance', 'Dashboard', 'Activity'],
   updateInvoiceStatuses: ['Accounts', 'Invoices', 'Dashboard', 'Activity'],
   createInvoiceFromSalesOrder: ['Sales', 'Invoices', 'Inventory', 'Finance', 'Accounts', 'Dashboard', 'Activity'],
+  createInvoiceFromEntry: ['Sales', 'Invoices', 'Finance', 'Accounts', 'Customers', 'Dashboard', 'Activity'],
   updateCustomerBalances: ['Accounts', 'Customers', 'Finance', 'Dashboard', 'Activity'],
   importAccountingBundle: ['Accounts', 'Customers', 'Products', 'Suppliers', 'Sales', 'Inventory', 'Finance', 'Dashboard', 'Reports', 'Activity'],
   getAuditTrail: ['Administrator', 'Audit', 'Dashboard', 'Activity']

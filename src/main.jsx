@@ -2568,6 +2568,7 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
   const [receptionForm, setReceptionForm] = useState({
     callerName: '', phone: '', reason: '', receivedBy: user?.name || '', date: new Date().toISOString().slice(0, 10)
   });
+  const [receptionEdit, setReceptionEdit] = useState(null);
   const [receptionBusy, setReceptionBusy] = useState(false);
   if (loading) return <Loading title="CRM" />;
   if (error) return <ErrorState title="CRM" error={error} />;
@@ -2783,7 +2784,7 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
 {view === 'leads' && <Panel title="Leads and Opportunities" action="Live"><SimpleTable rows={allLeads} columns={['name', 'company', 'phone', 'stage', 'assignedTo', 'status']} /></Panel>}
       {view === 'calls' && (
         <div className="dashboard-grid">
-          <Panel className="span-5" title="Reception call" action="DATE · NUMBER · REASON">
+          <Panel className="span-5" title={receptionEdit ? 'Edit reception call' : 'Reception call'} action="DATE · NUMBER · REASON">
             <form className="settings-form-grid" onSubmit={async e => {
               e.preventDefault();
               if (!receptionForm.phone) return alert('Phone number is required');
@@ -2792,22 +2793,21 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
               try {
                 const date = receptionForm.date || new Date().toISOString().slice(0, 10);
                 await rpc('saveCall', [user, {
+                  ...(receptionForm.id ? { id: receptionForm.id } : {}),
                   recordType: 'reception',
                   customerName: receptionForm.callerName || receptionForm.phone,
                   callName: receptionForm.callerName || receptionForm.phone,
                   name: receptionForm.callerName || receptionForm.phone,
                   phone: receptionForm.phone,
-                  reason: receptionForm.reason,
-                  comments: receptionForm.reason,
-                  notes: receptionForm.reason,
+                  reason: receptionForm.reason, // single source of detail — NOT duplicated into comments/notes
                   receivedBy: receptionForm.receivedBy || user?.name || 'Reception',
-                  transferTo: receptionForm.receivedBy || '',
                   assignedTo: receptionForm.receivedBy || user?.name || 'Reception',
                   stage: 'Reception',
                   date,
                   datetime: `${date}`
                 }]);
-                setReceptionForm({ callerName: '', phone: '', reason: '', receivedBy: user?.name || '', date: new Date().toISOString().slice(0, 10) });
+                setReceptionForm({ callerName: '', phone: '', reason: '', receivedBy: user?.name || '', date: new Date().toISOString().slice(0, 10), id: '' });
+                setReceptionEdit(null);
                 setRefreshKey(x => x + 1);
               } catch (err) { alert(err.message); }
               finally { setReceptionBusy(false); }
@@ -2817,19 +2817,43 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
               <label>Number<input type="tel" inputMode="tel" value={receptionForm.phone} onChange={e => setReceptionForm({ ...receptionForm, phone: e.target.value })} placeholder="Caller phone number" required /></label>
               <label>Reason<textarea value={receptionForm.reason} onChange={e => setReceptionForm({ ...receptionForm, reason: e.target.value })} rows={3} placeholder="General enquiry, asking, direction, supplier, customer question..." required /></label>
               <label>Received by / Transfer to<input value={receptionForm.receivedBy} onChange={e => setReceptionForm({ ...receptionForm, receivedBy: e.target.value })} placeholder="Reception / staff name / department" /></label>
-              <button type="submit" className="primary-action" disabled={receptionBusy}>{receptionBusy ? 'Saving…' : 'Log call'}</button>
+              <button type="submit" className="primary-action" disabled={receptionBusy}>{receptionBusy ? 'Saving…' : (receptionEdit ? 'Update call' : 'Log call')}</button>
             </form>
           </Panel>
           <Panel className="span-7" title="Reception calls" action={`${(allCalls || []).filter(r => r.recordType === 'reception' || r.stage === 'Reception').length} calls`}>
             <div className="table-wrap">
-              <table>
-                <thead><tr><th>Date</th><th>Name</th><th>Number</th><th>Reason</th><th>Received by / Transfer to</th></tr></thead>
+              <table className="reception-calls-table">
+                <thead><tr><th>Date</th><th>Name</th><th>Number</th><th>Reason</th><th>Received by / Transfer to</th><th>Actions</th></tr></thead>
                 <tbody>
                   {(() => {
                     const rows = (allCalls || [])
                       .filter(r => r.recordType === 'reception' || r.stage === 'Reception')
                       .sort((a, b) => String(b.datetime || b.date || '').localeCompare(String(a.datetime || a.date || '')));
-                    if (!rows.length) return <tr><td colSpan={5}><div className="empty-state">No reception calls yet.</div></td></tr>;
+                    const inlineEdit = (row, field, label, current) => {
+                      const v = window.prompt(`${label}:`, current);
+                      if (v === null) return;
+                      rpc('saveCall', [user, { id: row.id, [field]: v.trim() }])
+                        .then(() => setRefreshKey(x => x + 1))
+                        .catch(e => alert(e.message || 'Could not update call'));
+                    };
+                    const editReception = row => {
+                      setReceptionEdit(row.id);
+                      setReceptionForm({
+                        id: row.id,
+                        callerName: row.callName || row.name || row.customerName || '',
+                        phone: row.phone || '',
+                        reason: row.reason || row.comments || row.notes || '',
+                        receivedBy: row.receivedBy || row.assignedTo || user?.name || '',
+                        date: String(row.date || '').slice(0, 10) || new Date().toISOString().slice(0, 10)
+                      });
+                    };
+                    const deleteReception = row => {
+                      if (!window.confirm(`Delete this reception call (${row.callName || row.phone || row.id})?`)) return;
+                      rpc('deleteRecord', [user, 'calls', row.id])
+                        .then(() => setRefreshKey(x => x + 1))
+                        .catch(e => alert(e.message || 'Could not delete call'));
+                    };
+                    if (!rows.length) return <tr><td colSpan={6}><div className="empty-state">No reception calls yet.</div></td></tr>;
                     let lastDay = '';
                     const out = [];
                     rows.forEach(row => {
@@ -2838,17 +2862,23 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                         lastDay = day;
                         out.push(
                           <tr key={`day-${day}`} className="day-separator-row">
-                            <td colSpan={5} style={{ background: '#f8fafc', fontWeight: 700, color: '#334155', padding: '8px 12px' }}>{day}</td>
+                            <td colSpan={6} style={{ background: '#f8fafc', fontWeight: 700, color: '#334155', padding: '8px 12px' }}>{day}</td>
                           </tr>
                         );
                       }
                       out.push(
                         <tr key={row.id}>
                           <td>{row.date || '—'}</td>
-                          <td><strong>{row.callName || row.name || row.customerName || '—'}</strong></td>
-                          <td><strong>{row.phone || row.customerName || '—'}</strong></td>
-                          <td>{row.reason || row.comments || row.notes || '—'}</td>
-                          <td>{row.receivedBy || row.transferTo || row.assignedTo || '—'}</td>
+                          <td><strong className="editable-cell" title="Click to edit name" onClick={() => inlineEdit(row, 'callName', 'Caller name', row.callName || row.name || row.customerName || '')}>{row.callName || row.name || row.customerName || '—'}</strong></td>
+                          <td><strong className="editable-cell" title="Click to edit number" onClick={() => inlineEdit(row, 'phone', 'Phone number', row.phone || '')}>{row.phone || '—'}</strong></td>
+                          <td className="editable-cell" title="Click to edit detail" onClick={() => inlineEdit(row, 'reason', 'Reason / detail', row.reason || row.comments || row.notes || '')}>{row.reason || row.comments || row.notes || '—'}</td>
+                          <td className="editable-cell" title="Click to edit" onClick={() => inlineEdit(row, 'receivedBy', 'Received by / Transfer to', row.receivedBy || row.transferTo || row.assignedTo || '')}>{row.receivedBy || row.transferTo || row.assignedTo || '—'}</td>
+                          <td>
+                            <div className="call-quick-actions">
+                              <button type="button" className="mini-action" title="Edit this call" onClick={() => editReception(row)}>Edit</button>
+                              <button type="button" className="mini-action danger" title="Delete this call" onClick={() => deleteReception(row)}>Del</button>
+                            </div>
+                          </td>
                         </tr>
                       );
                     });
@@ -6880,11 +6910,107 @@ function CreditHealthDonut({ data = [] }) {
    End Phase 3 Chart Components
    ========================================================== */
 
+function AccountsInvoiceModal({ user, products = [], customers = [], onClose, onSaved }) {
+  const [form, setForm] = useState({
+    customerId: '', customerName: '', customerPhone: '', customerEmail: '',
+    productId: '', quantity: 1, unitPrice: 0,
+    taxStatus: 'Taxable', paymentMethod: 'Bank', paid: 0,
+    dueDate: '', paymentTerms: 'Net 30'
+  });
+  const [saving, setSaving] = useState(false);
+  const selectedProduct = products.find(p => p.id === form.productId) || {};
+  const unitPrice = num(form.unitPrice) || num(selectedProduct.sellingPrice || selectedProduct.price) || 0;
+  const qty = num(form.quantity) || 1;
+  const subtotal = qty * unitPrice;
+  const vatRate = num(form.vatRate) || num(selectedProduct.taxRate) || 16;
+  const vat = form.taxStatus === 'Taxable' ? Math.round(subtotal * vatRate) / 100 : 0;
+  const total = subtotal + vat;
+  const pickCustomer = c => setForm(f => ({ ...f, customerId: c.customerId || c.id || '', customerName: c.customerName || c.name || '', customerPhone: c.phone || '', customerEmail: c.email || '' }));
+  async function submit(e) {
+    e.preventDefault();
+    if (!form.customerName) return alert('Customer name is required');
+    if (!form.productId) return alert('Select a product to invoice');
+    setSaving(true);
+    try {
+      await rpc('createInvoiceFromEntry', [user, {
+        customerId: form.customerId || undefined,
+        customerName: form.customerName,
+        customerPhone: form.customerPhone,
+        customerEmail: form.customerEmail,
+        items: [{ productId: form.productId, productName: selectedProduct.name || form.customerName, description: selectedProduct.name || 'Invoice item', quantity: qty, unitPrice }],
+        taxStatus: form.taxStatus,
+        paymentMethod: form.paymentMethod,
+        paid: num(form.paid) || 0,
+        dueDate: form.dueDate,
+        paymentTerms: form.paymentTerms,
+        date: new Date().toISOString().slice(0, 10)
+      }]);
+      onSaved?.();
+    } catch (err) {
+      alert(err.message || 'Could not create invoice');
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="modal-scrim retractable-overlay" onClick={onClose}>
+            <div className="modal-card overlay-scrollable wide" onClick={e => e.stopPropagation()}>
+        <header>
+          <h2>Create Invoice</h2>
+          <button type="button" onClick={onClose}><X size={18} /></button>
+        </header>
+        <div className="modal-card-body overlay-scroll-body">
+          <form className="settings-form-grid" onSubmit={submit}>
+            <label>Customer
+              <input list="acct-invoice-customers" value={form.customerName} onChange={e => setForm({ ...form, customerName: e.target.value, customerId: '' })} placeholder="Type customer name" required />
+              <datalist id="acct-invoice-customers">{customers.map(c => <option key={c.customerId || c.id} value={c.customerName || c.name} />)}</datalist>
+            </label>
+            <label>Pick from list
+              <select defaultValue="" onChange={e => { const c = customers.find(x => (x.customerId || x.id) === e.target.value); if (c) pickCustomer(c); }}>
+                <option value="">Select a customer…</option>
+                {customers.map(c => <option key={c.customerId || c.id} value={c.customerId || c.id}>{c.customerName || c.name} · {c.phone || ''}</option>)}
+              </select>
+            </label>
+            <div className="modal-grid">
+              <label>Customer phone<input value={form.customerPhone} onChange={e => setForm({ ...form, customerPhone: e.target.value })} /></label>
+              <label>Customer email<input type="email" value={form.customerEmail} onChange={e => setForm({ ...form, customerEmail: e.target.value })} /></label>
+            </div>
+            <label>Product
+              <select value={form.productId} onChange={e => { const p = products.find(x => x.id === e.target.value); setForm({ ...form, productId: e.target.value, unitPrice: p ? (num(p.sellingPrice || p.price) || 0) : form.unitPrice }); }} required>
+                <option value="">Select product</option>
+                {products.map(p => <option key={p.id} value={p.id}>{p.name} — {currency(num(p.sellingPrice || p.price))}</option>)}
+              </select>
+            </label>
+            <div className="modal-grid">
+              <label>Quantity<input type="number" min="1" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} /></label>
+              <label>Unit Price<input type="number" min="0" value={form.unitPrice} onChange={e => setForm({ ...form, unitPrice: e.target.value })} /></label>
+            </div>
+            <div className="sales-order-pricing">
+              <article><span>Subtotal</span><strong>{currency(subtotal)}</strong></article>
+              <article><span>VAT ({vatRate}%)</span><strong>{currency(vat)}</strong></article>
+              <article><span>Invoice Total</span><strong>{currency(total)}</strong></article>
+            </div>
+            <div className="modal-grid">
+              <label>VAT / Tax Status<select value={form.taxStatus} onChange={e => setForm({ ...form, taxStatus: e.target.value })}>{['Taxable', 'Exempt', 'Zero Rated'].map(x => <option key={x} value={x}>{x}</option>)}</select></label>
+              <label>Payment Method<select value={form.paymentMethod} onChange={e => setForm({ ...form, paymentMethod: e.target.value })}>{['Bank', 'Cash', 'M-Pesa', 'Mobile Money', 'Cheque', 'Credit', 'Direct Transfer'].map(x => <option key={x}>{x}</option>)}</select></label>
+              <label>Amount Paid<input type="number" min="0" step="0.01" value={form.paid} onChange={e => setForm({ ...form, paid: e.target.value })} /></label>
+              <label>Due Date<input type="date" value={form.dueDate} onChange={e => setForm({ ...form, dueDate: e.target.value })} /></label>
+            </div>
+            <label>Payment Terms<input value={form.paymentTerms} onChange={e => setForm({ ...form, paymentTerms: e.target.value })} /></label>
+            <button type="submit" className="primary-action" disabled={saving}>{saving ? 'Creating invoice…' : `Create Invoice — ${currency(total)}`}</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AccountsWorkspace({ user, setPage, globalPeriod }) {
   const tabs = ['overview', 'chart', 'receivables', 'payables', 'banking', 'trial', 'journals', 'reconciliation', 'quotations', 'statements', 'expenses', 'reports', 'audit', 'credit-notes', 'returns', 'history'];
   const [view, setView] = useRouteTab('accounts', tabs, 'overview');
   const [journalOpen, setJournalOpen] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -6946,7 +7072,7 @@ function AccountsWorkspace({ user, setPage, globalPeriod }) {
       </div>
       <FinanceHealthStrip data={data || {}} />
       <div className="accounts-command-strip">
-        <button onClick={() => setOrderOpen(true)}><Plus size={16} /> Invoice</button>
+        <button onClick={() => setInvoiceOpen(true)}><Plus size={16} /> Create Invoice</button>
         <button onClick={() => setPaymentOpen(true)}><CheckCircle2 size={16} /> Confirm Paid</button>
         <button onClick={() => setExpenseOpen(true)}><ReceiptText size={16} /> Balance Expense</button>
         <button type="button" className="primary-action" onClick={() => setNonPoOpen(true)}><FileText size={16} /> Non-PO Invoice</button>
@@ -7331,7 +7457,7 @@ function AccountsWorkspace({ user, setPage, globalPeriod }) {
           )}
         </Panel>
       )}
-      {orderOpen && <NewSaleModal user={user} onClose={() => setOrderOpen(false)} onSaved={() => { setOrderOpen(false); refresh(); setView('receivables'); }} />}
+      {invoiceOpen && <AccountsInvoiceModal user={user} products={data.products || []} customers={data.customerFinance || data.receivables || []} onClose={() => setInvoiceOpen(false)} onSaved={() => { setInvoiceOpen(false); refresh(); setView('receivables'); }} />}
       {journalOpen && <FinanceJournalModal user={user} accounts={data.accounts} onClose={() => setJournalOpen(false)} onSaved={() => { setJournalOpen(false); refresh(); setView('journals'); }} />}
       {expenseOpen && <FinanceExpenseModal user={user} onClose={() => setExpenseOpen(false)} onSaved={() => { setExpenseOpen(false); refresh(); setView('reports'); }} />}
       {paymentOpen && <FinancePaymentModal user={user} receivables={data.receivables} bankAccounts={data.bankAccounts} onClose={() => setPaymentOpen(false)} onSaved={() => { setPaymentOpen(false); refresh(); setView('receivables'); }} />}
