@@ -12629,6 +12629,36 @@ territory: geo,
         ap
       };
     });
+    // Weekly buckets for an accurate, wavy trend with weekly sensitivity
+    const weekStartKey = dateStr => {
+      const d = new Date(String(dateStr || '').slice(0, 10) || '2026-01-01');
+      if (Number.isNaN(d.getTime())) return null;
+      const day = (d.getDay() + 6) % 7; // Monday-start weeks
+      d.setDate(d.getDate() - day);
+      const pad = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    };
+    const revByWeek = {};
+    const expByWeek = {};
+    (d.invoices || []).forEach(inv => { const k = weekStartKey(inv.date || inv.createdAt); if (k) revByWeek[k] = (revByWeek[k] || 0) + num(inv.total); });
+    expensesList.forEach(exp => { const k = weekStartKey(exp.date || exp.createdAt); if (k) expByWeek[k] = (expByWeek[k] || 0) + num(exp.amount); });
+    const weekKeys = Object.keys(revByWeek).concat(Object.keys(expByWeek)).filter(Boolean).sort();
+    const trendWeekly = weekKeys.slice(-16).map((k, i) => {
+      const [, wm, wd] = k.split('-').map(Number);
+      const rev = Math.round(revByWeek[k] || 0);
+      const exp = Math.round(expByWeek[k] || 0);
+      return {
+        week: `W${String(weekKeys.length - 16 + i + 1)}`,
+        label: `${wm}/${String(wd).padStart(2, '0')}`,
+        date: k,
+        revenue: rev,
+        expenses: exp,
+        profit: rev - exp,
+        cash: cashPosition,
+        ar,
+        ap
+      };
+    });
     const receivables = liveReceivables.map(row => {
       const daysOverdue = num(row.balance) > 0 ? reportDaysOverdue(row.dueDate) : 0;
       // Business rules: a fully paid invoice is automatically PAID; overdue after due date.
@@ -12792,7 +12822,9 @@ territory: geo,
       accountingIntegrity,
       balanceSheetSections,
       trend,
+      trendWeekly,
       accounts: d.financeAccounts,
+      accountBalances: acctBalances,
       journals: allEntries,
       journalLines: allLines,
       ledger: [...(Array.isArray(d.financeManualLedger) ? d.financeManualLedger : []), ...(Array.isArray(d.generalLedger) ? d.generalLedger : [])],
@@ -12848,7 +12880,7 @@ territory: geo,
         filters: { dateRange: 'This Fiscal Year', currency: 'KES', entity: 'Farmtrack Biosciences Ltd' },
         overview: { revenue: 0, expenses: 0, grossProfit: 0, netProfit: 0, cashPosition: 0, accountsReceivable: 0, accountsPayable: 0, inventoryValue: 0, payrollCost: 0, taxLiability: 0, bankBalances: 0, operatingCashFlow: 0, budgetVariance: 0, monthlyProfit: 0, yearlyProfit: 0, financialHealthScore: 50 },
         integrity: { journals: 0, lines: 0, unbalanced: 0, immutable: true },
-        trend: [], accounts: [], journals: [], journalLines: [], ledger: [], receivables: [], payables: [],
+        trend: [], trendWeekly: [], accounts: [], accountBalances: [], journals: [], journalLines: [], ledger: [], receivables: [], payables: [],
         bankAccounts: [], bankTransactions: [], expenses: [], payroll: [], taxes: [], assets: [], budgets: [],
         costCenters: [], forecasts: [], reports: [], audit: [], ai: [], customerFinance: [], agingSummary: [],
         collectionQueue: [], paymentTermsSummary: [], statementPreview: [], quotations: [], payments: [],

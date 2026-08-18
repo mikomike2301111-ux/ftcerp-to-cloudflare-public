@@ -3774,6 +3774,7 @@ function CRMReportsCenter({ user, data, globalPeriod = 'Month', onUpdated }) {
         <Panel className="span-8" title={`${activeSet.label}`} action={
           <div className="panel-action-row">
             <button type="button" className="mini-action" onClick={() => exportCrmReport('CSV')}>CSV</button>
+            <button type="button" className="mini-action" onClick={() => exportCrmReport('PDF')}>PDF</button>
             <button type="button" className="mini-action" onClick={() => exportCrmReport('PRINT')}>Print</button>
           </div>
         }>
@@ -7884,6 +7885,7 @@ function AccountsWorkspace({ user, setPage, globalPeriod }) {
   const [refreshKey, setRefreshKey] = useState(0);
   const [auditQuery, setAuditQuery] = useState('');
   const [moreOpen, setMoreOpen] = useState(false);
+  const [busyAccountsPdf, setBusyAccountsPdf] = useState('');
   const moreRef = useRef(null);
   useEffect(() => {
     if (!moreOpen) return undefined;
@@ -7895,6 +7897,24 @@ function AccountsWorkspace({ user, setPage, globalPeriod }) {
   if (loading) return <Loading title="Accounts" />;
   if (error) return <ErrorState title="Accounts" error={error} />;
   const refresh = () => setRefreshKey(x => x + 1);
+  async function exportAccountsPdf() {
+    if (busyAccountsPdf) return;
+    setBusyAccountsPdf('PDF');
+    try {
+      const rows = (data.accounts || []).map(acc => {
+        const bal = (data.accountBalances || []).find(a => (a.id || a.code) === (acc.id || acc.code));
+        return { ...acc, balance: bal ? num(bal.balance) : 0 };
+      });
+      const file = await rpc('generateReportExport', [user, { module: 'Finance', reportName: 'Chart of Accounts', rows, columns: ['code', 'name', 'type', 'balance', 'parent', 'status'] }, 'PDF']);
+      handleGeneratedFile(file, 'PDF');
+    } catch (err) {
+      printText('Chart of Accounts', (data.accounts || []).map(a => `${a.code} | ${a.name} | ${a.type}`).join('\n'));
+      alert(err?.message || 'PDF export failed — opened printable view instead.');
+    } finally {
+      setBusyAccountsPdf('');
+    }
+  }
+
   const dataSafe = data || {};
   const overview = dataSafe.overview || {};
   const integrity = dataSafe.integrity || {};
@@ -7998,12 +8018,17 @@ function AccountsWorkspace({ user, setPage, globalPeriod }) {
             ))}
           </div>
           <div className="analytics-mini-strip">
-            <div className="mini-chart-card"><span>Revenue · 12 mo</span><MiniTrendChart data={data.trend || []} valueKey="revenue" color="#377dff" height={54} /></div>
-            <div className="mini-chart-card"><span>Expenses · 12 mo</span><MiniTrendChart data={data.trend || []} valueKey="expenses" color="#f79009" height={54} /></div>
-            <div className="mini-chart-card"><span>Profit · 12 mo</span><MiniTrendChart data={data.trend || []} valueKey="profit" color={num((data.trend || []).reduce((s, t) => s + num(t.profit), 0)) >= 0 ? '#22c55e' : '#ef4444'} height={54} /></div>
+            <div className="mini-chart-card"><span>Revenue · weekly</span><MiniTrendChart data={data.trendWeekly || []} valueKey="revenue" color="#377dff" height={54} /></div>
+            <div className="mini-chart-card"><span>Expenses · weekly</span><MiniTrendChart data={data.trendWeekly || []} valueKey="expenses" color="#f79009" height={54} /></div>
+            <div className="mini-chart-card"><span>Profit · weekly</span><MiniTrendChart data={data.trendWeekly || []} valueKey="profit" color={num((data.trendWeekly || []).reduce((s, t) => s + num(t.profit), 0)) >= 0 ? '#22c55e' : '#ef4444'} height={54} /></div>
             <div className="mini-chart-card"><span>AR aging · buckets</span><MiniBarChart data={(data.agingSummary || []).map(a => ({ label: a.customerName || 'Aging', value: a.totalBalance }))} valueKey="value" color="#8b5cf6" height={54} /></div>
             <div className="mini-chart-card"><span>Source flows</span><MiniBarChart data={(data.sourceFlows || []).map(f => ({ label: f.module, value: f.records }))} valueKey="value" color="#2563eb" height={54} /></div>
           </div>
+          <Panel className="span-12" title="Weekly revenue · expenses · profit" action={`${(data.trendWeekly || []).length} weeks`}>
+            {Array.isArray(data.trendWeekly) && data.trendWeekly.length
+              ? <div style={{ height: 300 }}><MultiMetricTrendChart data={(data.trendWeekly || []).map(t => ({ ...t, month: t.label }))} metrics={['revenue', 'expenses', 'profit']} /></div>
+              : <div className="empty-state">No weekly trend yet. Create invoices or record expenses to see revenue, expenses, and profit week by week.</div>}
+          </Panel>
           <div className="dashboard-grid">
             <Panel className="span-8 sales-main-chart accounts-movement-panel" title="Accounts Movement" action="Revenue / Expenses / Cash / AR / AP / Profit">
               <MultiMetricTrendChart data={data.trend} metrics={movementMetrics} />
@@ -8102,37 +8127,57 @@ function AccountsWorkspace({ user, setPage, globalPeriod }) {
         </>
       )}
       {view === 'chart' && (
-        <Panel title="Chart of Accounts" action={<div className="panel-action-row"><button className="mini-action" onClick={() => setAccountOpen(true)}><Plus size={15} /> New Account</button><button className="mini-action" onClick={() => downloadRowsFile('chart-of-accounts', data.accounts, 'CSV')}><Download size={15} /> CSV</button></div>}>
-          <div className="table-wrap">
-            <table>
-              <thead><tr><th>Code</th><th>Name</th><th>Type</th><th>Parent</th><th>Status</th><th>Actions</th></tr></thead>
-              <tbody>
-                {(data.accounts || []).map(acc => (
-                  <tr key={acc.id || acc.code}>
-                    <td><strong>{acc.code}</strong></td>
-                    <td>{acc.name}</td>
-                    <td>{acc.type}</td>
-                    <td>{acc.parent || '—'}</td>
-                    <td><span className="status active">{acc.status}</span></td>
-                    <td onClick={e => e.stopPropagation()}>
-                      <ActionMenu
-                        summary={acc.name}
-                        actions={[
-                          { label: 'Open detail', icon: <Landmark size={15} />, onClick: () => setDeepAccount(acc) },
-                          { label: 'Edit account', icon: <UserCog size={15} />, onClick: () => setAccountOpen(true) },
-                          { label: 'New journal', icon: <FileText size={15} />, onClick: () => setJournalOpen(true) },
-                          { label: 'Record expense', icon: <ReceiptText size={15} />, onClick: () => setExpenseOpen(true) },
-                          { label: 'Copy', icon: <FileText size={15} />, onClick: () => copyText(rowSummary(acc)) },
-                          { label: 'Export CSV', icon: <Download size={15} />, onClick: () => downloadRowsFile(`account-${acc.code}`, [acc], 'CSV') }
-                        ]}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Panel>
+        <div className="dashboard-grid">
+          <Panel className="span-12" title="Chart of Accounts" action={<div className="panel-action-row"><button className="mini-action" onClick={() => setAccountOpen(true)}><Plus size={15} /> New Account</button><button className="mini-action" onClick={() => downloadRowsFile('chart-of-accounts', data.accounts, 'CSV')}><Download size={15} /> CSV</button><button className="mini-action" onClick={() => exportAccountsPdf()} disabled={!!busyAccountsPdf}>{busyAccountsPdf === 'PDF' ? 'Exporting...' : <><FileText size={15} /> PDF</>}</button></div>}>
+            <div className="analytics-kpi-row" style={{ padding: '0 16px 8px' }}>
+              {[['Asset', 'Asset'], ['Liability', 'Liability'], ['Equity', 'Equity'], ['Revenue', 'Revenue'], ['Expense', 'Expense']].map(([title, type]) => {
+                const rows = (data.accountBalances || data.accounts || []).filter(a => a.type === type);
+                const total = rows.reduce((s, a) => s + num(a.balance), 0);
+                return (
+                  <article key={type} className="kpi-align-card">
+                    <div className="kpi-align-top"><span>{title}s</span><Landmark size={16} /></div>
+                    <strong title={currency(Math.abs(total))}>{compactCurrency(Math.abs(total))}</strong>
+                    <small>{rows.length} accounts · {total < 0 ? 'credit' : 'debit'}</small>
+                  </article>
+                );
+              })}
+            </div>
+            <div className="table-wrap">
+              <table>
+                <thead><tr><th>Code</th><th>Name</th><th>Type</th><th>Balance</th><th>Parent</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody>
+                  {(data.accounts || []).map(acc => {
+                    const bal = (data.accountBalances || []).find(a => (a.id || a.code) === (acc.id || acc.code));
+                    const balance = bal ? num(bal.balance) : 0;
+                    return (
+                      <tr key={acc.id || acc.code}>
+                        <td><strong>{acc.code}</strong></td>
+                        <td>{acc.name}</td>
+                        <td>{acc.type}</td>
+                        <td><span style={{ color: balance < 0 ? '#b42318' : '#067647', fontWeight: 700 }}>{balance === 0 ? '—' : `${currency(Math.abs(balance))} ${balance < 0 ? 'cr' : 'dr'}`}</span></td>
+                        <td>{acc.parent || '—'}</td>
+                        <td><span className="status active">{acc.status}</span></td>
+                        <td onClick={e => e.stopPropagation()}>
+                          <ActionMenu
+                            summary={acc.name}
+                            actions={[
+                              { label: 'Open detail', icon: <Landmark size={15} />, onClick: () => setDeepAccount(acc) },
+                              { label: 'Edit account', icon: <UserCog size={15} />, onClick: () => setAccountOpen(true) },
+                              { label: 'New journal', icon: <FileText size={15} />, onClick: () => setJournalOpen(true) },
+                              { label: 'Record expense', icon: <ReceiptText size={15} />, onClick: () => setExpenseOpen(true) },
+                              { label: 'Copy', icon: <FileText size={15} />, onClick: () => copyText(rowSummary(acc)) },
+                              { label: 'Export CSV', icon: <Download size={15} />, onClick: () => downloadRowsFile(`account-${acc.code}`, [{ ...acc, balance }], 'CSV') }
+                            ]}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
+        </div>
       )}
       {view === 'receivables' && (
         <div className="dashboard-grid">

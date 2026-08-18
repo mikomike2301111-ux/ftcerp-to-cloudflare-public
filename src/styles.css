@@ -11469,6 +11469,31 @@ svg.sparkline path {
 .reception-row-editable:hover td { background: #f8fafc; }
 .reception-row-editable:hover .editable-cell { background: transparent; box-shadow: none; }
 
+/* Header overlays: front-most, fixed spacing, properly laid out */
+.topbar { position: relative; z-index: 100; }
+.topbar-actions { position: relative; z-index: 90; }
+.notify-dropdown-wrap, .sheets-dropdown-wrap, .topbar-profile-wrap, .accounts-more-wrap { position: relative; }
+.search-results-panel,
+.notify-dropdown,
+.sheets-dropdown,
+.topbar-profile-menu,
+.accounts-more-menu { z-index: 1200 !important; box-shadow: 0 24px 70px rgba(16, 24, 40, .22) !important; }
+.notify-dropdown,
+.sheets-dropdown,
+.topbar-profile-menu { position: absolute; top: calc(100% + 12px) !important; }
+.notify-dropdown { right: -58px; }
+.sheets-dropdown { right: 0; }
+.topbar-profile-menu { right: 0; min-width: 240px; }
+.notify-dropdown-list { max-height: 380px; overflow-y: auto; }
+.notify-dropdown, .sheets-dropdown { min-width: 340px; }
+.sheets-dropdown { padding: 14px; }
+.notify-dropdown-header, .notify-dropdown-footer { padding-left: 16px; padding-right: 16px; }
+.accounts-more-menu { top: calc(100% + 10px) !important; padding: 8px; border-radius: 12px; }
+.accounts-more-menu button { border-radius: 8px; padding: 9px 12px; gap: 9px; }
+.topbar-profile-menu { padding: 8px; border-radius: 14px; }
+.topbar-profile-menu > button { border-radius: 8px; padding: 9px 12px; gap: 9px; }
+.topbar-profile-head { padding: 12px 12px 10px; border-bottom: 1px solid #eef0f3; margin-bottom: 6px; }
+
 
 /* Click-to-edit cells */
 .editable-cell {

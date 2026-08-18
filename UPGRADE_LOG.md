@@ -33,6 +33,36 @@ Verification:
 Notes / next steps:
 ```
 
+## 2026-08-18 - Accounts/Finance Upgrade: Weekly Trend, Chart Of Accounts, Header Overlays, CRM PDF
+
+Target area:
+Accounts & Finance, Chart of Accounts, header overlays, CRM reports
+
+Reason:
+Improve Accounts/Finance on the existing infrastructure — an accurate wavy weekly trend (the old monthly graph bulged in one section), richer Chart of Accounts, new database tables that communicate with the RPC layer, polished header overlays, and PDF export on every CRM report.
+
+Files changed:
+- `api/rpc.js`
+- `src/main.jsx`
+- `src/styles.css`
+- `sql-migrations/007-accounts-finance-upgrade.sql` (new)
+
+Improvements:
+- Accounts weekly trend: `getFinanceWorkspaceData` now returns `trendWeekly` (Monday-start weekly buckets of revenue/expenses/profit from invoices + expenses) and `accountBalances` (per-account dr-cr from journal lines). No more single-month bulge — the graph is wavy with weekly sensitivity.
+- Accounts overview: mini cards now show revenue/expenses/profit per week, plus a new full-width "Weekly revenue · expenses · profit" chart (3 lines).
+- Chart of Accounts (Accounts → Chart): added a type summary strip (Asset/Liability/Equity/Revenue/Expense with counts + net balance + dr/cr), a live Balance column per account, and a PDF export button (plus existing CSV / New Account).
+- CRM Reports: every individual report panel now has a PDF export button alongside CSV and Print.
+- Header overlays: notifications, sheets, profile, search results, and Accounts "More" menus are now front-most (z-index 1200), fixed below their buttons with even 12px spacing, bigger shadow, and cleaner padding/rounding.
+- New database migration `007-accounts-finance-upgrade.sql`: `financial_periods` (week/month), `account_balances`, `account_tags`, `invoice_numbering` + a `compute_account_balances()` SQL function, indexes, and RLS — aligns with rpc.js fields so the bridge/DB communicate.
+
+Verification:
+- `node --check api/rpc.js` passed.
+- `vite build` passed (built in ~54s).
+
+Notes / next steps:
+- Run `007-accounts-finance-upgrade.sql` in the Supabase SQL Editor.
+
+
 ## 2026-08-18 - Invoice More Controls + Invoice Pricing Settings
 
 Target area:
