@@ -6982,6 +6982,35 @@ function CreditHealthDonut({ data = [] }) {
    End Phase 3 Chart Components
    ========================================================== */
 
+function MiniTrendChart({ data = [], height = 64, color = '#377dff', valueKey = 'value' }) {
+  const pts = (Array.isArray(data) ? data : []).slice(-16).map(d => Number(d?.[valueKey] ?? 0));
+  const max = Math.max(1, ...pts);
+  const w = 100;
+  const x = i => (pts.length > 1 ? (i / (pts.length - 1)) * w : w / 2);
+  const y = v => height - 2 - (v / max) * (height - 6);
+  const path = pts.length ? pts.map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ') : '';
+  const area = pts.length ? `${path} L${x(pts.length - 1).toFixed(1)},${height} L${x(0).toFixed(1)},${height} Z` : '';
+  return (
+    <svg viewBox={`0 0 ${w} ${height}`} preserveAspectRatio="none" style={{ width: '100%', height: height, display: 'block' }}>
+      <path d={area} fill={color} opacity={0.12} />
+      <path d={path} fill="none" stroke={color} strokeWidth={2.2} vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function MiniBarChart({ data = [], height = 64, color = '#3b8c5a', valueKey = 'value', max = 0 }) {
+  const rows = (Array.isArray(data) ? data : []).slice(0, 12);
+  const hi = max || Math.max(1, ...rows.map(d => Number(d?.[valueKey] ?? 0)));
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 5, height, width: '100%' }}>
+      {rows.length === 0 && <div style={{ color: '#98a2b3', fontSize: 11, alignSelf: 'center' }}>No data yet</div>}
+      {rows.map((d, i) => (
+        <div key={i} title={`${d.label || ''}: ${Number(d?.[valueKey] ?? 0)}`} style={{ flex: '1 1 auto', minWidth: 5, height: `${Math.max(6, (Number(d?.[valueKey] ?? 0) / hi) * 100)}%`, background: d.color || color, borderRadius: '3px 3px 0 0', opacity: 0.5 + 0.5 * (i / Math.max(1, rows.length - 1)) }} />
+      ))}
+    </div>
+  );
+}
+
 function AccountsInvoiceModal({ user, products = [], customers = [], onClose, onSaved }) {
   const [form, setForm] = useState({
     customerId: '', customerName: '', customerPhone: '', customerEmail: '', billingAddress: '', shipTo: '',
@@ -7244,6 +7273,13 @@ function AccountsWorkspace({ user, setPage, globalPeriod }) {
                 <small>{detail}</small>
               </article>
             ))}
+          </div>
+          <div className="analytics-mini-strip">
+            <div className="mini-chart-card"><span>Revenue · 12 mo</span><MiniTrendChart data={data.trend || []} valueKey="revenue" color="#377dff" height={54} /></div>
+            <div className="mini-chart-card"><span>Expenses · 12 mo</span><MiniTrendChart data={data.trend || []} valueKey="expenses" color="#f79009" height={54} /></div>
+            <div className="mini-chart-card"><span>Profit · 12 mo</span><MiniTrendChart data={data.trend || []} valueKey="profit" color={num((data.trend || []).reduce((s, t) => s + num(t.profit), 0)) >= 0 ? '#22c55e' : '#ef4444'} height={54} /></div>
+            <div className="mini-chart-card"><span>AR aging · buckets</span><MiniBarChart data={(data.agingSummary || []).map(a => ({ label: a.customerName || 'Aging', value: a.totalBalance }))} valueKey="value" color="#8b5cf6" height={54} /></div>
+            <div className="mini-chart-card"><span>Source flows</span><MiniBarChart data={(data.sourceFlows || []).map(f => ({ label: f.module, value: f.records }))} valueKey="value" color="#2563eb" height={54} /></div>
           </div>
           <div className="dashboard-grid">
             <Panel className="span-8 sales-main-chart accounts-movement-panel" title="Accounts Movement" action="Revenue / Expenses / Cash / AR / AP / Profit">
@@ -8027,6 +8063,13 @@ function Finance({ user, setPage, globalPeriod }) {
             <KpiCard icon={Gauge} label="Health Score" value={`${(overview.financialHealthScore ?? data?.overview?.financialHealthScore ?? 0)}%`} change={5} tone="blue" />
             <KpiCard icon={ReceiptText} label="Receivables" value={currency((overview.accountsReceivable ?? data?.overview?.accountsReceivable ?? 0))} change={-2} tone="blue" />
             <KpiCard icon={ClipboardCheck} label="Payables" value={currency((overview.accountsPayable ?? data?.overview?.accountsPayable ?? 0))} change={3} tone="red" />
+          </div>
+          <div className="analytics-mini-strip">
+            <div className="mini-chart-card"><span>Revenue · 12 mo</span><MiniTrendChart data={data.trend || []} valueKey="revenue" color="#377dff" height={54} /></div>
+            <div className="mini-chart-card"><span>Expenses · 12 mo</span><MiniTrendChart data={data.trend || []} valueKey="expenses" color="#f79009" height={54} /></div>
+            <div className="mini-chart-card"><span>Profit · 12 mo</span><MiniTrendChart data={data.trend || []} valueKey="profit" color={num((data.trend || []).reduce((s, t) => s + num(t.profit), 0)) >= 0 ? '#22c55e' : '#ef4444'} height={54} /></div>
+            <div className="mini-chart-card"><span>Cash flow</span><MiniTrendChart data={data.trend || []} valueKey="cash" color="#0d9488" height={54} /></div>
+            <div className="mini-chart-card"><span>Source flows</span><MiniBarChart data={(data.sourceFlows || []).map(f => ({ label: f.module, value: f.records }))} valueKey="value" color="#2563eb" height={54} /></div>
           </div>
           <div className="dashboard-grid">
             <Panel className="span-12 sales-main-chart" title="Financial Storyline" action={label(metric)}>
