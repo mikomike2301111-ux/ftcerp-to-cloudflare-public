@@ -33,6 +33,32 @@ Verification:
 Notes / next steps:
 ```
 
+## 2026-08-18 - Reception Call Click-To-Edit, Follow-Up Edit + Spacing, HR Break Defaults
+
+Target area:
+Reception calls, CRM follow-up entry/report, Follow-up board, HR attendance hours
+
+Reason:
+Reception staff needed to click any call/follow-up record to auto-fill the entry form, edit it, and post the update. Follow-up columns (Date/Name/Phone/Detail) needed even spacing. HR attendance preview showed 9h for a full day because the form defaulted the lunch break to 0 even though the rule is a 60-minute break (1–2pm) making the day 8h (40h/week, Saturday 5h).
+
+Files changed:
+- `src/main.jsx`
+- `src/styles.css`
+
+Improvements:
+- Reception Calls: clicking anywhere on a call row now auto-fills the entry form (Date, Name, Number, Reason, Received by) in edit mode → "Update call" posts the change. Inline quick-edit cells and Edit/Del buttons stop propagation so they keep working.
+- Follow-up report: clicking a row auto-fills the follow-up form (Date, Name, Phone, Comments, Stage) in edit mode → "Update follow-up" posts the change; panel switches to "Edit follow-up". New `followEdit` state + id pass-through to `saveCall`.
+- Follow-up board (CRM Follow-ups tab): table now uses the spaced `reception-calls-table` layout; header renamed to Date/Name/Phone/Detail.
+- New `.reception-row-editable` hover/pointer styles so clickable rows look clickable.
+- HR attendance: entry form now defaults Break Minutes to 60 on full days (Mon–Fri) and 0 on Saturday, and picking a date sets 60/0 + auto-hours accordingly, so the hours preview matches the 8h rule (5h on Saturday).
+
+Verification:
+- `vite build` succeeded (2207 modules, built in ~1m).
+
+Notes / next steps:
+- HR module is otherwise complete; confirm any specific HR area to extend further.
+
+
 ## 2026-06-11 - Analytics Intelligence Tabs And Storyline
 
 Target area:

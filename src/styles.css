@@ -11464,6 +11464,12 @@ svg.sparkline path {
 .reception-calls-table th:nth-child(5) { width: 18%; }
 .reception-calls-table th:nth-child(6) { width: 8%; }
 
+/* Clickable rows fill the entry form for editing */
+.reception-row-editable { cursor: pointer; }
+.reception-row-editable:hover td { background: #f8fafc; }
+.reception-row-editable:hover .editable-cell { background: transparent; box-shadow: none; }
+
+
 /* Click-to-edit cells */
 .editable-cell {
   cursor: pointer;

@@ -2583,8 +2583,9 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
   const [statementOpen, setStatementOpen] = useState(false);
   const [sheetMessage, setSheetMessage] = useState('');
   const [followForm, setFollowForm] = useState({
-    customerId: '', customerName: '', phone: '', followUpDate: '', nextStep: '', comments: '', assignedTo: user?.name || '', stage: 'To Be Called'
+    id: '', customerId: '', customerName: '', phone: '', followUpDate: '', nextStep: '', comments: '', assignedTo: user?.name || '', stage: 'To Be Called'
   });
+  const [followEdit, setFollowEdit] = useState(null);
   const [followBusy, setFollowBusy] = useState(false);
   const [receptionForm, setReceptionForm] = useState({
     callerName: '', phone: '', reason: '', receivedBy: user?.name || '', date: new Date().toISOString().slice(0, 10)
@@ -2729,7 +2730,7 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
       )}
       {view === 'followups' && (
         <div className="dashboard-grid">
-          <Panel className="span-5" title="New customer · Follow-up entry" action="DATE · NAME · COMMENTS · STAGE">
+          <Panel className="span-5" title={followEdit ? 'Edit follow-up' : 'New customer · Follow-up entry'} action="DATE · NAME · COMMENTS · STAGE">
             <form className="settings-form-grid" onSubmit={async e => {
               e.preventDefault();
               if (!followForm.customerName && !followForm.customerId) return alert('Customer name is required');
@@ -2738,6 +2739,7 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
               try {
                 const cust = allCustomers.find(c => c.id === followForm.customerId) || allCustomers.find(c => c.name === followForm.customerName);
                 await rpc('saveCall', [user, {
+                  ...(followForm.id ? { id: followForm.id } : {}),
                   recordType: 'followup',
                   customerId: followForm.customerId || cust?.id || '',
                   customerName: followForm.customerName || cust?.name || '',
@@ -2752,7 +2754,8 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                   salesOwner: cust?.salesOwner || cust?.salesPerson || '',
                   date: followForm.followUpDate || new Date().toISOString().slice(0, 10)
                 }]);
-                setFollowForm({ customerId: '', customerName: '', phone: '', followUpDate: '', nextStep: '', comments: '', assignedTo: user?.name || '', stage: 'Follow-up' });
+                setFollowForm({ id: '', customerId: '', customerName: '', phone: '', followUpDate: '', nextStep: '', comments: '', assignedTo: user?.name || '', stage: 'Follow-up' });
+                setFollowEdit(null);
                 setRefreshKey(x => x + 1);
               } catch (err) { alert(err.message); }
               finally { setFollowBusy(false); }
@@ -2769,7 +2772,7 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                   {['Follow-up', 'To Be Called', 'Pending Calls', 'To Be Meeting', 'Closed'].map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </label>
-              <button type="submit" className="primary-action" disabled={followBusy}>{followBusy ? 'Saving…' : 'Save follow-up'}</button>
+              <button type="submit" className="primary-action" disabled={followBusy}>{followBusy ? 'Saving…' : (followEdit ? 'Update follow-up' : 'Save follow-up')}</button>
             </form>
           </Panel>
           <Panel className="span-7" title="Follow-up report" action={`${(allCalls || []).filter(r => r.recordType === 'followup' || r.followUpDate || ['Follow-up', 'To Be Called', 'Pending Calls', 'To Be Meeting'].includes(r.stage)).length} rows`}>
@@ -2784,7 +2787,20 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                     .map(row => {
                       const cust = allCustomers.find(c => c.id === row.customerId || c.name === row.customerName);
                       return (
-                        <tr key={row.id}>
+                        <tr key={row.id} className="crm-followup-row" title="Click to load this follow-up into the form for editing" onClick={() => {
+                          setFollowEdit(row.id);
+                          setFollowForm({
+                            id: row.id,
+                            customerId: row.customerId || '',
+                            customerName: row.customerName || '',
+                            phone: row.phone || cust?.phone || '',
+                            followUpDate: row.followUpDate || String(row.date || '').slice(0, 10),
+                            nextStep: row.nextStep || '',
+                            comments: row.comments || row.notes || '',
+                            assignedTo: row.assignedTo || user?.name || '',
+                            stage: row.stage || 'Follow-up'
+                          });
+                        }}>
                           <td>{row.followUpDate || row.date || '—'}</td>
                           <td><strong>{row.customerName || '—'}</strong></td>
                           <td>{row.phone || cust?.phone || '—'}</td>
@@ -2888,16 +2904,16 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
                         );
                       }
                       out.push(
-                        <tr key={row.id}>
+                        <tr key={row.id} className="reception-row-editable" title="Click to load this call into the form for editing" onClick={() => editReception(row)}>
                           <td>{row.date || '—'}</td>
-                          <td><strong className="editable-cell" title="Click to edit name" onClick={() => inlineEdit(row, 'callName', 'Caller name', row.callName || row.name || row.customerName || '')}>{row.callName || row.name || row.customerName || '—'}</strong></td>
-                          <td><strong className="editable-cell" title="Click to edit number" onClick={() => inlineEdit(row, 'phone', 'Phone number', row.phone || '')}>{row.phone || '—'}</strong></td>
-                          <td className="editable-cell" title="Click to edit detail" onClick={() => inlineEdit(row, 'reason', 'Reason / detail', row.reason || row.comments || row.notes || '')}>{row.reason || row.comments || row.notes || '—'}</td>
-                          <td className="editable-cell" title="Click to edit" onClick={() => inlineEdit(row, 'receivedBy', 'Received by / Transfer to', row.receivedBy || row.transferTo || row.assignedTo || '')}>{row.receivedBy || row.transferTo || row.assignedTo || '—'}</td>
+                          <td><strong className="editable-cell" title="Click to edit name" onClick={e => { e.stopPropagation(); inlineEdit(row, 'callName', 'Caller name', row.callName || row.name || row.customerName || ''); }}>{row.callName || row.name || row.customerName || '—'}</strong></td>
+                          <td><strong className="editable-cell" title="Click to edit number" onClick={e => { e.stopPropagation(); inlineEdit(row, 'phone', 'Phone number', row.phone || ''); }}>{row.phone || '—'}</strong></td>
+                          <td className="editable-cell" title="Click to edit detail" onClick={e => { e.stopPropagation(); inlineEdit(row, 'reason', 'Reason / detail', row.reason || row.comments || row.notes || ''); }}>{row.reason || row.comments || row.notes || '—'}</td>
+                          <td className="editable-cell" title="Click to edit" onClick={e => { e.stopPropagation(); inlineEdit(row, 'receivedBy', 'Received by / Transfer to', row.receivedBy || row.transferTo || row.assignedTo || ''); }}>{row.receivedBy || row.transferTo || row.assignedTo || '—'}</td>
                           <td>
                             <div className="call-quick-actions">
-                              <button type="button" className="mini-action" title="Edit this call" onClick={() => editReception(row)}>Edit</button>
-                              <button type="button" className="mini-action danger" title="Delete this call" onClick={() => deleteReception(row)}>Del</button>
+                              <button type="button" className="mini-action" title="Edit this call" onClick={e => { e.stopPropagation(); editReception(row); }}>Edit</button>
+                              <button type="button" className="mini-action danger" title="Delete this call" onClick={e => { e.stopPropagation(); deleteReception(row); }}>Del</button>
                             </div>
                           </td>
                         </tr>
@@ -3453,8 +3469,8 @@ function CRMFollowUpBoard({ rows = [], onLogCall, onOpenCustomers }) {
   return (
     <>
       <div className="table-wrap">
-        <table>
-          <thead><tr><th>Date</th><th>Customer</th><th>Phone</th><th>Detail</th><th></th></tr></thead>
+        <table className="reception-calls-table">
+          <thead><tr><th>Date</th><th>Name</th><th>Phone</th><th>Detail</th><th></th></tr></thead>
           <tbody>
             {rows.map(row => (
               <tr key={row.id} className="crm-followup-row" onClick={() => setSelected(row)}>
@@ -11854,7 +11870,7 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
   const payrollSendingRef = useRef(false);
   const [hrSaving, setHrSaving] = useState(false);
   const hrSavingRef = useRef(false);
-  const [attForm, setAttForm] = useState({ employeeId: '', date: new Date().toISOString().slice(0, 10), checkIn: '08:00', checkOut: '17:00', breakMinutes: 0, hoursWorked: '', shiftType: 'Day Shift', workLocation: 'Office', status: 'Auto', note: '' });
+  const [attForm, setAttForm] = useState({ employeeId: '', date: new Date().toISOString().slice(0, 10), checkIn: '08:00', checkOut: '17:00', breakMinutes: new Date().getDay() === 6 ? 0 : 60, hoursWorked: '', shiftType: 'Day Shift', workLocation: 'Office', status: 'Auto', note: '' });
   const [dirLimit, setDirLimit] = useState(50);
   const [attLimit, setAttLimit] = useState(50);
   const listStep = 50;
@@ -11883,8 +11899,8 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
       date,
       checkIn: day === 6 ? '08:00' : form.checkIn || '08:00',
       checkOut: day === 6 ? '13:00' : form.checkOut || '17:00',
-      breakMinutes: day === 6 ? 0 : form.breakMinutes,
-      hoursWorked: day === 6 ? '5' : form.hoursWorked,
+      breakMinutes: day === 6 ? 0 : 60, // 60-min lunch break (1–2pm) on full days, none on Saturday 5h
+      hoursWorked: day === 6 ? '5' : '',
       shiftType: day === 6 ? 'Saturday 5h' : form.shiftType
     }));
   };
