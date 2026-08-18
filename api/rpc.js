@@ -35,6 +35,7 @@ const PAGE_ACCESS = {
   inventory: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.WAREHOUSE, ROLES.PRODUCTION, ROLES.PROCUREMENT, ROLES.ACCOUNTANT],
   finance: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.ACCOUNTANT],
   accounts: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.ACCOUNTANT],
+  production: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.PRODUCTION, ROLES.WAREHOUSE],
   customers: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.SALES, ROLES.FIELD, ROLES.RECEPTION],
   delivery: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.DELIVERY, ROLES.SALES, ROLES.RECEPTION],
   reports: [ROLES.DEV, ROLES.ADMIN, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.ACCOUNTANT, ROLES.HR, ROLES.SALES],
@@ -1378,6 +1379,7 @@ const REPORT_MODULE_ALIASES = {
   Accounts: 'Financial',
   Finance: 'Financial',
   Accounting: 'Financial',
+  Production: 'Manufacturing',
   CRM: 'Customer',
   Customers: 'Customer',
   Reports: 'Executive',
@@ -1639,6 +1641,20 @@ const REPORT_TEMPLATE_REGISTRY = {
     template('Sales', 'sales-repeat-purchases', 'Customer Repeat Purchases', ['customerName', 'orders', 'revenue', 'lastPurchase', 'balance'], (d, scope) => Object.values(reportSalesRows(d, scope).reduce((acc, sale) => { const key = sale.customerName || 'Unknown'; acc[key] ||= { customerName: key, orders: 0, revenue: 0, lastPurchase: '', balance: 0 }; acc[key].orders += 1; acc[key].revenue += num(sale.total); acc[key].balance += num(sale.balance); acc[key].lastPurchase = [acc[key].lastPurchase, sale.date].filter(Boolean).sort().at(-1) || ''; return acc; }, {})).filter(row => row.orders > 1).map(row => ({ ...row, revenue: Math.round(row.revenue), balance: Math.round(row.balance) })), { layout: 'repeat-purchase' }),
     template('Sales', 'sales-overdue-collections', 'Overdue Collections', ['invNo', 'customerName', 'dueDate', 'balance', 'daysOverdue', 'agingBucket', 'status'], (d, scope) => reportInvoiceRows(d, scope).filter(inv => num(inv.balance) > 0 && reportDaysOverdue(inv.dueDate) > 0).map(inv => ({ invNo: inv.invNo, customerName: inv.customerName, dueDate: inv.dueDate, balance: num(inv.balance), daysOverdue: reportDaysOverdue(inv.dueDate), agingBucket: agingBucket(reportDaysOverdue(inv.dueDate)), status: inv.status })), { layout: 'collections' })
   ],
+  Manufacturing: [
+    template('Manufacturing', 'mfg-production-batch', 'Production Batch Report', ['batchNo', 'orderNo', 'productName', 'quantityProduced', 'unit', 'productionDate', 'operator', 'qualityStatus', 'productionCost', 'profit'], (d, scope) => (d.productionBatches || []).filter(row => inDateRange(row, scope)).map(row => ({ batchNo: row.batchNo, orderNo: row.orderNo, productName: row.productName, quantityProduced: num(row.quantityProduced), unit: row.unit, productionDate: row.productionDate, operator: row.operator, qualityStatus: row.qualityStatus, productionCost: num(row.productionCost), profit: num(row.profit) })), { layout: 'batch-report', sections: ['Batch', 'Output', 'Quality', 'Cost'] }),
+    template('Manufacturing', 'mfg-raw-material-consumption', 'Raw Material Consumption Report', ['date', 'productionOrder', 'materialName', 'batchNumber', 'quantityConsumed', 'unit', 'costConsumed', 'operator'], (d, scope) => (d.rawMaterialConsumption || []).filter(row => inDateRange(row, scope)).map(row => ({ date: row.date, productionOrder: row.productionOrder, materialName: row.materialName, batchNumber: row.batchNumber, quantityConsumed: num(row.quantityConsumed), unit: row.unit, costConsumed: num(row.costConsumed), operator: row.operator })), { layout: 'material-consumption' }),
+    template('Manufacturing', 'mfg-yield', 'Yield Report', ['batchNo', 'plannedQty', 'actualQty', 'wasteQty', 'yieldPercent'], (d, scope) => (d.productionBatchYields || []).filter(row => inDateRange(row, scope)).map(row => ({ batchNo: row.batchNo, plannedQty: num(row.plannedQty), actualQty: num(row.actualQty), wasteQty: num(row.wasteQty), yieldPercent: num(row.yieldPercent) })), { layout: 'yield-analysis' }),
+    template('Manufacturing', 'mfg-cost-per-unit', 'Cost Per Unit Report', ['batchNo', 'materialCost', 'laborCost', 'utilitiesCost', 'totalCost', 'costPerUnit'], (d, scope) => (d.productionBatchCosts || []).filter(row => inDateRange(row, scope)).map(row => ({ batchNo: row.batchNo, materialCost: num(row.materialCost), laborCost: num(row.laborCost), utilitiesCost: num(row.utilitiesCost), totalCost: num(row.totalCost), costPerUnit: num(row.costPerUnit) })), { layout: 'costing', aliases: ['Production Cost Report', 'Cost Analysis'] }),
+    template('Manufacturing', 'mfg-production-orders', 'Production Efficiency Report', ['orderNo', 'productName', 'plannedQty', 'completedQty', 'wastageQty', 'status', 'operator', 'startDate', 'endDate'], (d, scope) => productionOrderRows(d, scope).map(row => ({ orderNo: row.orderNo || row.jobNo, productName: row.productName, plannedQty: num(row.plannedQty), completedQty: num(row.completedQty), wastageQty: num(row.wastageQty), status: row.status, operator: row.operator || row.assignedTo, startDate: row.startDate, endDate: row.endDate })), { layout: 'production-efficiency' }),
+    template('Manufacturing', 'mfg-raw-material-ledger', 'Raw Material Ledger', ['materialCode', 'materialName', 'category', 'currentQuantity', 'availableQuantity', 'reservedQuantity', 'consumedQuantity', 'unitOfMeasure', 'supplier', 'inventoryValue', 'status'], (d) => (d.rawMaterials || []).map(row => ({ materialCode: row.materialCode, materialName: row.materialName, category: row.category, currentQuantity: num(row.currentQuantity), availableQuantity: num(row.availableQuantity), reservedQuantity: num(row.reservedQuantity), consumedQuantity: num(row.consumedQuantity), unitOfMeasure: row.unitOfMeasure, supplier: row.supplier, inventoryValue: num(row.availableQuantity) * num(row.costPerUnit), status: row.status })), { layout: 'material-ledger' }),
+    template('Manufacturing', 'mfg-batch-traceability', 'Batch Traceability Report', ['eventType', 'productionOrder', 'batchNo', 'itemName', 'quantity', 'unit', 'cost', 'operator', 'date'], (d, scope) => [
+      ...(d.rawMaterialConsumption || []).filter(row => inDateRange(row, scope)).map(row => ({ eventType: 'Material Consumed', productionOrder: row.productionOrder, batchNo: row.batchNumber, itemName: row.materialName, quantity: num(row.quantityConsumed), unit: row.unit, cost: num(row.costConsumed), operator: row.operator, date: row.date })),
+      ...(d.productionBatches || []).filter(row => inDateRange(row, scope)).map(row => ({ eventType: 'Finished Batch', productionOrder: row.orderNo, batchNo: row.batchNo, itemName: row.productName, quantity: num(row.quantityProduced), unit: row.unit, cost: num(row.productionCost), operator: row.operator, date: row.productionDate }))
+    ], { layout: 'traceability' }),
+    template('Manufacturing', 'mfg-uom-conversion-audit', 'UOM Conversion Audit', ['fromUnit', 'toUnit', 'factor', 'status'], (d) => (d.unitConversions || []).map(row => ({ fromUnit: row.fromUnit, toUnit: row.toUnit, factor: num(row.factor), status: row.status })), { layout: 'uom-audit' }),
+    template('Manufacturing', 'mfg-batch-recall', 'Batch Recall Report', ['batchNo', 'productName', 'reason', 'quantity', 'status', 'createdAt'], (d) => (d.batchRecalls || []).map(row => ({ batchNo: row.batchNo, productName: row.productName, reason: row.reason, quantity: num(row.quantity), status: row.status, createdAt: row.createdAt })), { layout: 'recall' })
+  ],
   Inventory: [
     template('Inventory', 'inventory-valuation', 'Inventory Valuation Report', ['sku', 'productName', 'warehouseName', 'batchNo', 'quantity', 'unitCost', 'inventoryValue', 'status'], (d, scope) => (d.inventory || []).filter(row => inDateRange(row, scope)).map(row => ({ sku: row.sku, productName: row.productName, warehouseName: row.warehouseName, batchNo: row.batchNo, quantity: num(row.quantity), unitCost: num(row.unitCost), inventoryValue: num(row.quantity) * num(row.unitCost), status: row.status })), { layout: 'inventory-valuation' }),
     template('Inventory', 'inventory-movement', 'Stock Movement Report', ['date', 'productName', 'warehouseName', 'batchNo', 'transactionType', 'quantity', 'unitCost', 'reference'], (d, scope) => (d.inventoryTransactions || []).filter(row => inDateRange(row, scope)).map(row => ({ date: dateValue(row), productName: row.productName, warehouseName: row.warehouseName, batchNo: row.batchNo, transactionType: row.transactionType || row.type, quantity: num(row.quantity), unitCost: num(row.unitCost), reference: row.reference || row.referenceId })), { layout: 'movement' })
@@ -1823,6 +1839,7 @@ const SPREADSHEET_MODULES = [
   ['Invoices', 'Invoices'],
   ['Payments', 'Payments'],
   ['Purchases', 'Purchases'],
+  ['Manufacturing', 'Manufacturing'],
   ['Finance', 'Finance Journals'],
   ['Accounts', 'Accounts Ledger'],
   ['Reports', 'Reports'],
@@ -3195,19 +3212,13 @@ function ensureManufacturingData() {
       { fromUnit: 'L', toUnit: 'ML', factor: 1000 }, { fromUnit: 'CARTON', toUnit: 'BOTTLE', factor: 24 }, { fromUnit: 'BOX', toUnit: 'PACKET', factor: 12 }
     ].map((x, index) => ({ id: 'UCON-' + (index + 1), ...x, status: 'Active' }));
   }
-  // Manufacturing module removed per spec — rich manufacturing data is wiped on every load.
-  // The ERP stays ready for new data in the remaining modules; UOM config above is kept.
-  ['rawMaterials', 'rawMaterialBatches', 'formulas', 'formulaVersions', 'formulaVersionItems', 'bomVersionHistory',
-    'productionOrders', 'productionBatches', 'productionJobs', 'productionBatchMaterials', 'productionBatchCosts',
-    'productionBatchYields', 'rawMaterialConsumption', 'productionStorageHistory', 'qualityControlRecords',
-    'wasteRecords', 'productionQualityChecks', 'productionDowntime', 'productionCapacity', 'productionCalendar',
-    'manufacturingDocuments', 'batchRecalls', 'productionMaterialRequests', 'pendingProductionIssues',
-    'unitConversions', 'productFormulas', 'productionReports'
+  // Demo/manufacturing data has been removed. Collections start empty.
+  ['rawMaterials', 'formulas', 'formulaVersions', 'formulaVersionItems', 'bomVersionHistory', 'productionOrders', 'productionBatches',
+    'productionBatchMaterials', 'productionBatchCosts', 'productionBatchYields', 'rawMaterialConsumption',
+    'productionStorageHistory', 'qualityControlRecords', 'wasteRecords', 'productionQualityChecks',
+    'productionDowntime', 'productionCapacity', 'productionCalendar', 'manufacturingDocuments', 'batchRecalls'
   ].forEach(key => {
-    // Force-clear: any manufacturing data left in the persisted state is removed so the
-    // system is clean and ready for fresh (non-manufacturing) data.
-    db[key] = [];
-    delete db[key + 'Logs'];
+    db[key] = Array.isArray(db[key]) ? db[key] : [];
   });
 }
 
@@ -4198,6 +4209,7 @@ function roleDepartment(role) {
     [ROLES.SALES]: 'Sales',
     [ROLES.FIELD]: 'Field Operations',
     [ROLES.DELIVERY]: 'Delivery',
+    [ROLES.PRODUCTION]: 'Manufacturing',
     [ROLES.WAREHOUSE]: 'Inventory',
     [ROLES.PROCUREMENT]: 'Procurement',
     [ROLES.CASUAL]: 'Operations'
@@ -4344,9 +4356,9 @@ const ERP_REPLY_TO = 'mikomike200@gmail.com';
 
 // ─────────────────────────── NOTIFICATIONS · ALERTS · HR · LEAVES ───────────────────────────
 const PRIORITY_RANK = { critical: 4, high: 3, medium: 2, low: 1 };
-const NOTIFICATION_CATEGORIES = ['inventory', 'procurement', 'sales', 'crm', 'finance', 'accounting', 'payroll', 'reports', 'security', 'system'];
+const NOTIFICATION_CATEGORIES = ['inventory', 'manufacturing', 'procurement', 'sales', 'crm', 'finance', 'accounting', 'payroll', 'reports', 'security', 'system'];
 const NOTIFICATION_CATEGORY_LABEL = {
-  inventory: 'Inventory', procurement: 'Procurement', sales: 'Sales', crm: 'CRM',
+  inventory: 'Inventory', manufacturing: 'Manufacturing', procurement: 'Procurement', sales: 'Sales', crm: 'CRM',
   finance: 'Finance', accounting: 'Accounting', payroll: 'Payroll & HR', reports: 'Reports', security: 'Security', system: 'System'
 };
 const CANDIDATE_STAGES = ['Applied', 'Screening', 'Interview', 'Offer', 'Hired', 'Rejected'];

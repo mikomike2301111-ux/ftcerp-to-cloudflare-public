@@ -44,6 +44,8 @@ const MODULE_RPC_MAP = {
   dashboard: 'getDashboardData',
   sales: 'getSalesWorkspaceData',
   inventory: 'getInventoryWorkspaceData',
+  manufacturing: 'getManufacturingWorkspaceData',
+  production: 'getManufacturingWorkspaceData',
   finance: 'getFinanceWorkspaceData',
   accounts: 'getFinanceWorkspaceData',
   crm: 'getCRMWorkspaceData',
