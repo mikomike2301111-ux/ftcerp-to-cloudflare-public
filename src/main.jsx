@@ -2774,7 +2774,7 @@ function CRMWorkspace({ user, setPage, globalPeriod = 'Month' }) {
           </Panel>
           <Panel className="span-7" title="Follow-up report" action={`${(allCalls || []).filter(r => r.recordType === 'followup' || r.followUpDate || ['Follow-up', 'To Be Called', 'Pending Calls', 'To Be Meeting'].includes(r.stage)).length} rows`}>
             <div className="table-wrap">
-              <table>
+              <table className="reception-calls-table">
                 <thead><tr><th>Date</th><th>Name</th><th>Phone</th><th>Detail</th></tr></thead>
                 <tbody>
                   {(allCalls || [])
@@ -12487,8 +12487,8 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
 
       {paySlipEmp && <PaySlip user={user} rpc={rpc} employee={paySlipEmp.employee} payroll={paySlipEmp.payroll} company={data.company || {}} period={{ from: data.period?.startDate || '—', to: data.period?.endDate || '—', date: new Date().toISOString().slice(0, 10) }} onClose={() => setPaySlipEmp(null)} onPrint={(ref) => { window.print(); }} />}
 
-      {modal === 'employee' && <EmployeeFormModal user={user} departments={data.departments || []} onClose={() => setModal(null)} onSave={handleSaveEmployee} saving={hrSaving} />}
-      {editEmp && <EmployeeFormModal user={user} departments={data.departments || []} initial={editEmp} onClose={() => setEditEmp(null)} onSave={handleSaveEmployee} saving={hrSaving} />}
+      {modal === 'employee' && <EmployeeFormModal user={user} departments={data.departments || []} erpUsers={data.users || []} onClose={() => setModal(null)} onSave={handleSaveEmployee} saving={hrSaving} />}
+      {editEmp && <EmployeeFormModal user={user} departments={data.departments || []} erpUsers={data.users || []} initial={editEmp} onClose={() => setEditEmp(null)} onSave={handleSaveEmployee} saving={hrSaving} />}
       {modal === 'candidate' && <CandidateFormModal onClose={() => setModal(null)} onSave={handleSaveCandidate} />}
       {modal === 'review' && <ReviewFormModal employees={data.employees} onClose={() => setModal(null)} onSave={handleSaveReview} />}
       {deptModal !== null && (
@@ -12740,7 +12740,7 @@ function HREmailCenter({ user, hrEmail, employees = [], emails = [], onSent }) {
   );
 }
 
-function EmployeeFormModal({ user, onClose, onSave, initial, departments = [], saving = false }) {
+function EmployeeFormModal({ user, onClose, onSave, initial, departments = [], saving = false, erpUsers = [] }) {
   const [form, setForm] = useState(initial && initial.id ? { ...initial } : {
     name: '', firstName: '', middleName: '', lastName: '', email: '', companyEmail: '', personalEmail: '', phone: '', altPhone: '',
     department: 'Sales', position: 'Officer', employmentType: 'Full-time', joinDate: new Date().toISOString().slice(0, 10), status: 'Active',
@@ -12751,7 +12751,8 @@ function EmployeeFormModal({ user, onClose, onSave, initial, departments = [], s
     houseAllowance: 0, transportAllowance: 0, medicalAllowance: 0, communicationAllowance: 0, riskAllowance: 0, mealAllowance: 0, responsibilityAllowance: 0, otherAllowances: 0,
     loanDeduction: 0, saccoDeduction: 0, otherDeductions: 0, customDeductions: [], emergencyContactName: '', emergencyContactPhone: '', emergencyContactRelation: '',
     emergencyContactEmail: '', emergencyContactAddress: '', nextOfKinName: '', nextOfKinPhone: '', nextOfKinRelation: '',
-    contractStart: '', contractEnd: '', probationEnd: '', leaveBalanceAnnual: 21, leaveBalanceSick: 10, leaveBalanceCasual: 5, leaveBalanceMaternity: 90, leaveBalancePaternity: 14, leaveBalanceCompassionate: 5
+    contractStart: '', contractEnd: '', probationEnd: '', leaveBalanceAnnual: 21, leaveBalanceSick: 10, leaveBalanceCasual: 5, leaveBalanceMaternity: 90, leaveBalancePaternity: 14, leaveBalanceCompassionate: 5,
+    linkedUserId: ''
   });
   const [noteText, setNoteText] = useState('');
   const [notePrivate, setNotePrivate] = useState(false);
@@ -12783,6 +12784,15 @@ function EmployeeFormModal({ user, onClose, onSave, initial, departments = [], s
         const payload = { ...form, name: form.name || [form.firstName, form.middleName, form.lastName].filter(Boolean).join(' ').trim() };
         if (!payload.name) return alert('Name is required');
         onSave(payload);
+        if (payload.linkedUserId && (payload.id || (initial && initial.id))) {
+          // After the employee exists, link it to the ERP user so leave/attendance share one record
+          setTimeout(() => {
+            const empId = payload.id || (initial && initial.id);
+            rpc('linkEmployeeToUser', [empId, payload.linkedUserId]).then(res => {
+              if (res && res.success) console.log(`Linked employee ↔ ${res.user.email}`);
+            }).catch(err => console.warn('Could not link ERP user:', err));
+          }, 0);
+        }
       }}>
         <fieldset className="settings-fieldset"><legend>Personal information</legend><div>
           <label>First name<input value={form.firstName || ''} onChange={e => syncName({ firstName: e.target.value })} /></label>
@@ -12840,6 +12850,15 @@ function EmployeeFormModal({ user, onClose, onSave, initial, departments = [], s
           <label>Expected Hours/Day<input type="number" value={form.expectedHoursPerDay} onChange={e => setForm({ ...form, expectedHoursPerDay: Number(e.target.value) })} /></label>
           <label>Location<input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} /></label>
           <label>Overtime Eligible<select value={form.overtimeEligible} onChange={e => setForm({ ...form, overtimeEligible: e.target.value })}>{['Yes', 'No'].map(x => <option key={x}>{x}</option>)}</select></label>
+          <label>Link to ERP user
+            <select value={form.linkedUserId || ''} onChange={e => setForm({ ...form, linkedUserId: e.target.value })}>
+              <option value="">— None —</option>
+              {erpUsers.filter(u => u && (u.email || u.name)).map(u => (
+                <option key={u.id} value={u.id}>{u.name || u.email} {u.email ? `(${u.email})` : ''} · {u.role || 'user'}</option>
+              ))}
+            </select>
+            <small style={{ color: '#667085' }}>Pick the ERP login user created in Settings so leave balances & attendance match — no double entry.</small>
+          </label>
         </div></fieldset>
         <fieldset className="settings-fieldset"><legend>Tax & Banking</legend><div>
           <label>KRA PIN<input value={form.kraPin} onChange={e => setForm({ ...form, kraPin: e.target.value })} placeholder="A001234567B" /></label>

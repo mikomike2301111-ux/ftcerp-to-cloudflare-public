@@ -5178,8 +5178,8 @@ function attendanceStatusFromTimes(form = {}) {
   const inMins = ih * 60 + im;
   const outMins = oh * 60 + om;
   const isSaturday = new Date(form.date || today()).getDay() === 6;
-  const latestOnTime = 8 * 60 + 5;
-  const earliestNormal = 8 * 60 - 5;
+  const latestOnTime = 8 * 60 + 10;   // arrival window: 08:00 ±10 min
+  const earliestNormal = 8 * 60 - 10;
   const expectedOut = isSaturday ? 13 * 60 : 17 * 60;
   if (checkIn && inMins > latestOnTime) return 'Late';
   if (checkOut && outMins < expectedOut) return 'Left Early';
@@ -13829,6 +13829,7 @@ territory: geo,
       attendanceByDept,
       employeeMetrics: metricRows,
       company: d.settings || {},
+      users: (d.users || []).filter(u => u && u.id).map(u => ({ id: u.id, name: u.name || '', email: u.email || '', role: u.role || 'user', active: u.active !== false })),
       payrollPreview: metricRows.map(row => ({
         employeeNo: row.employeeNo,
         name: row.name,
@@ -14050,6 +14051,24 @@ territory: geo,
   getHRWorkspaceData(user, filters = {}) {
     return api.getHrData(user, filters);
   },
+  linkEmployeeToUser(user, employeeId, userId) {
+    // Link an HR employee record to an ERP login user (created in Settings) so that
+    // leave balances / attendance match the actual person — no double entries.
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.DEV, ROLES.EXECUTIVE);
+    const d = data();
+    ensureHrData();
+    const emp = (d.employees || []).find(e => e.id === employeeId || e.employeeNo === employeeId);
+    if (!emp) throw new Error('Employee not found');
+    const targetUser = (d.users || []).find(x => x.id === userId || String(x.email || '').toLowerCase() === String(userId || '').toLowerCase());
+    if (!targetUser) throw new Error('ERP user not found. Create the user in Settings first.');
+    emp.linkedUserId = targetUser.id;
+    emp.linkedUserEmail = targetUser.email;
+    emp.email = targetUser.email; // leave/attendance resolve the employee by email → balances match
+    emp.linkedUserRole = targetUser.role;
+    emp.updatedAt = new Date().toISOString();
+    log(u, 'Link employee to ERP user', 'HR', `${emp.name} ↔ ${targetUser.email}`);
+    return { success: true, employee: emp, user: targetUser };
+  },
   saveEmployee(user, form = {}) {
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.HR, ROLES.DEV, ROLES.EXECUTIVE);
     const d = data();
@@ -14214,9 +14233,10 @@ territory: geo,
       if (!checkIn) return 0;
       const [h, m] = checkIn.split(':').map(Number);
       if ([h, m].some(Number.isNaN)) return 0;
-      return Math.max(0, (h * 60 + m) - (8 * 60));
+      return Math.max(0, (h * 60 + m) - (8 * 60 + 10)); // late only after 08:10 (10-min grace)
     })();
     const status = attendanceStatusFromTimes({ ...form, date });
+    const isSaturday = new Date(date).getDay() === 6;
     const record = {
       id: clean(form.id) || gid(),
       employeeId: emp.id,
@@ -14226,8 +14246,8 @@ territory: geo,
       date,
       checkIn: clean(form.checkIn),
       checkOut: clean(form.checkOut),
-      breakMinutes: num(form.breakMinutes || 0),
-      shiftType: clean(form.shiftType) || (new Date(date).getDay() === 6 ? 'Saturday 5h' : 'Day Shift'),
+      breakMinutes: num(form.breakMinutes) > 0 ? num(form.breakMinutes) : (isSaturday ? 0 : 60), // lunch break 60 min (1–2pm) on full days
+      shiftType: clean(form.shiftType) || (isSaturday ? 'Saturday 5h' : 'Day Shift'),
       workLocation: clean(form.workLocation || 'Office'),
       status,
       note: clean(form.note || ''),
@@ -15502,6 +15522,7 @@ const SYNC_AFTER_RPC = {
   submitERPInput: ['Dashboard', 'Customers', 'Leads', 'Products', 'Inventory', 'Sales', 'Invoices', 'Purchases', 'Manufacturing', 'Finance', 'Accounts', 'Activity'],
   // HR sync
   saveEmployee: ['Employees', 'Departments', 'Dashboard', 'Activity'],
+  linkEmployeeToUser: ['getHRWorkspaceData', 'getAdminOpsWorkspaceData', 'getDashboardData', 'Activity'],
   saveHrNote: ['Employees', 'Activity'],
   sendPayslipEmail: ['Employees', 'Activity', 'Email'],
   sendHrEmail: ['Employees', 'Activity', 'Email'],
