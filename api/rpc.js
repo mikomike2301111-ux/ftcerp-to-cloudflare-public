@@ -7390,7 +7390,6 @@ const api = {
       ...make('Requisition', 'requisitions', d.requisitions || [], 'reqNo', 'requester', ['status', 'type', 'priority', 'department']),
       ...make('Car booking', 'requisitions', (d.requisitions || []).filter(r => /car|vehicle|transport/i.test(`${r.type || ''} ${r.title || ''} ${r.purpose || ''}`)), 'reqNo', 'requester', ['status', 'pickup', 'destination']),
       ...make('Visit', 'sales', d.salesVisits || d.visits || [], 'shopOrCustomer', 'salesperson', ['outcome', 'location', 'productDiscussed']),
-      ...make('Expense', 'accounts', d.expenses || [], 'expNo', 'category', ['status', 'amount', 'vendor']),
       ...make('Report', 'reports', d.reportArchive || [], 'reportName', 'module', ['format', 'status'])
     ];
     const boosted = results.map(row => {
