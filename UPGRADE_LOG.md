@@ -33,6 +33,31 @@ Verification:
 Notes / next steps:
 ```
 
+## 2026-08-18 - Invoice More Controls + Invoice Pricing Settings
+
+Target area:
+Invoice creation (Accounts → Create Invoice), invoice pricing defaults, invoice numbering
+
+Reason:
+Requests were to add more controls to the invoice and have invoice settings for price so new invoices apply configured defaults (VAT, discount mode, rounding, payment terms, currency, number prefix).
+
+Files changed:
+- `api/rpc.js`
+- `src/main.jsx`
+
+Improvements:
+- Invoice modal (Create Invoice): new Discount Mode control (Flat amount / Percent %), new Price Rounding control (Nearest shilling / Nearest 10 / No rounding), rounding adjustment shown in the price summary, and discount label shows % or flat.
+- Settings → Operations → Invoice (new tab): Invoice Pricing Defaults panel — default VAT mode (auto/none/16%), default discount mode, default payment terms, default price rounding, default currency, invoice number prefix — with a live price preview (sample KSh 10,000) and Invoice Controls facts grid.
+- New RPC `getInvoicePricingSettings` (Admin/Manager/Accountant/Sales) so the invoice modal loads defaults automatically on open.
+- `createInvoiceFromEntry` now supports discount mode (%) and price rounding and stores `discountMode`, `roundTo`, `roundingAdjustment` on the invoice.
+- `nextInvoiceNo` honors the saved invoice number prefix (default INV-FTC).
+
+Verification:
+- `node --check api/rpc.js` passed.
+- `vite build` passed (built in ~59s).
+
+Notes / next steps:
+- Invoice logo / comment / footer / terms remain set in the tax invoice export options.
 ## 2026-08-18 - Reception Call Click-To-Edit, Follow-Up Edit + Spacing, HR Break Defaults
 
 Target area:

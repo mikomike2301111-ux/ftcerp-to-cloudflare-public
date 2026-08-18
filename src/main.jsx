@@ -7714,10 +7714,26 @@ function AccountsInvoiceModal({ user, products = [], customers = [], onClose, on
     customerId: '', customerName: '', customerPhone: '', customerEmail: '', billingAddress: '', shipTo: '',
     salesRep: '', poReference: '', orderNumber: '', memo: '', currency: 'KES',
     invoiceDate: new Date().toISOString().slice(0, 10), dueDate: '', paymentTerms: 'Net 30',
-    taxStatus: 'Taxable', vatRate: 16, paymentMethod: 'Bank', paid: 0, discount: 0, shipping: 0,
+    taxStatus: 'Taxable', vatRate: 16, paymentMethod: 'Bank', paid: 0, discount: 0, discountMode: 'flat', roundTo: 'nearest-shilling', shipping: 0,
     items: [{ productId: '', productName: '', description: '', quantity: 1, unitPrice: 0, discount: 0 }]
   });
   const [saving, setSaving] = useState(false);
+  const appliedDefaultsRef = useRef(false);
+  const { data: invoiceSettingsData } = useServer(user, 'getInvoicePricingSettings', [], []);
+  useEffect(() => {
+    if (invoiceSettingsData && !appliedDefaultsRef.current) {
+      appliedDefaultsRef.current = true;
+      const svc = invoiceSettingsData || {};
+      setForm(f => ({
+        ...f,
+        vatRate: svc.invoiceVatMode === 'none' ? 0 : svc.invoiceVatMode === 'vat16' ? 16 : (num(svc.vatRate) || 16),
+        discountMode: svc.invoiceDiscountMode || f.discountMode,
+        paymentTerms: svc.invoicePaymentTerms || f.paymentTerms,
+        roundTo: svc.invoiceRounding || f.roundTo,
+        currency: svc.invoiceCurrency || f.currency
+      }));
+    }
+  }, [invoiceSettingsData]);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const addItem = () => setForm(f => ({ ...f, items: [...(f.items || []), { productId: '', productName: '', description: '', quantity: 1, unitPrice: 0, discount: 0 }] }));
   const removeItem = i => setForm(f => ({ ...f, items: (f.items || []).filter((_, idx) => idx !== i) }));
@@ -7725,11 +7741,16 @@ function AccountsInvoiceModal({ user, products = [], customers = [], onClose, on
   const chooseProduct = (i, productId) => { const p = products.find(x => x.id === productId); setForm(f => ({ ...f, items: (f.items || []).map((row, idx) => idx === i ? { ...row, productId, productName: p ? p.name : '', unitPrice: p ? (num(p.sellingPrice || p.price) || 0) : row.unitPrice } : row) })); };
   const lines = (form.items || []).map(it => ({ ...it, amount: Math.max(0, (num(it.quantity) || 0) * (num(it.unitPrice) || 0) - (num(it.discount) || 0)) }));
   const subtotal = lines.reduce((s, it) => s + it.amount, 0);
-  const discount = num(form.discount) || 0;
+  const discountMode = form.discountMode === 'percent' ? 'percent' : 'flat';
+  const discountRaw = num(form.discount) || 0;
+  const discount = discountMode === 'percent' ? Math.round(subtotal * discountRaw / 100 * 100) / 100 : Math.min(discountRaw, subtotal);
   const shipping = num(form.shipping) || 0;
   const vatRate = num(form.vatRate) || 16;
   const vat = form.taxStatus === 'Taxable' ? Math.round((subtotal - discount) * vatRate) / 100 : 0;
-  const total = Math.max(0, subtotal - discount + vat + shipping);
+  const beforeRound = Math.max(0, subtotal - discount + vat + shipping);
+  const roundInvoiceAmount = n => form.roundTo === 'nearest-10' ? Math.round(n / 10) * 10 : form.roundTo === 'none' ? Math.round(n * 100) / 100 : Math.round(n);
+  const total = roundInvoiceAmount(beforeRound);
+  const roundingAdjustment = Math.round((total - beforeRound) * 100) / 100;
   const paid = num(form.paid) || 0;
   const pickCustomer = c => setForm(f => ({ ...f, customerId: c.customerId || c.id || '', customerName: c.customerName || c.name || '', customerPhone: c.phone || '', customerEmail: c.email || '', billingAddress: c.billingAddress || c.shipTo || c.city || '' }));
   async function submit(e) {
@@ -7743,7 +7764,7 @@ function AccountsInvoiceModal({ user, products = [], customers = [], onClose, on
       await rpc('createInvoiceFromEntry', [user, {
         customerId: form.customerId || undefined, customerName: form.customerName, customerPhone: form.customerPhone, customerEmail: form.customerEmail,
         billingAddress: form.billingAddress, shipTo: form.shipTo, salesRep: form.salesRep, poReference: form.poReference, orderNumber: form.orderNumber,
-        memo: form.memo, currency: form.currency, items, discount, shipping,
+        memo: form.memo, currency: form.currency, items, discount, discountMode, roundTo: form.roundTo, shipping,
         taxStatus: form.taxStatus, vatRate, paymentMethod: form.paymentMethod, paid,
         date: form.invoiceDate, dueDate: form.dueDate, paymentTerms: form.paymentTerms
       }]);
@@ -7807,18 +7828,22 @@ function AccountsInvoiceModal({ user, products = [], customers = [], onClose, on
               ))}
               <button type="button" className="mini-action" onClick={addItem}>+ Add line</button>
             </div>
+            <p className="crm-hint" style={{ fontSize: 12 }}>Invoice defaults come from Settings → Invoice pricing (VAT mode, discount mode, rounding, payment terms, currency).</p>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
               <div className="sales-order-pricing">
                 <article><span>Subtotal</span><strong>{currency(subtotal)}</strong></article>
-                <article><span>Discount (−)</span><strong style={{ color: '#d92d20' }}>{currency(discount)}</strong></article>
+                <article><span>Discount ({discountMode === 'percent' ? discountRaw + '%' : 'flat'}) (−)</span><strong style={{ color: '#d92d20' }}>{currency(discount)}</strong></article>
                 <article><span>Shipping</span><strong>{currency(shipping)}</strong></article>
                 <article><span>VAT ({vatRate}%)</span><strong>{currency(vat)}</strong></article>
+                {roundingAdjustment !== 0 && <article><span>Rounding ({form.roundTo === 'nearest-10' ? '10' : 'shilling'})</span><strong style={{ color: '#175cd3' }}>{currency(roundingAdjustment)}</strong></article>}
                 <article><span>Total</span><strong>{currency(total)}</strong></article>
                 <article><span>Balance due</span><strong>{currency(Math.max(0, total - paid))}</strong></article>
               </div>
               <div className="modal-grid">
                 <label>Discount<input type="number" min="0" step="0.01" value={form.discount} onChange={e => set('discount', e.target.value)} /></label>
+                <label>Discount Mode<select value={form.discountMode} onChange={e => set('discountMode', e.target.value)}>{[{ v: 'flat', t: 'Flat amount' }, { v: 'percent', t: 'Percent (%)' }].map(x => <option key={x.v} value={x.v}>{x.t}</option>)}</select></label>
                 <label>Shipping / Freight<input type="number" min="0" step="0.01" value={form.shipping} onChange={e => set('shipping', e.target.value)} /></label>
+                <label>Price Rounding<select value={form.roundTo} onChange={e => set('roundTo', e.target.value)}>{[{ v: 'nearest-shilling', t: 'Nearest shilling' }, { v: 'nearest-10', t: 'Nearest 10' }, { v: 'none', t: 'No rounding' }].map(x => <option key={x.v} value={x.v}>{x.t}</option>)}</select></label>
                 <label>VAT / Tax<select value={form.taxStatus} onChange={e => set('taxStatus', e.target.value)}>{['Taxable', 'Exempt', 'Zero Rated'].map(x => <option key={x} value={x}>{x}</option>)}</select></label>
                 <label>VAT rate %<input type="number" min="0" step="0.1" value={form.vatRate} onChange={e => set('vatRate', e.target.value)} /></label>
                 <label>Payment Method<select value={form.paymentMethod} onChange={e => set('paymentMethod', e.target.value)}>{['Bank', 'Cash', 'M-Pesa', 'Mobile Money', 'Cheque', 'Credit', 'Direct Transfer'].map(x => <option key={x}>{x}</option>)}</select></label>
@@ -10727,7 +10752,7 @@ function InputCenter({ user, setPage }) {
 function SettingsPage({ user }) {
   const tabGroups = [
     { id: 'org', label: 'Organization', tabs: ['overview', 'company', 'users', 'permissions', 'departments', 'warehouses'] },
-    { id: 'ops', label: 'Operations', tabs: ['products', 'manufacturing', 'procurement', 'inventory', 'sales', 'finance', 'tax'] },
+    { id: 'ops', label: 'Operations', tabs: ['products', 'invoice', 'manufacturing', 'procurement', 'inventory', 'sales', 'finance', 'tax'] },
     { id: 'comms', label: 'Comms & Docs', tabs: ['email', 'notifications', 'templates', 'automation'] },
     { id: 'system', label: 'System', tabs: ['integrations', 'spreadsheets', 'supabase', 'audit', 'security', 'backup', 'data', 'api', 'health', 'advanced'] }
   ];
@@ -11134,6 +11159,7 @@ function SettingsPage({ user }) {
         </Panel>
       )}
       {view === 'products' && <ProductPricingSettings user={user} settings={data.settings} products={data.products || []} onSaved={msg => { setMessage(msg); refresh(); }} />}
+      {view === 'invoice' && <InvoicePricingSettings user={user} settings={data.settings} onSaved={msg => { setMessage(msg); refresh(); }} />}
       {['manufacturing', 'procurement', 'inventory', 'sales', 'finance'].includes(view) && <SettingsRules user={user} section={view} onSaved={setMessage} title={`${label(view)} Rules`} items={rulesForView} />}
       {view === 'tax' && <SettingsRules user={user} section={view} onSaved={setMessage} title="Tax Settings" items={['VAT setup', 'Withholding tax rules', 'Filing periods', 'Tax report templates', 'KRA PIN controls', 'Tax audit trail']} />}
       {view === 'notifications' && (
@@ -11374,6 +11400,94 @@ function ProductPricingSettings({ user, settings = {}, products = [], onSaved })
         <div className="settings-rule-grid">
           {['Product categories', 'Units of measure', 'KG / G / MG conversions', 'Litres / ML conversions', 'Pieces / Boxes / Cartons', 'Barcode settings', 'QR code settings', 'Product number generation'].map(item => (
             <article key={item}><CheckCircle2 size={17} /><span>{item}</span><button type="button" onClick={() => onSaved?.(`${item} ready in pricing settings.`)}>Ready</button></article>
+          ))}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+function InvoicePricingSettings({ user, settings = {}, onSaved }) {
+  const [form, setForm] = useState({
+    invoice_vat_mode: settings.invoice_vat_mode || settings.product_default_vat_mode || 'auto',
+    invoice_discount_mode: settings.invoice_discount_mode || 'flat',
+    invoice_payment_terms: settings.invoice_payment_terms || 'Net 30',
+    invoice_rounding: settings.invoice_rounding || 'nearest-shilling',
+    invoice_currency: settings.invoice_currency || 'KES',
+    invoice_number_prefix: settings.invoice_number_prefix || 'INV-FTC'
+  });
+  const [saving, setSaving] = useState(false);
+  const vatRateFor = form.invoice_vat_mode === 'none' ? 0 : 16;
+  const subtotal = 10000;
+  const discountValue = form.invoice_discount_mode === 'percent' ? Math.round(subtotal * 0.05 * 100) / 100 : 500;
+  const vatValue = vatRateFor ? Math.round((subtotal - discountValue) * vatRateFor) / 100 : 0;
+  const beforeRound = subtotal - discountValue + vatValue;
+  const roundedTotal = form.invoice_rounding === 'nearest-shilling' ? Math.round(beforeRound) : form.invoice_rounding === 'nearest-10' ? Math.round(beforeRound / 10) * 10 : Math.round(beforeRound * 100) / 100;
+  async function save(e) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await rpc('saveSettingsSection', [user, 'company', form]);
+      onSaved?.('Invoice pricing settings saved. New invoices load these defaults automatically.');
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="dashboard-grid">
+      <Panel className="span-5" title="Invoice Pricing Defaults" action="Editable">
+        <form className="settings-form-grid product-pricing-form" onSubmit={save}>
+          <label>Default VAT Mode
+            <select value={form.invoice_vat_mode} onChange={e => setForm({ ...form, invoice_vat_mode: e.target.value })}>
+              <option value="auto">Auto (16% VAT)</option>
+              <option value="none">No VAT</option>
+              <option value="vat16">VAT 16%</option>
+            </select>
+          </label>
+          <label>Default Discount Mode
+            <select value={form.invoice_discount_mode} onChange={e => setForm({ ...form, invoice_discount_mode: e.target.value })}>
+              <option value="flat">Flat amount</option>
+              <option value="percent">Percent (%)</option>
+            </select>
+          </label>
+          <label>Default Payment Terms
+            <select value={form.invoice_payment_terms} onChange={e => setForm({ ...form, invoice_payment_terms: e.target.value })}>
+              {['Net 7', 'Net 15', 'Net 30', 'Net 45', 'Net 60', 'Due on receipt', 'COD'].map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </label>
+          <label>Default Price Rounding
+            <select value={form.invoice_rounding} onChange={e => setForm({ ...form, invoice_rounding: e.target.value })}>
+              <option value="nearest-shilling">Nearest shilling</option>
+              <option value="nearest-10">Nearest 10</option>
+              <option value="none">No rounding</option>
+            </select>
+          </label>
+          <label>Default Currency
+            <select value={form.invoice_currency} onChange={e => setForm({ ...form, invoice_currency: e.target.value })}>
+              {['KES', 'USD', 'EUR', 'GBP'].map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </label>
+          <label>Invoice Number Prefix
+            <input value={form.invoice_number_prefix} onChange={e => setForm({ ...form, invoice_number_prefix: e.target.value })} placeholder="INV-FTC" />
+          </label>
+          <button className="primary-action" disabled={saving}>{saving ? 'Saving...' : 'Save Invoice Pricing'}</button>
+        </form>
+      </Panel>
+      <Panel className="span-7" title="Invoice price preview" action="Sample KSh 10,000">
+        <div className="sales-order-pricing">
+          <article><span>Subtotal</span><strong>{currency(subtotal)}</strong></article>
+          <article><span>Discount ({form.invoice_discount_mode === 'percent' ? '5%' : 'Flat'}) (−)</span><strong style={{ color: '#d92d20' }}>{currency(discountValue)}</strong></article>
+          <article><span>VAT ({vatRateFor}%)</span><strong>{currency(vatValue)}</strong></article>
+          <article><span>Before rounding</span><strong>{currency(beforeRound)}</strong></article>
+          <article><span>Rounded total</span><strong>{currency(roundedTotal)}</strong></article>
+          <article><span>Payment terms</span><strong>{form.invoice_payment_terms}</strong></article>
+        </div>
+        <p className="crm-hint" style={{ marginTop: 12 }}>New invoices in Accounts → Create Invoice load these defaults automatically. Invoice numbering continues from {form.invoice_number_prefix}-0001.</p>
+      </Panel>
+      <Panel className="span-12" title="Invoice Controls">
+        <div className="settings-rule-grid">
+          {['Invoice numbering', 'VAT / tax on invoice', 'Discounts (flat or %)', 'Price rounding', 'Payment terms', 'Currency', 'Invoice logo', 'KRA PIN on tax invoice', 'Invoice comment', 'Invoice footer', 'Invoice terms'].map(item => (
+            <article key={item}><CheckCircle2 size={17} /><span>{item}</span><button type="button" onClick={() => onSaved?.(`${item} ready in invoice settings.`)}>Ready</button></article>
           ))}
         </div>
       </Panel>

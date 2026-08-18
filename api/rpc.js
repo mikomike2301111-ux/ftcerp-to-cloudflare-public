@@ -351,11 +351,13 @@ function availableStock(productName) {
 }
 const dateValue = row => String(row?.date || row?.createdAt || row?.created_at || row?.updatedAt || today()).slice(0, 10);
 function nextInvoiceNo(d = data()) {
+  const prefix = (d.settings && d.settings.invoice_number_prefix) || 'INV-FTC';
+  const esc = String(prefix).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const max = (d.invoices || []).reduce((highest, row) => {
-    const match = String(row.invNo || row.invoiceNo || '').match(/^INV-FTC-(\d+)$/i);
+    const match = String(row.invNo || row.invoiceNo || '').match(new RegExp(`^${esc}-(\\d+)$`, 'i'));
     return match ? Math.max(highest, Number(match[1]) || 0) : highest;
   }, 0);
-  return `INV-FTC-${String(max + 1).padStart(4, '0')}`;
+  return `${prefix}-${String(max + 1).padStart(4, '0')}`;
 }
 const inDateRange = (row, filters = {}) => {
   const d = dateValue(row);
@@ -15427,12 +15429,24 @@ territory: geo,
     });
     if (!items.length) throw new Error('At least one invoice line item is required');
     const subtotal = items.reduce((s, i) => s + i.total, 0);
-    const invoiceDiscount = Math.max(0, num(row.discount || row.invoiceDiscount || 0));
+    const discountMode = clean(row.discountMode) === 'percent' ? 'percent' : 'flat';
+    const discountRaw = Math.max(0, num(row.discount || row.invoiceDiscount || 0));
+    const invoiceDiscount = discountMode === 'percent'
+      ? Math.round(subtotal * (discountRaw / 100) * 100) / 100
+      : Math.min(discountRaw, subtotal);
     const shipping = Math.max(0, num(row.shipping || row.freight || 0));
     const taxBase = Math.max(0, subtotal - invoiceDiscount);
     const vatCalc = computeInvoiceTax(d, taxBase, { taxStatus: row.taxStatus, vatRate: row.vatRate });
     const tax = vatCalc.tax;
-    const total = Math.max(0, taxBase + tax + shipping);
+    const roundTo = ['none', 'nearest-shilling', 'nearest-10'].includes(String(row.roundTo || '')) ? String(row.roundTo) : (d.settings && d.settings.invoice_rounding) || 'nearest-shilling';
+    const roundAmount = n => {
+      if (roundTo === 'nearest-10') return Math.round(n / 10) * 10;
+      if (roundTo === 'none') return Math.round(n * 100) / 100;
+      return Math.round(n);
+    };
+    const unRounded = taxBase + tax + shipping;
+    const total = roundAmount(Math.max(0, unRounded));
+    const roundingAdjustment = Math.round((total - unRounded) * 100) / 100;
     const paid = Math.max(0, num(row.paid));
     const id = gid();
     const invNo = nextInvoiceNo(d);
@@ -15444,6 +15458,7 @@ territory: geo,
       subtotal, discount: invoiceDiscount, shipping, tax, total, paid, balance: Math.max(0, total - paid),
       status: paid >= total ? 'Paid' : paid > 0 ? 'Partial' : 'Pending',
       paymentTerms: clean(row.paymentTerms) || 'Net 30', type: 'Sales', approvalStatus: 'Auto Approved',
+      discountMode, roundTo, roundingAdjustment,
       taxStatus: vatCalc.taxStatus, vatRate: vatCalc.rate, vatExempt: vatCalc.isExempt,
       salesRep: clean(row.salesRep || row.salesperson || ''), poReference: clean(row.poReference || ''),
       orderNumber: clean(row.orderNumber || row.ordNo || ''),
@@ -15469,6 +15484,21 @@ territory: geo,
     emitBusinessEvent(u, 'invoice.created_from_entry', 'invoices', id, { invNo, customerName: invoice.customerName, total });
     log(u, 'Create Invoice', 'Accounts', `${invNo} — ${total}`);
     return { success: true, invoice };
+  },
+  getInvoicePricingSettings(user) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.ACCOUNTANT, ROLES.SALES);
+    const s = (data() || {}).settings || {};
+    return {
+      invoiceVatMode: s.invoice_vat_mode || s.product_default_vat_mode || 'auto',
+      invoiceDiscountMode: s.invoice_discount_mode || 'flat',
+      invoicePaymentTerms: s.invoice_payment_terms || 'Net 30',
+      invoiceRounding: s.invoice_rounding || 'nearest-shilling',
+      invoiceCurrency: s.invoice_currency || 'KES',
+      invoiceNumberPrefix: s.invoice_number_prefix || 'INV-FTC',
+      invoiceComment: s.invoice_comment || '',
+      invoiceTerms: s.invoice_terms || 'Goods once sold are not returnable',
+      vatRate: s.vat_rate || 16
+    };
   },
   updateCustomerBalances(user) {
     const u = reqRole(user, ROLES.ADMIN, ROLES.ACCOUNTANT);
