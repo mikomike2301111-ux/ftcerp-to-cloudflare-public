@@ -7712,7 +7712,7 @@ function MiniBarChart({ data = [], height = 64, color = '#3b8c5a', valueKey = 'v
 
 function AccountsInvoiceModal({ user, products = [], customers = [], onClose, onSaved }) {
   const [form, setForm] = useState({
-    customerId: '', customerName: '', customerPhone: '', customerEmail: '', billingAddress: '', shipTo: '',
+    customerId: '', customerName: '', customerPhone: '', customerEmail: '', customerLocation: '', billingAddress: '', shipTo: '',
     salesRep: '', poReference: '', orderNumber: '', memo: '', currency: 'KES',
     invoiceDate: new Date().toISOString().slice(0, 10), dueDate: '', paymentTerms: 'Net 30',
     taxStatus: 'Taxable', vatRate: 16, paymentMethod: 'Bank', paid: 0, discount: 0, discountMode: 'flat', roundTo: 'nearest-shilling', shipping: 0,
@@ -7735,6 +7735,18 @@ function AccountsInvoiceModal({ user, products = [], customers = [], onClose, on
       }));
     }
   }, [invoiceSettingsData]);
+  // Auto due date from payment terms (Net 7/15/30/45/60 → +days; Due on receipt / COD → same day)
+  useEffect(() => {
+    if (!form.invoiceDate || form.dueDate) return;
+    const terms = String(form.paymentTerms || '').toLowerCase();
+    const match = terms.match(/net\s*(\d+)/);
+    const days = match ? Number(match[1]) : (terms.includes('receipt') || terms.includes('cod') ? 0 : null);
+    if (days === null) return;
+    const d = new Date(`${form.invoiceDate}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return;
+    d.setDate(d.getDate() + days);
+    setForm(f => ({ ...f, dueDate: d.toISOString().slice(0, 10) }));
+  }, [form.paymentTerms, form.invoiceDate]);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const addItem = () => setForm(f => ({ ...f, items: [...(f.items || []), { productId: '', productName: '', description: '', quantity: 1, unitPrice: 0, discount: 0 }] }));
   const removeItem = i => setForm(f => ({ ...f, items: (f.items || []).filter((_, idx) => idx !== i) }));
@@ -7753,7 +7765,17 @@ function AccountsInvoiceModal({ user, products = [], customers = [], onClose, on
   const total = roundInvoiceAmount(beforeRound);
   const roundingAdjustment = Math.round((total - beforeRound) * 100) / 100;
   const paid = num(form.paid) || 0;
-  const pickCustomer = c => setForm(f => ({ ...f, customerId: c.customerId || c.id || '', customerName: c.customerName || c.name || '', customerPhone: c.phone || '', customerEmail: c.email || '', billingAddress: c.billingAddress || c.shipTo || c.city || '' }));
+  const pickCustomer = c => setForm(f => ({
+    ...f,
+    customerId: c.customerId || c.id || '',
+    customerName: c.customerName || c.name || '',
+    customerPhone: c.phone || '',
+    customerEmail: c.email || '',
+    customerLocation: c.location || c.city || c.county || '',
+    salesRep: c.salesRep || c.salesOwner || c.salesPerson || f.salesRep,
+    billingAddress: c.billingAddress || c.address || [c.city, c.county].filter(Boolean).join(', ') || f.billingAddress,
+    shipTo: c.deliveryAddress || c.shipTo || c.address || [c.city, c.county].filter(Boolean).join(', ') || f.shipTo
+  }));
   async function submit(e) {
     e.preventDefault();
     if (!form.customerName) return alert('Customer name is required');
@@ -7799,6 +7821,7 @@ function AccountsInvoiceModal({ user, products = [], customers = [], onClose, on
             <div className="modal-grid">
               <label>Customer phone<input value={form.customerPhone} onChange={e => set('customerPhone', e.target.value)} /></label>
               <label>Customer email<input type="email" value={form.customerEmail} onChange={e => set('customerEmail', e.target.value)} /></label>
+              <label>Customer location<input value={form.customerLocation} onChange={e => set('customerLocation', e.target.value)} placeholder="Town / county" /></label>
               <label>Sales Rep<input value={form.salesRep} onChange={e => set('salesRep', e.target.value)} /></label>
               <label>Customer PO #<input value={form.poReference} onChange={e => set('poReference', e.target.value)} /></label>
               <label>Order / Ref #<input value={form.orderNumber} onChange={e => set('orderNumber', e.target.value)} /></label>
@@ -9314,6 +9337,7 @@ function FinancePaymentModal({ user, receivables, bankAccounts, onClose, onSaved
   const first = receivables.find(x => Number(x.balance || 0) > 0) || receivables[0];
   const [form, setForm] = useState({ invoiceId: first?.invoiceId || first?.id || '', amount: first?.balance || 0, method: 'Bank Transfer', bankAccount: bankAccounts?.[0]?.accountName || '', reference: '', cashier: user?.name || '', notes: '' });
   const [saving, setSaving] = useState(false);
+  const [payMode, setPayMode] = useState('full');
   const paymentOptimistic = useOptimisticMutation({
     fn: 'recordCustomerPayment',
     onArgs: (payload, rid) => [user, { ...payload, requestId: rid }],
@@ -9336,9 +9360,11 @@ function FinancePaymentModal({ user, receivables, bankAccounts, onClose, onSaved
         <label>Invoice<select value={form.invoiceId} onChange={e => {
           const inv = receivables.find(x => (x.invoiceId || x.id) === e.target.value);
           setForm({ ...form, invoiceId: e.target.value, amount: inv?.balance || form.amount });
+          setPayMode('full');
         }}>{receivables.map(x => <option key={x.invoiceId || x.id} value={x.invoiceId || x.id}>{x.invNo} - {x.customerName} - {currency(x.balance)}</option>)}</select></label>
         <div className="modal-grid">
-          <label>Amount<input type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} required /></label>
+          <label>Payment Mode<select value={payMode} onChange={e => { setPayMode(e.target.value); if (e.target.value === 'full') { const inv = receivables.find(x => (x.invoiceId || x.id) === form.invoiceId); setForm(f => ({ ...f, amount: inv?.balance || f.amount })); } }}>{[{ v: 'full', t: 'Pay full balance' }, { v: 'partial', t: 'Partial payment (custom amount)' }].map(x => <option key={x.v} value={x.v}>{x.t}</option>)}</select></label>
+          <label>Amount<input type="number" value={form.amount} disabled={payMode === 'full'} onChange={e => setForm({ ...form, amount: e.target.value })} required /></label>
           <label>Method<select value={form.method} onChange={e => setForm({ ...form, method: e.target.value })}>{['Cash', 'Bank Transfer', 'M-Pesa', 'Card', 'Cheque', 'Credit Account', 'Mobile Money', 'Mixed Payments'].map(x => <option key={x}>{x}</option>)}</select></label>
           <label>Bank Account<select value={form.bankAccount} onChange={e => setForm({ ...form, bankAccount: e.target.value })}>{(bankAccounts || []).map(x => <option key={x.accountName} value={x.accountName}>{x.accountName} ({x.currency})</option>)}</select></label>
           <label>Reference<input value={form.reference} onChange={e => setForm({ ...form, reference: e.target.value })} placeholder="Transaction ref" /></label>
@@ -14698,11 +14724,14 @@ function CreditNoteModal({ user, invoices = [], onClose, onSaved }) {
 function ReturnModal({ user, invoices = [], products = [], warehouses = [], onClose, onSaved }) {
   const [form, setForm] = useState({ invoiceId: '', productId: '', quantity: 1, reason: '', condition: 'Resalable', warehouseId: warehouses[0]?.id || '', date: new Date().toISOString().slice(0, 10) });
   const [saving, setSaving] = useState(false);
+  const [restock, setRestock] = useState(true);
+  const [replacementProductId, setReplacementProductId] = useState('');
+  const [alsoCreditNote, setAlsoCreditNote] = useState(false);
   async function save(e) {
     e.preventDefault();
     setSaving(true);
     try {
-      await rpc('processReturn', [user, form]);
+      await rpc('processReturn', [user, { ...form, restock, replacementProductId, alsoCreditNote }]);
       onSaved?.();
       onClose?.();
     } catch (err) { alert(err.message); }
@@ -14728,6 +14757,9 @@ function ReturnModal({ user, invoices = [], products = [], warehouses = [], onCl
             <option value="">Select warehouse...</option>
             {warehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
           </select></label>
+          <label>Return Handling<select value={restock ? 'restock' : 'writeoff'} onChange={e => { setRestock(e.target.value === 'restock'); if (e.target.value !== 'restock') setForm(f => ({ ...f, condition: 'Damaged' })); }}>{[{ v: 'restock', t: 'Restock to warehouse' }, { v: 'writeoff', t: 'Write off (damaged / expired)' }].map(x => <option key={x.v} value={x.v}>{x.t}</option>)}</select></label>
+          <label>Replacement Product<select value={replacementProductId} onChange={e => setReplacementProductId(e.target.value)}><option value="">No replacement</option>{products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}><input type="checkbox" checked={alsoCreditNote} onChange={e => setAlsoCreditNote(e.target.checked)} style={{ width: 18, height: 18 }} /><span>Also create a Credit Note for this return</span></label>
           <label>Reason<select value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} required>
             <option value="">Select reason...</option>
             {['Wrong product', 'Wrong quantity', 'Damaged in transit', 'Customer changed mind', 'Expired product', 'Quality issue', 'Other'].map(r => <option key={r} value={r}>{r}</option>)}

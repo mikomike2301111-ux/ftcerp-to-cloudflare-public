@@ -33,6 +33,34 @@ Verification:
 Notes / next steps:
 ```
 
+## 2026-08-18 - Accounts Invoice/Payment/Return Upgrades + Smoke Test
+
+Target area:
+Accounts invoice creation, customer auto-fill, invoice PDF, payments, goods returns, audit
+
+Reason:
+Requested: auto-fill customer fields when creating an invoice (location, sales rep, delivery, billing), more invoice controls, single-page invoice PDF, partial/full payment option, extra return functions, auto due dates, and a smoke test.
+
+Files changed:
+- `api/rpc.js`
+- `src/main.jsx`
+
+Improvements:
+- Invoice modal: picking a customer now auto-fills Customer Location, Sales Rep, Billing address and Ship-to (from customerFinance enriched with salesRep/county/address/deliveryAddress); added a Customer location control; due date auto-computes from payment terms (Net 7/15/30/45/60 → +days, Due on receipt/COD → same day).
+- Invoice PDF is now compacted to fit on one page for normal invoices (smaller margins/rows, tighter footer).
+- Receive Customer Payment: new Payment Mode — Pay full balance (locked to the invoice balance) or Partial payment (custom amount).
+- Process Product Return: new Return Handling (Restock to warehouse / Write off), Replacement Product, and an "Also create credit note" confirmation (credit note is auto-created for returns as before); new fields persisted on the return record.
+- Smoke test: `node test-all-pages.js` passes all 12 workspaces (Dashboard, Sales, Inventory, Manufacturing, Finance 49 keys, CRM, Procurement, HR, Settings, Reports, Analytics, Email).
+
+Verification:
+- `node --check` all api/*.js passed.
+- `vite build` passed.
+- `test-all-pages.js` — 12/12 PASS.
+
+Notes / next steps:
+- Manufacturing double-entry/role separation, HR 45h total, and extra Accounts report panels (Sales by Rep, Expenses with VAT, cash movements) remain open.
+
+
 ## 2026-08-18 - Accounts/Finance Upgrade: Weekly Trend, Chart Of Accounts, Header Overlays, CRM PDF
 
 Target area:
