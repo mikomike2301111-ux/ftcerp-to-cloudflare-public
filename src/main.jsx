@@ -130,6 +130,11 @@ import {
 
 const DEFAULT_USER = { email: '', password: '' };
 const num = value => Number.parseFloat(value || 0) || 0;
+const autoProductSku = p => {
+  const code = String(p.category || 'PRD').replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() || 'PRD';
+  const slug = String(p.name || 'PRODUCT').replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase() || 'PROD';
+  return `${code}-${slug}-${String(Math.floor(Math.random() * 9000) + 1000)}`;
+};
 const currency = value => {
   const n = Number(value || 0);
   if (!Number.isFinite(n)) return 'Ksh0';
@@ -4128,7 +4133,8 @@ function InventoryWorkspace({ user, setPage, globalPeriod }) {
   const [barcodeLog, setBarcodeLog] = useState([]);
   const [issueReq, setIssueReq] = useState(null);
   const [productOpen, setProductOpen] = useState(false);
-  const [productForm, setProductForm] = useState({ name: '', sku: '', category: 'Finished Goods', unit: 'pcs', costPrice: 0, sellingPrice: 0, minStock: 0, openingStock: 0, supplierName: '', status: 'Active' });
+  const [productForm, setProductForm] = useState({ name: '', sku: '', category: 'Finished Goods', unit: 'pcs', costPrice: 0, sellingPrice: 0, minStock: 0, openingStock: 0, supplierName: '', status: 'Active', receivedDate: new Date().toISOString().slice(0, 10), manufacturingDate: '', expiryDate: '' });
+  const [stockCategory, setStockCategory] = useState('');
 
   if (workspace.loading) return <Loading title="Inventory" />;
   if (workspace.error) return <ErrorState title="Inventory" error={workspace.error} />;
@@ -4266,7 +4272,15 @@ function InventoryWorkspace({ user, setPage, globalPeriod }) {
         </>
       )}
 
-      {view === 'stock' && <Panel title="Inventory Master List" action={`${(data.stockItems || []).length} items`}>
+      {view === 'stock' && (
+        <Panel title="Inventory Master List" action={`${(data.stockItems || []).length} items`}>
+          <div className="inline-actions" style={{ padding: '2px 16px 10px', flexWrap: 'wrap', gap: 8 }}>
+            <select value={stockCategory} onChange={e => setStockCategory(e.target.value)} style={{ height: 36, borderRadius: 8, border: '1px solid var(--line)', padding: '0 10px' }}>
+              <option value="">All categories</option>
+              {Array.from(new Set((data.stockItems || []).map(i => i.category).filter(Boolean))).map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <span style={{ color: '#667085', fontSize: 12 }}>{stockCategory ? `${(data.stockItems || []).filter(i => i.category === stockCategory).length} items in ${stockCategory}` : 'Every item, spaced for review'}</span>
+          </div>
         <div className="table-wrap">
           <table>
             <thead>
@@ -4280,7 +4294,7 @@ function InventoryWorkspace({ user, setPage, globalPeriod }) {
               </tr>
             </thead>
             <tbody>
-              {data.stockItems.map(item => (
+              {data.stockItems.filter(item => !stockCategory || item.category === stockCategory).map(item => (
                 <tr key={item.id} onClick={() => setDeepItem(item)} style={{ cursor: 'pointer' }}>
                   <td><strong>{item.sku}</strong></td>
                   <td>{item.productName}</td>
@@ -4310,7 +4324,11 @@ function InventoryWorkspace({ user, setPage, globalPeriod }) {
                         { label: 'Audit', icon: <ShieldCheck size={15} />, onClick: () => { setAuditOpen(true); setView('audits'); } },
                         { label: 'Log damage', icon: <AlertTriangle size={15} />, onClick: () => setDamageOpen(true) },
                         { label: 'Print label', icon: <Printer size={15} />, onClick: () => setLabelsOpen(true) },
-                        { label: 'Copy', icon: <FileText size={15} />, onClick: () => copyText(rowSummary(item)) }
+                        { label: 'Copy', icon: <FileText size={15} />, onClick: () => copyText(rowSummary(item)) },
+                        { label: 'Delete stock', icon: <Trash2 size={15} />, onClick: () => {
+                          if (!confirm(`Delete stock "${item.productName}" (${item.sku || ''})? This is soft-deleted and recoverable.`)) return;
+                          rpc('deleteRecord', [user, 'inventory', item.id]).then(() => setRefreshKey(x => x + 1)).catch(e => alert(e.message || 'Could not delete stock'));
+                        } }
                       ]}
                     />
                   </td>
@@ -4319,7 +4337,8 @@ function InventoryWorkspace({ user, setPage, globalPeriod }) {
             </tbody>
           </table>
         </div>
-      </Panel>}
+        </Panel>
+      )}
       {view === 'warehouses' && <Panel title="Store Management"><SimpleTable rows={data.warehouses} columns={['code', 'name', 'county', 'capacity', 'used', 'utilization', 'stockValue']} /></Panel>}
       {view === 'movements' && <Panel title="Stock Movement Tracking"><SimpleTable rows={data.movements} columns={['productName', 'warehouseName', 'transactionType', 'quantity', 'unitCost', 'referenceType', 'createdBy']} /></Panel>}
       {view === 'adjustments' && <Panel title="Stock Adjustments" action="Authorized"><SimpleTable rows={data.adjustments} columns={['productName', 'warehouseName', 'adjustmentType', 'quantity', 'reason', 'approvedBy', 'date']} /></Panel>}
@@ -4631,21 +4650,34 @@ function InventoryWorkspace({ user, setPage, globalPeriod }) {
             <form className="settings-form-grid" onSubmit={async e => {
               e.preventDefault();
               try {
-                await rpc('saveProduct', [user, productForm]);
+                const sku = productForm.sku.trim() || autoProductSku(productForm);
+                await rpc('saveProduct', [user, { ...productForm, sku }]);
                 setProductOpen(false);
-                setProductForm({ name: '', sku: '', category: 'Finished Goods', unit: 'pcs', costPrice: 0, sellingPrice: 0, minStock: 0, openingStock: 0, supplierName: '', status: 'Active' });
+                setProductForm({ name: '', sku: '', category: 'Finished Goods', unit: 'pcs', costPrice: 0, sellingPrice: 0, minStock: 0, openingStock: 0, supplierName: '', status: 'Active', receivedDate: new Date().toISOString().slice(0, 10), manufacturingDate: '', expiryDate: '' });
                 setRefreshKey(k => k + 1);
               } catch (err) { alert(err.message); }
             }}>
               <label>Product name<input value={productForm.name} onChange={e => setProductForm({ ...productForm, name: e.target.value })} required placeholder="Farmtrack product name" /></label>
-              <label>SKU<input value={productForm.sku} onChange={e => setProductForm({ ...productForm, sku: e.target.value })} placeholder="SKU code" /></label>
-              <label>Category<input value={productForm.category} onChange={e => setProductForm({ ...productForm, category: e.target.value })} /></label>
-              <label>Unit<input value={productForm.unit} onChange={e => setProductForm({ ...productForm, unit: e.target.value })} /></label>
+              <label>SKU (auto)<input value={productForm.sku} onChange={e => setProductForm({ ...productForm, sku: e.target.value })} placeholder={`${productForm.sku || autoProductSku(productForm)}`} /><button type="button" className="mini-action" style={{ marginTop: 6 }} onClick={() => setProductForm({ ...productForm, sku: autoProductSku(productForm) })}>Regenerate SKU</button></label>
+              <label>Category<select value={productForm.category} onChange={e => setProductForm({ ...productForm, category: e.target.value })}>
+                {['Finished Goods', 'Raw Material', 'Semi-Finished', 'Packaging', 'Spare Part', 'Service'].map(c => <option key={c} value={c}>{c}</option>)}
+              </select></label>
+              <label>Unit<select value={productForm.unit} onChange={e => setProductForm({ ...productForm, unit: e.target.value })}>
+                {['pcs', 'kg', 'bag', 'litre', 'bottle', 'box', 'roll', 'set', 'pack', 'g'].map(u => <option key={u} value={u}>{u}</option>)}
+              </select></label>
+              <label>Supplier<select value={productForm.supplierName} onChange={e => setProductForm({ ...productForm, supplierName: e.target.value })}>
+                <option value="">Select supplier...</option>
+                {(data.suppliers || []).map(s => <option key={s.id || s.name} value={s.name}>{s.name}</option>)}
+              </select></label>
               <label>Cost price<input type="number" value={productForm.costPrice} onChange={e => setProductForm({ ...productForm, costPrice: Number(e.target.value) })} /></label>
               <label>Selling price<input type="number" value={productForm.sellingPrice} onChange={e => setProductForm({ ...productForm, sellingPrice: Number(e.target.value) })} /></label>
               <label>Min stock<input type="number" value={productForm.minStock} onChange={e => setProductForm({ ...productForm, minStock: Number(e.target.value) })} /></label>
               <label>Opening stock (Njiru Store)<input type="number" value={productForm.openingStock} onChange={e => setProductForm({ ...productForm, openingStock: Number(e.target.value) })} /></label>
-              <label>Supplier name<input value={productForm.supplierName} onChange={e => setProductForm({ ...productForm, supplierName: e.target.value })} placeholder="Type supplier name" /></label>
+              <fieldset className="settings-fieldset"><legend>Dates</legend><div>
+                <label>Received date<input type="date" value={productForm.receivedDate} onChange={e => setProductForm({ ...productForm, receivedDate: e.target.value })} /></label>
+                <label>Manufacturing date<input type="date" value={productForm.manufacturingDate} onChange={e => setProductForm({ ...productForm, manufacturingDate: e.target.value })} /></label>
+                <label>Expiry date<input type="date" value={productForm.expiryDate} onChange={e => setProductForm({ ...productForm, expiryDate: e.target.value })} /></label>
+              </div></fieldset>
               <button type="submit" className="primary-action">Save product</button>
             </form>
           </div>
@@ -7282,6 +7314,10 @@ function Manufacturing({ user, setPage, globalPeriod }) {
             <KpiCard icon={Hourglass} label="Pending QC" value={Number(data.overview.qcPending).toLocaleString()} change={0} tone="blue" />
             <KpiCard icon={BarChart3} label="Reorder Suggestions" value={Number(data.overview.reorderSuggestions).toLocaleString()} change={0} tone="blue" />
           </div>
+          <Panel className="span-12" title="Materials In Hand — Requested from Inventory" action={`${(sorted.productionMaterialRequests || []).length} requests`}>
+            <SimpleTable rows={(sorted.productionMaterialRequests || []).flatMap(req => (req.lines || []).filter(l => num(l.quantityIssued) > 0).map(l => ({ requestNo: req.requestNo, order: req.productionOrderNo || '—', material: l.productName || l.materialName || '—', issued: num(l.quantityIssued), unit: l.unit || 'unit', status: l.status || req.status }))).slice(0, 14)} columns={['requestNo', 'order', 'material', 'issued', 'unit', 'status']} />
+            {(sorted.productionMaterialRequests || []).every(req => !(req.lines || []).some(l => num(l.quantityIssued) > 0)) && <div className="empty-state">No materials in hand yet. In Production Orders, request materials from Inventory — once Warehouse issues them they will appear here ready to be used out.</div>}
+          </Panel>
           <div className="dashboard-grid">
             <Panel className="span-6" title="Manufacturing Health Score"><SimpleTable rows={sorted.health} columns={['material', 'availability', 'quality', 'demand', 'score', 'status']} /></Panel>
             <Panel className="span-6" title="Production Orders"><ProductionOrderList orders={sorted.orders} onStart={startOrder} onComplete={completeOrder} /></Panel>
@@ -8324,7 +8360,30 @@ function AccountsWorkspace({ user, setPage, globalPeriod }) {
           <SimpleTable rows={(data.audit || []).filter(row => !auditQuery || `${row.module || ''} ${row.action || ''} ${row.reference || ''} ${row.user || ''}`.toLowerCase().includes(auditQuery.toLowerCase()))} columns={['user', 'date', 'module', 'action', 'reference', 'newValue', 'approval', 'immutable']} />
         </Panel>
       )}
-      {view === 'reports' && <InventoryReports reports={data.reports} user={user} module="Financial" />}
+      {view === 'reports' && (
+        <div className="dashboard-grid">
+          <InventoryReports reports={data.reports} user={user} module="Financial" />
+          <Panel className="span-6" title="Cash Movement by Place" action={`${(data.bankTransactions || []).length} txns`}>
+            <SimpleTable rows={Object.entries((data.bankTransactions || []).reduce((acc, t) => {
+              const k = t.accountName || 'Other';
+              acc[k] = acc[k] || { place: k, deposits: 0, withdrawals: 0, count: 0 };
+              acc[k].deposits += num(t.deposit); acc[k].withdrawals += num(t.withdrawal); acc[k].count += 1;
+              return acc;
+            }, {})).map(([, v]) => v).filter(v => v.deposits || v.withdrawals)} columns={['place', 'deposits', 'withdrawals', 'count']} />
+          </Panel>
+          <Panel className="span-6" title="Expenses by Category (VAT 16% est.)" action={`${(data.expenses || []).length} expenses`}>
+            <SimpleTable rows={Object.entries((data.expenses || []).reduce((acc, e) => {
+              const k = e.category || 'Uncategorised';
+              acc[k] = acc[k] || { category: k, total: 0, count: 0 };
+              acc[k].total += num(e.amount); acc[k].count += 1;
+              return acc;
+            }, {})).map(([, v]) => ({ ...v, vatEstimate: Math.round(v.total * 0.16 * 100) / 100 })).filter(v => v.total && v.total >= 0)} columns={['category', 'count', 'total', 'vatEstimate']} />
+          </Panel>
+          <Panel className="span-12" title="Accounts Receivable Aging Snapshot" action={`${(data.agingSummary || []).length} customers`}>
+            <SimpleTable rows={(data.agingSummary || []).slice(0, 10)} columns={['customerName', 'totalBalance', 'overdue', 'current', 'daysOverdue', 'riskStatus']} />
+          </Panel>
+        </div>
+      )}
       {view === 'credit-notes' && (
         <Panel title="Credit Notes" action={<div className="panel-action-row"><button className="mini-action" onClick={() => setCreditNoteOpen(true)}><Plus size={15} /> New Credit Note</button><button className="mini-action" onClick={() => downloadRowsFile('credit-notes', data.creditNotes, 'CSV')}><Download size={15} /> CSV</button></div>}>
           <SimpleTable
@@ -8954,7 +9013,30 @@ function Finance({ user, setPage, globalPeriod }) {
       {view === 'assets' && <Panel title="Fixed Assets"><SimpleTable rows={data.assets} columns={['assetName', 'category', 'location', 'purchaseCost', 'accumulatedDepreciation', 'currentValue', 'status']} /></Panel>}
       {view === 'budgeting' && <Panel title="Budgeting & Variance"><SimpleTable rows={data.budgets} columns={['department', 'budget', 'actual', 'variance', 'forecast', 'status']} /></Panel>}
       {view === 'reconciliation' && <FinanceReconciliation data={data} />}
-      {view === 'reports' && <InventoryReports reports={data.reports} user={user} module="Financial" />}
+      {view === 'reports' && (
+        <div className="dashboard-grid">
+          <InventoryReports reports={data.reports} user={user} module="Financial" />
+          <Panel className="span-6" title="Cash Movement by Place" action={`${(data.bankTransactions || []).length} txns`}>
+            <SimpleTable rows={Object.entries((data.bankTransactions || []).reduce((acc, t) => {
+              const k = t.accountName || 'Other';
+              acc[k] = acc[k] || { place: k, deposits: 0, withdrawals: 0, count: 0 };
+              acc[k].deposits += num(t.deposit); acc[k].withdrawals += num(t.withdrawal); acc[k].count += 1;
+              return acc;
+            }, {})).map(([, v]) => v).filter(v => v.deposits || v.withdrawals)} columns={['place', 'deposits', 'withdrawals', 'count']} />
+          </Panel>
+          <Panel className="span-6" title="Expenses by Category (VAT 16% est.)" action={`${(data.expenses || []).length} expenses`}>
+            <SimpleTable rows={Object.entries((data.expenses || []).reduce((acc, e) => {
+              const k = e.category || 'Uncategorised';
+              acc[k] = acc[k] || { category: k, total: 0, count: 0 };
+              acc[k].total += num(e.amount); acc[k].count += 1;
+              return acc;
+            }, {})).map(([, v]) => ({ ...v, vatEstimate: Math.round(v.total * 0.16 * 100) / 100 })).filter(v => v.total && v.total >= 0)} columns={['category', 'count', 'total', 'vatEstimate']} />
+          </Panel>
+          <Panel className="span-12" title="Accounts Receivable Aging Snapshot" action={`${(data.agingSummary || []).length} customers`}>
+            <SimpleTable rows={(data.agingSummary || []).slice(0, 10)} columns={['customerName', 'totalBalance', 'overdue', 'current', 'daysOverdue', 'riskStatus']} />
+          </Panel>
+        </div>
+      )}
       {view === 'audit' && <Panel title="Immutable Audit Center"><SimpleTable rows={data.audit} columns={['user', 'date', 'module', 'action', 'reference', 'newValue', 'approval', 'immutable']} /></Panel>}
       {view === 'costCenters' && <Panel title="Cost Centers"><SimpleTable rows={data.costCenters} columns={['code', 'department', 'manager', 'revenue', 'cost', 'profitability']} /></Panel>}
       {view === 'forecasting' && <Panel title="Financial Forecasting"><SimpleTable rows={data.forecasts} columns={['metric', 'current', 'forecast30', 'confidence']} /></Panel>}

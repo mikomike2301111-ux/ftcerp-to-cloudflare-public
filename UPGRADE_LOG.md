@@ -33,6 +33,30 @@ Verification:
 Notes / next steps:
 ```
 
+## 2026-08-18 - Inventory/Manufacturing/Reports Upgrades
+
+Target area:
+Inventory stock + Add Product, Manufacturing materials-in-hand, Finance/Accounts reports
+
+Reason:
+Add product categories (finished/semi/raw/packaging), supplier dropdown, automatic SKU + date fields; space out the inventory stock list, add stock delete; a Manufacturing "Materials In Hand" section; and real report panels on the Finance and Accounts reports tabs.
+
+Files changed:
+- `src/main.jsx`
+
+Improvements:
+- Add Product: Category is now a dropdown (Finished Goods, Raw Material, Semi-Finished, Packaging, Spare Part, Service), Unit dropdown (10 units), Supplier dropdown (from suppliers list), automatic SKU generation with a Regenerate button (`autoProductSku`), and a Dates section (Received / Manufacturing / Expiry). SKU auto-generates on save if empty.
+- Inventory → Stock: added a category filter toolbar and a live item count, and a Delete stock action (soft-delete, recoverable) in each item's menu.
+- Manufacturing dashboard: new top "Materials In Hand — Requested from Inventory" panel showing requested/issued lines (from productionMaterialRequests) ready to be used out, with an empty-state hint.
+- Finance & Accounts → Reports tabs: added live panels — Cash Movement by Place (deposits/withdrawals per bank/M-Pesa/Cash account), Expenses by Category with estimated VAT 16%, and an Accounts Receivable Aging snapshot — all computed from real workspace data.
+
+Verification:
+- `vite build` passed (built ~1m).
+
+Notes / next steps:
+- Stock delete uses the guarded `deleteRecord` service (collection `inventory`).
+
+
 ## 2026-08-18 - Accounts Invoice/Payment/Return Upgrades + Smoke Test
 
 Target area:
