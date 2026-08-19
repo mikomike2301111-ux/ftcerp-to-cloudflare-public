@@ -8569,6 +8569,14 @@ function AccountsWorkspace({ user, setPage, globalPeriod }) {
               return acc;
             }, {})).map(([, v]) => ({ ...v, vatEstimate: Math.round(v.total * 0.16 * 100) / 100 })).filter(v => v.total && v.total >= 0)} columns={['category', 'count', 'total', 'vatEstimate']} />
           </Panel>
+          <Panel className="span-6" title="Sales by Rep" action={`${(data.receivables || []).length} invoices`}>
+            <SimpleTable rows={Object.entries((data.receivables || []).reduce((acc, inv) => {
+              const k = inv.salesRep || inv.salesperson || 'Unassigned';
+              acc[k] = acc[k] || { rep: k, invoices: 0, total: 0, paid: 0, balance: 0 };
+              acc[k].invoices += 1; acc[k].total += num(inv.total); acc[k].paid += num(inv.paid); acc[k].balance += num(inv.balance);
+              return acc;
+            }, {})).map(([, v]) => v).filter(v => v.invoices)} columns={['rep', 'invoices', 'total', 'paid', 'balance']} />
+          </Panel>
           <Panel className="span-12" title="Accounts Receivable Aging Snapshot" action={`${(data.agingSummary || []).length} customers`}>
             <SimpleTable rows={(data.agingSummary || []).slice(0, 10)} columns={['customerName', 'totalBalance', 'overdue', 'current', 'daysOverdue', 'riskStatus']} />
           </Panel>
@@ -9221,6 +9229,14 @@ function Finance({ user, setPage, globalPeriod }) {
               acc[k].total += num(e.amount); acc[k].count += 1;
               return acc;
             }, {})).map(([, v]) => ({ ...v, vatEstimate: Math.round(v.total * 0.16 * 100) / 100 })).filter(v => v.total && v.total >= 0)} columns={['category', 'count', 'total', 'vatEstimate']} />
+          </Panel>
+          <Panel className="span-6" title="Sales by Rep" action={`${(data.receivables || []).length} invoices`}>
+            <SimpleTable rows={Object.entries((data.receivables || []).reduce((acc, inv) => {
+              const k = inv.salesRep || inv.salesperson || 'Unassigned';
+              acc[k] = acc[k] || { rep: k, invoices: 0, total: 0, paid: 0, balance: 0 };
+              acc[k].invoices += 1; acc[k].total += num(inv.total); acc[k].paid += num(inv.paid); acc[k].balance += num(inv.balance);
+              return acc;
+            }, {})).map(([, v]) => v).filter(v => v.invoices)} columns={['rep', 'invoices', 'total', 'paid', 'balance']} />
           </Panel>
           <Panel className="span-12" title="Accounts Receivable Aging Snapshot" action={`${(data.agingSummary || []).length} customers`}>
             <SimpleTable rows={(data.agingSummary || []).slice(0, 10)} columns={['customerName', 'totalBalance', 'overdue', 'current', 'daysOverdue', 'riskStatus']} />

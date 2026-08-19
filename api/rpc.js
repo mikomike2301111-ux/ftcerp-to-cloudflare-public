@@ -9479,22 +9479,27 @@ const api = {
     reqRole(user, ROLES.ADMIN, ROLES.DEV, ROLES.EXECUTIVE, ROLES.MANAGER, ROLES.PRODUCTION, ROLES.WAREHOUSE);
     ensureManufacturingData();
     const d = data();
+    // Role separation: production/operator users only see records assigned to them;
+    // admins/managers/executives/dev see everything (no role mixing in reports).
+    const isOpsRole = ['Admin', 'Administrator', 'Manager', 'Executive', 'Developer', 'Dev'].includes(String(user.role || ''));
+    const meName = String(user.name || '').toLowerCase();
+    const mineOnly = row => { const op = String(row.operator || row.assignedTo || row.userName || '').toLowerCase(); return isOpsRole || !op || op === meName; };
     ['rawMaterials','rawMaterialBatches','formulas','formulaVersions','productionOrders','productionBatches',
      'rawMaterialConsumption','qualityControlRecords','wasteRecords','inventoryTransactions',
      'productionBatchCosts','productionBatchYields','packagingMaterials','unitOfMeasure','rndTrials','rndTrialConsumptions'].forEach(k => {
       if (!Array.isArray(d[k])) d[k] = [];
     });
     const scope = filters && filters.period ? { ...periodRange(filters.period), ...filters } : (filters || {});
-    const orders = (d.productionOrders || []).filter(Boolean).filter(row => inDateRange(row, scope));
+    const orders = (d.productionOrders || []).filter(Boolean).filter(row => inDateRange(row, scope)).filter(mineOnly);
     const materials = (d.rawMaterials || []).filter(Boolean);
-    const batches = (d.rawMaterialBatches || []).filter(Boolean).filter(row => inDateRange(row, scope));
-    const consumption = (d.rawMaterialConsumption || []).filter(Boolean).filter(row => inDateRange(row, scope));
-    const produced = (d.productionBatches || []).filter(Boolean).filter(row => inDateRange(row, scope));
-    const qcRecords = (d.qualityControlRecords || []).filter(Boolean).filter(row => inDateRange(row, scope));
-    const wasteRecords = (d.wasteRecords || []).filter(Boolean).filter(row => inDateRange(row, scope));
+    const batches = (d.rawMaterialBatches || []).filter(Boolean).filter(row => inDateRange(row, scope)).filter(mineOnly);
+    const consumption = (d.rawMaterialConsumption || []).filter(Boolean).filter(row => inDateRange(row, scope)).filter(mineOnly);
+    const produced = (d.productionBatches || []).filter(Boolean).filter(row => inDateRange(row, scope)).filter(mineOnly);
+    const qcRecords = (d.qualityControlRecords || []).filter(Boolean).filter(row => inDateRange(row, scope)).filter(mineOnly);
+    const wasteRecords = (d.wasteRecords || []).filter(Boolean).filter(row => inDateRange(row, scope)).filter(mineOnly);
     const inventoryTxns = (d.inventoryTransactions || []).filter(Boolean).filter(row => inDateRange(row, scope));
-    const costRecords = (d.productionBatchCosts || []).filter(Boolean).filter(row => inDateRange(row, scope));
-    const yieldRecords = (d.productionBatchYields || []).filter(Boolean).filter(row => inDateRange(row, scope));
+    const costRecords = (d.productionBatchCosts || []).filter(Boolean).filter(row => inDateRange(row, scope)).filter(mineOnly);
+    const yieldRecords = (d.productionBatchYields || []).filter(Boolean).filter(row => inDateRange(row, scope)).filter(mineOnly);
     const rndTrials = (d.rndTrials || []).filter(Boolean).filter(row => inDateRange(row, scope));
     const rndConsumptions = (d.rndTrialConsumptions || []).filter(Boolean).filter(row => inDateRange(row, scope));
     const totalAvailable = materials.reduce((s, x) => s + num(x.availableQuantity), 0);

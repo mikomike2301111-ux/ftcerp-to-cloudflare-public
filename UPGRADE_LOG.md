@@ -33,6 +33,28 @@ Verification:
 Notes / next steps:
 ```
 
+## 2026-08-18 - Manufacturing Role Separation + Sales by Rep Reports
+
+Target area:
+Manufacturing visibility by role, Accounts/Finance reports
+
+Reason:
+"Two users (and more) in Manufacturing — roles must not mix, even in reports." Also asked for a Sales by Rep report in Accounts/Finance.
+
+Files changed:
+- `api/rpc.js`
+- `src/main.jsx`
+
+Improvements:
+- Manufacturing: `getManufacturingWorkspaceData` now scopes production orders, batches, consumption, QC, waste, costs and yields to records assigned to the signed-in user for non-admin roles (operator/assignedTo match). Admins/Managers/Executives/Devs see everything.
+- Finance & Accounts → Reports: added a live **Sales by Rep** panel (grouped from receivables: invoices, total, paid, balance per rep) alongside Cash Movement by Place and Expenses by Category (VAT est.).
+
+Verification:
+- `node --check api/rpc.js` passed.
+- `vite build` passed.
+
+Notes / next steps:
+- Pushed the full-erp branch to both my-big-project-ERP- and ftcerp-to-cloudflare-public.
 ## 2026-08-18 - HR Weekly Hours (45h), Inventory for HR, Auto PO Numbers
 
 Target area:
