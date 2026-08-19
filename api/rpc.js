@@ -8015,13 +8015,15 @@ const api = {
     const supplier = (d.suppliers || []).find(s => String(s.name).toLowerCase() === supplierName.toLowerCase() || s.id === form.supplierId);
     const toEmail = clean(form.toEmail) || supplier?.email || '';
     const toWhatsapp = clean(form.toWhatsapp) || supplier?.whatsapp || supplier?.phone || '';
-    if (channel === 'email' && !toEmail) throw new Error('Supplier email is required for email channel');
-    if (channel === 'whatsapp' && !toWhatsapp) throw new Error('Supplier WhatsApp/phone is required');
+    // Auto-resolve the delivery channel so "Place order" always records the PO.
+    let effectiveChannel = channel;
+    if (effectiveChannel === 'email' && !toEmail && toWhatsapp) effectiveChannel = 'whatsapp';
+    if (effectiveChannel === 'email' && !toEmail && !toWhatsapp) effectiveChannel = 'record';
+    if (effectiveChannel === 'whatsapp' && !toWhatsapp && toEmail) effectiveChannel = 'email';
     const subject = clean(form.subject) || (type === 'purchase_order' ? 'Purchase Order' : 'Request for Quotation');
-    const body = clean(form.body);
-    if (!body) throw new Error('Message body is required');
+    const body = clean(form.body) || (type === 'purchase_order' ? `Purchase order for ${supplierName} — items/terms to follow.` : `Request for quotation for ${supplierName}.`);
     const row = {
-      id: gid(), type, channel, supplierName: supplier?.name || supplierName,
+      id: gid(), type, channel: effectiveChannel, supplierName: supplier?.name || supplierName,
       supplierId: supplier?.id || '', toEmail, toWhatsapp, subject, body,
       status: 'Queued', createdBy: u.name, createdAt: new Date().toISOString()
     };

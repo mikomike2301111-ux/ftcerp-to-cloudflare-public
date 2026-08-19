@@ -33,6 +33,33 @@ Verification:
 Notes / next steps:
 ```
 
+## 2026-08-18 - Admin Office Place-Order Fix, PO Preview/Print, Raw Materials DB
+
+Target area:
+Procurement / Admin Office purchase orders, Raw Materials inventory database
+
+Reason:
+"Place order" in Admin Office failed when a supplier had no email/WhatsApp or the message body was empty (RPC threw hard errors); POs had no preview/print. Also requested a proper Raw Materials inventory module seeded per the 24/07/2026 report.
+
+Files changed:
+- `api/rpc.js`
+- `src/main.jsx`
+- `sql-migrations/008-raw-materials-inventory.sql` (new)
+
+Improvements:
+- Admin Office place order: `sendProcurementMessage` now auto-resolves the delivery channel (email → whatsapp → record only) and defaults the body, so placing a PO always records successfully instead of erroring on missing supplier contact/body.
+- Purchase Orders (Procurement → Orders): each PO now has branded **Preview** and **Print** actions (`previewPurchaseOrder` / `printPurchaseOrder` / `purchaseOrderDoc`) rendering a green FTC purchase-order document with supplier, items, totals, and a Print/Save-PDF button.
+- New migration `008-raw-materials-inventory.sql`: dedicated `raw_materials_inventory` table (decimal-safe quantities) + `raw_material_movements` audit table, idempotent SKU-keyed seed of the 14 raw materials (RM-001…RM-014 with exact quantities/units from the 24/07/2026 report), opening-balance movements dated 2026-07-24, an auto status/total_value recalculation function, indexes, and service-role RLS.
+
+Verification:
+- `node --check api/rpc.js` passed.
+- `vite build` passed (built ~57s).
+
+Notes / next steps:
+- Run `008` in the Supabase SQL Editor after `000`.
+- Full Raw Materials frontend panel (add/receive/consume/detail) still to be added in the app; the DB layer is ready.
+
+
 ## 2026-08-18 - Inventory/Manufacturing/Reports Upgrades
 
 Target area:
