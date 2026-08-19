@@ -4275,6 +4275,29 @@ function InventoryRawMaterials({ user, onRefresh }) {
   );
 }
 
+function ProfitLossReport({ data }) {
+  const accounts = data.financeAccounts || data.accounts || [];
+  const lines = data.journalLines || data.ledger || data.generalLedger || [];
+  const net = prefix => lines.filter(l => String(l.accountCode || l.account || '').startsWith(prefix)).reduce((s, l) => s + num(l.credit) - num(l.debit), 0);
+  const revenue = net('4');
+  const cogs = net('5');
+  const expenses = net('6');
+  const gross = revenue - cogs;
+  const netProfit = gross - expenses;
+  const rows = [
+    { label: 'Revenue', amount: revenue, kind: 'revenue' },
+    { label: 'Less: Cost of Sales', amount: cogs, kind: 'cogs' },
+    { label: 'Gross Profit', amount: gross, kind: 'profit' },
+    { label: 'Operating Expenses', amount: expenses, kind: 'expense' },
+    { label: 'Net Profit / Loss', amount: netProfit, kind: 'net' },
+  ].filter(r => Math.abs(num(r.amount)) > 0 || r.kind === 'net' || rows.length === 1);
+  return (
+    <Panel className="span-12" title="Profit & Loss (Income Statement)" action="Live journal lines">
+      <SimpleTable rows={rows.map(r => ({ ...r, amount: currency(r.amount) }))} columns={['label', 'amount', 'kind']} />
+    </Panel>
+  );
+}
+
 function InventoryWorkspace({ user, setPage, globalPeriod }) {
   const tabs = ['overview', 'stock', 'raw-materials', 'warehouses', 'movements', 'adjustments', 'transfers', 'receiving', 'dispatch', 'audits', 'expiry', 'damaged', 'alerts', 'reports', 'analytics', 'forecasting', 'ai', 'barcode', 'valuation', 'batch', 'reorder', 'count', 'suppliers', 'reservation', 'cost', 'mfg'];
   const [refreshKey, setRefreshKey] = useState(0);
@@ -8577,6 +8600,7 @@ function AccountsWorkspace({ user, setPage, globalPeriod }) {
               return acc;
             }, {})).map(([, v]) => v).filter(v => v.invoices)} columns={['rep', 'invoices', 'total', 'paid', 'balance']} />
           </Panel>
+          <ProfitLossReport data={data} />
           <Panel className="span-12" title="Accounts Receivable Aging Snapshot" action={`${(data.agingSummary || []).length} customers`}>
             <SimpleTable rows={(data.agingSummary || []).slice(0, 10)} columns={['customerName', 'totalBalance', 'overdue', 'current', 'daysOverdue', 'riskStatus']} />
           </Panel>
@@ -9238,6 +9262,7 @@ function Finance({ user, setPage, globalPeriod }) {
               return acc;
             }, {})).map(([, v]) => v).filter(v => v.invoices)} columns={['rep', 'invoices', 'total', 'paid', 'balance']} />
           </Panel>
+          <ProfitLossReport data={data} />
           <Panel className="span-12" title="Accounts Receivable Aging Snapshot" action={`${(data.agingSummary || []).length} customers`}>
             <SimpleTable rows={(data.agingSummary || []).slice(0, 10)} columns={['customerName', 'totalBalance', 'overdue', 'current', 'daysOverdue', 'riskStatus']} />
           </Panel>
