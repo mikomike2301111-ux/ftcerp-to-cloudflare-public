@@ -1494,7 +1494,7 @@ function Sidebar({ page, setPage, open, setOpen, collapsed, setCollapsed, user, 
             const allowed = Array.isArray(user?.allowedPages) ? user.allowedPages : [];
             if (allowed.includes(item.id)) return true;
             // Shared modules
-            if (['notifications', 'email', 'leaves', 'requisitions'].includes(item.id)) return true;
+            if (['notifications', 'email', 'leaves', 'requisitions', 'inventory'].includes(item.id)) return true;
             return false;
           }).map(item => {
             const Icon = item.icon;
@@ -12421,6 +12421,7 @@ function HRWorkspace({ user, setPage, globalPeriod = 'Month' }) {
       <div className="hr-insight-strip hr-insight-strip-compact">
         <article><span>Headcount</span><strong>{s.headcount || 0}</strong><em>{s.activeEmployees || 0} active · {s.newThisMonth || 0} new this month</em></article>
         <article><span>Attendance today</span><strong>{s.presentToday || 0}</strong><em>{s.lateToday || s.lateArrivals || 0} late · {s.attendanceRate || 0}% period rate</em></article>
+        <article><span>Hours this week</span><strong>{s.hoursThisWeek || 0}h</strong><em>of {s.expectedWeekHours || 45}h expected (8h Mon–Fri + 5h Sat)</em></article>
         <article><span>Leave</span><strong>{s.onLeave || 0} on leave</strong><em>{s.pendingLeaves || data.leaveSummary?.pendingApprovals || 0} pending approvals</em></article>
         <article><span>Payroll / Talent</span><strong>{currency(s.payrollCost || 0)}</strong><em>{s.activeCandidates || 0} candidates · {s.trainingCompletion || 0}% training</em></article>
       </div>

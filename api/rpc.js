@@ -10093,7 +10093,7 @@ const api = {
     if (formula.approvalStatus !== 'Approved') throw new Error('Formula must be approved before creating a production order');
     const order = {
       id: gid(),
-      orderNo: row.jobNo || `PJ-${Date.now()}`,
+      orderNo: row.jobNo || `PO-${String((d.productionOrders || []).length + 1).padStart(4, '0')}`,
       productName: row.productName || formula.productName,
       productId: formula.productId,
       formulaId: formula.id,
@@ -13791,6 +13791,18 @@ territory: geo,
       return (h * 60 + m) > (8 * 60 + 5);
     }).length;
     const missingCheckouts = attendanceInPeriod.filter(a => a.checkIn && !a.checkOut && a.status !== 'Absent').length;
+    // Weekly hours total (Monday-start) — expected 45h (8h Mon–Fri + 5h Saturday)
+    const weekKeyOf = dateStr => {
+      const dd = new Date(String(dateStr || '').slice(0, 10));
+      if (Number.isNaN(dd.getTime())) return '';
+      const day = (dd.getDay() + 6) % 7;
+      dd.setDate(dd.getDate() - day);
+      const p = n => String(n).padStart(2, '0');
+      return `${dd.getFullYear()}-${p(dd.getMonth() + 1)}-${p(dd.getDate())}`;
+    };
+    const thisWeekKey = weekKeyOf(today());
+    const hoursThisWeek = attendanceWithHours.filter(a => weekKeyOf(a.date) === thisWeekKey).reduce((sum, a) => sum + num(a.hoursWorked), 0);
+    const expectedWeekHours = 45;
     // Department-wise hours aggregation (last 30 days)
     const deptHours = {};
     attendanceInPeriod.forEach(a => {
@@ -14057,6 +14069,8 @@ territory: geo,
           presentToday: presentToday.length,
           lateToday: attendanceToday.filter(a => a.status === 'Late').length,
           totalHoursToday: Math.round(totalHoursToday * 10) / 10,
+          hoursThisWeek: Math.round(hoursThisWeek * 10) / 10,
+          expectedWeekHours,
           presentInPeriod: presentInPeriod.length,
           absentInPeriod: absentInPeriod.length,
           totalHoursInPeriod: Math.round(hoursInPeriod * 10) / 10,

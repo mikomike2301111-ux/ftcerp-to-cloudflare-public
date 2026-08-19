@@ -33,6 +33,29 @@ Verification:
 Notes / next steps:
 ```
 
+## 2026-08-18 - HR Weekly Hours (45h), Inventory for HR, Auto PO Numbers
+
+Target area:
+HR attendance hours, sidebar access, production order numbering
+
+Reason:
+"45 hours in total is not reflecting" — HR only showed period totals, not the weekly 45h (8h Mon–Fri + 5h Sat). HR users could not see Inventory. Production orders used an ugly timestamp number instead of a clean sequence.
+
+Files changed:
+- `api/rpc.js`
+- `src/main.jsx`
+
+Improvements:
+- HR: new `hoursThisWeek` and `expectedWeekHours: 45` stats (Monday-start week, attendance hours summed) surfaced in the HR overview strip: "Hours this week · Xh of 45h expected".
+- Sidebar: Inventory is now a shared module (visible to HR and other non-admin roles), matching "add inventory in HR user end".
+- Production orders: auto order number is now a clean sequential `PO-0001` style (previously `PJ-<timestamp>`).
+
+Verification:
+- `node --check api/rpc.js` passed.
+- `vite build` passed.
+
+Notes / next steps:
+- Manufacturing role separation in reports still open.
 ## 2026-08-18 - Raw Materials Frontend Panel (Inventory)
 
 Target area:
