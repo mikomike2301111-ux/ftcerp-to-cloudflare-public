@@ -4300,6 +4300,35 @@ function ProfitLossReport({ data }) {
   );
 }
 
+function AgingBuckets({ data }) {
+  const buckets = { Current: 0, '1-30': 0, '31-60': 0, '61-90': 0, '90+': 0 };
+  const counts = { Current: 0, '1-30': 0, '31-60': 0, '61-90': 0, '90+': 0 };
+  (data.receivables || []).forEach(r => {
+    if (num(r.balance) <= 0) return;
+    const days = num(r.daysOverdue);
+    const b = days > 90 ? '90+' : days > 60 ? '61-90' : days > 30 ? '31-60' : days > 0 ? '1-30' : 'Current';
+    buckets[b] += num(r.balance); counts[b] += 1;
+  });
+  const rows = Object.keys(buckets).map(k => ({ bucket: k, count: counts[k], balance: currency(buckets[k]) }));
+  return <Panel className="span-6" title="Aged Receivables by Bucket" action={`${(data.receivables || []).length} invoices`}><SimpleTable rows={rows} columns={['bucket', 'count', 'balance']} /></Panel>;
+}
+
+function CashFlowSummary({ data }) {
+  const btx = data.bankTransactions || [];
+  const deposits = btx.reduce((s, t) => s + num(t.deposit), 0);
+  const withdrawals = btx.reduce((s, t) => s + num(t.withdrawal), 0);
+  const balance = deposits - withdrawals;
+  return (
+    <Panel className="span-6" title="Cash Flow Summary" action="Bank movements">
+      <SimpleTable rows={[
+        { item: 'Money In (Deposits)', amount: currency(deposits), kind: 'In' },
+        { item: 'Money Out (Withdrawals)', amount: `-${currency(withdrawals)}`, kind: 'Out' },
+        { item: 'Net Cash Movement', amount: currency(balance), kind: balance >= 0 ? 'Net In' : 'Net Out' },
+      ]} columns={['item', 'amount', 'kind']} />
+    </Panel>
+  );
+}
+
 function InventoryWorkspace({ user, setPage, globalPeriod }) {
   const tabs = ['overview', 'stock', 'raw-materials', 'warehouses', 'movements', 'adjustments', 'transfers', 'receiving', 'dispatch', 'audits', 'expiry', 'damaged', 'alerts', 'reports', 'analytics', 'forecasting', 'ai', 'barcode', 'valuation', 'batch', 'reorder', 'count', 'suppliers', 'reservation', 'cost', 'mfg'];
   const [refreshKey, setRefreshKey] = useState(0);
@@ -8536,6 +8565,8 @@ function AccountsWorkspace({ user, setPage, globalPeriod }) {
           <Panel className="span-12" title="Accounts Receivable Aging Snapshot" action={`${(data.agingSummary || []).length} customers`}>
             <SimpleTable rows={(data.agingSummary || []).slice(0, 10)} columns={['customerName', 'totalBalance', 'overdue', 'current', 'daysOverdue', 'riskStatus']} />
           </Panel>
+          <AgingBuckets data={data} />
+          <CashFlowSummary data={data} />
         </div>
       )}
       {view === 'credit-notes' && (
@@ -9198,6 +9229,8 @@ function Finance({ user, setPage, globalPeriod }) {
           <Panel className="span-12" title="Accounts Receivable Aging Snapshot" action={`${(data.agingSummary || []).length} customers`}>
             <SimpleTable rows={(data.agingSummary || []).slice(0, 10)} columns={['customerName', 'totalBalance', 'overdue', 'current', 'daysOverdue', 'riskStatus']} />
           </Panel>
+          <AgingBuckets data={data} />
+          <CashFlowSummary data={data} />
         </div>
       )}
       {view === 'audit' && <Panel title="Immutable Audit Center"><SimpleTable rows={data.audit} columns={['user', 'date', 'module', 'action', 'reference', 'newValue', 'approval', 'immutable']} /></Panel>}
