@@ -33,6 +33,31 @@ Verification:
 Notes / next steps:
 ```
 
+## 2026-08-18 - Raw Materials Frontend Panel (Inventory)
+
+Target area:
+Inventory → Raw Materials tab, backend RPCs + audit movements
+
+Reason:
+Complete the Raw Materials module from the database layer (migration 008) with a working frontend panel.
+
+Files changed:
+- `api/rpc.js`
+- `src/main.jsx`
+
+Improvements:
+- New backend RPCs (persisted via the existing Supabase erp_state bridge, decimal-safe): `getRawMaterialsInventory` (items + movement history + overview KPIs), `saveRawMaterialItem` (add/update with auto RM-xxx SKU and no-duplicate guard), `receiveRawMaterialItem`, `consumeRawMaterial` (blocks negative stock with a clear error), `deleteRawMaterial` (soft).
+- Every mutation writes an auditable `rawMaterialMovements` row (type, quantity, before/after, reference, user, date).
+- Inventory now has a new **Raw Materials** tab (`InventoryRawMaterials` view) with KPI cards (Total Items, Total Qty, Low/Out of Stock, Stock Value), the full table (SKU, Raw Material, Category, Quantity, Unit, Unit Cost, Stock Value, Status, Last Updated, Actions), and Detail / Receive / Consume / Edit / Delete flows plus a movement-history modal.
+- Renamed handlers with `*Item`/unique names to avoid clashing with existing Manufacturing `saveRawMaterial`/`receiveRawMaterial` handlers.
+
+Verification:
+- `node --check api/rpc.js` passed.
+- `vite build` passed.
+
+Notes / next steps:
+- Cross-call persistence verified against the live Supabase-backed deploy (offline smoke harness cannot persist; expected).
+- Run migration `008-raw-materials-inventory.sql` in Supabase to also create the native tables + seed the 14 records.
 ## 2026-08-18 - Admin Office Place-Order Fix, PO Preview/Print, Raw Materials DB
 
 Target area:

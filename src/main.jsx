@@ -4162,8 +4162,121 @@ function CRMInputModal({ user, type, customers, onClose, onSaved, preset }) {
   );
 }
 
+function InventoryRawMaterials({ user, onRefresh }) {
+  const [refreshKey, setRefreshKey] = useState(0);
+  const { loading, data, error } = useServer(user, 'getRawMaterialsInventory', [], [refreshKey]);
+  const [modal, setModal] = useState(null);
+  const [detail, setDetail] = useState(null);
+  const [form, setForm] = useState({ name: '', sku: '', category: 'Raw Material', unitOfMeasure: 'units', quantityOnHand: 0, minimumStockLevel: 0, maximumStockLevel: '', unitCost: 0, description: '', reference: '', notes: '', date: new Date().toISOString().slice(0, 10) });
+  const [busy, setBusy] = useState(false);
+  if (loading) return <Loading title="Raw Materials" />;
+  if (error) return <ErrorState title="Raw Materials" error={error} />;
+  const items = data.items || [];
+  const movements = data.movements || [];
+  const ov = data.overview || {};
+  const refresh = () => { setRefreshKey(x => x + 1); onRefresh?.(); };
+  async function run(fn, payload, okMsg) {
+    setBusy(true);
+    try { await rpc(fn, [user, payload]); if (okMsg) alert(okMsg); setModal(null); setDetail(null); refresh(); }
+    catch (err) { alert(err.message); } finally { setBusy(false); }
+  }
+  const cleanForm = () => ({ name: '', sku: '', category: 'Raw Material', unitOfMeasure: 'units', quantityOnHand: 0, minimumStockLevel: 0, maximumStockLevel: '', unitCost: 0, description: '', reference: '', notes: '', date: new Date().toISOString().slice(0, 10) });
+  const openAdd = item => setForm(item ? { ...cleanForm(), id: item.id, name: item.name, sku: item.sku, category: item.category, unitOfMeasure: item.unitOfMeasure, quantityOnHand: item.quantityOnHand, minimumStockLevel: num(item.minimumStockLevel) || 0, maximumStockLevel: item.maximumStockLevel ?? '', unitCost: item.unitCost, description: item.description || '' } : cleanForm());
+  return (
+    <div className="dashboard-grid">
+      <div className="analytics-kpi-row">
+        <article className="kpi-align-card"><div className="kpi-align-top"><span>Total Items</span><Package size={16} /></div><strong>{items.length}</strong><small>raw materials</small></article>
+        <article className="kpi-align-card"><div className="kpi-align-top"><span>Total Quantity</span><Boxes size={16} /></div><strong>{Number(ov.totalQty || 0).toLocaleString()}</strong><small>across all units</small></article>
+        <article className="kpi-align-card"><div className="kpi-align-top"><span>Low Stock</span><AlertTriangle size={16} /></div><strong style={{ color: '#f79009' }}>{ov.lowStock || 0}</strong><small>at or below minimum</small></article>
+        <article className="kpi-align-card"><div className="kpi-align-top"><span>Out of Stock</span><XCircle size={16} /></div><strong style={{ color: '#d92d20' }}>{ov.outOfStock || 0}</strong><small>zero quantity</small></article>
+        <article className="kpi-align-card"><div className="kpi-align-top"><span>Stock Value</span><CircleDollarSign size={16} /></div><strong>{compactCurrency(ov.stockValue || 0)}</strong><small>where unit cost is set</small></article>
+      </div>
+      <Panel className="span-12" title="Raw Materials Inventory" action={`${items.length} materials · ${movements.length} movements`}>
+        <div className="inline-actions" style={{ padding: '0 16px 10px' }}>
+          <button className="primary-action" onClick={() => { setModal('add'); openAdd(); }}><Plus size={15} /> Add Raw Material</button>
+        </div>
+        <div className="table-wrap"><table>
+          <thead><tr><th>SKU</th><th>Raw Material</th><th>Category</th><th>Quantity</th><th>Unit</th><th>Unit Cost</th><th>Stock Value</th><th>Status</th><th>Last Updated</th><th>Actions</th></tr></thead>
+          <tbody>
+            {items.map(rm => (
+              <tr key={rm.id}>
+                <td><strong>{rm.sku}</strong></td>
+                <td>{rm.name}</td>
+                <td>{rm.category}</td>
+                <td>{Number(rm.quantityOnHand).toLocaleString()}</td>
+                <td>{rm.unitOfMeasure}</td>
+                <td>{rm.unitCost ? currency(rm.unitCost) : '—'}</td>
+                <td>{currency(rm.stockValue)}</td>
+                <td><span className={rm.status === 'IN STOCK' ? 'status active' : rm.status === 'LOW STOCK' ? 'status partial' : 'status cancelled'}>{rm.status}</span></td>
+                <td>{rm.lastUpdated || '—'}</td>
+                <td onClick={e => e.stopPropagation()}>
+                  <div className="panel-action-row">
+                    <button className="mini-action" onClick={() => setDetail(rm)}><FileText size={14} /> Detail</button>
+                    <button className="mini-action" onClick={() => { setModal('receive'); openAdd(rm); }}><Package size={14} /> Receive</button>
+                    <button className="mini-action" onClick={() => { setModal('consume'); openAdd(rm); }}><Factory size={14} /> Consume</button>
+                    <button className="mini-action" onClick={() => { setModal('edit'); openAdd(rm); }}><UserCog size={14} /> Edit</button>
+                    <button className="mini-action danger" onClick={() => { if (confirm(`Delete ${rm.name}?`)) run('deleteRawMaterial', rm.id, 'Raw material deleted (recoverable).'); }}><Trash2 size={14} /></button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {!items.length && <tr><td colSpan={10}><div className="empty-state">No raw materials yet. Add them or run the 008 Supabase seed to load the 24/07/2026 report.</div></td></tr>}
+          </tbody>
+        </table></div>
+        {detail && (
+          <div className="modal-scrim retractable-overlay" onClick={() => setDetail(null)}>
+            <div className="modal-card overlay-scrollable wide" onClick={e => e.stopPropagation()}>
+              <header><h2>{detail.name}</h2><button type="button" onClick={() => setDetail(null)}><X size={18} /></button></header>
+              <div className="modal-card-body overlay-scroll-body">
+                <div className="settings-kv-grid">
+                  <article><span>SKU</span><strong>{detail.sku}</strong></article>
+                  <article><span>Category</span><strong>{detail.category}</strong></article>
+                  <article><span>Unit</span><strong>{detail.unitOfMeasure}</strong></article>
+                  <article><span>Current qty</span><strong>{Number(detail.quantityOnHand).toLocaleString()}</strong></article>
+                  <article><span>Status</span><strong>{detail.status}</strong></article>
+                  <article><span>Unit cost</span><strong>{detail.unitCost ? currency(detail.unitCost) : 'Not set'}</strong></article>
+                  <article><span>Stock value</span><strong>{currency(detail.stockValue)}</strong></article>
+                  <article><span>Min level</span><strong>{num(detail.minimumStockLevel) || '—'}</strong></article>
+                  <article><span>Max level</span><strong>{detail.maximumStockLevel == null ? '—' : num(detail.maximumStockLevel)}</strong></article>
+                </div>
+                <div style={{ marginTop: 14 }}><strong>Movement History</strong></div>
+                <SimpleTable rows={movements.filter(m => m.materialId === detail.id || m.sku === detail.sku).slice(0, 30).map(m => ({ ...m, date: m.transactionDate, before: num(m.beforeQuantity), after: num(m.afterQuantity) }))} columns={['transactionDate', 'transactionType', 'quantity', 'before', 'after', 'reference', 'userName', 'notes']} />
+              </div>
+            </div>
+          </div>
+        )}
+        {modal && (
+          <div className="modal-scrim retractable-overlay" onClick={() => setModal(null)}>
+            <div className="modal-card overlay-scrollable" onClick={e => e.stopPropagation()}>
+              <header><h2>{modal === 'receive' ? 'Receive Raw Material' : modal === 'consume' ? 'Consume Raw Material' : modal === 'edit' ? 'Edit Raw Material' : 'Add Raw Material'}</h2><button type="button" onClick={() => setModal(null)}><X size={18} /></button></header>
+              <form className="settings-form-grid modal-card-body overlay-scroll-body" onSubmit={e => {
+                e.preventDefault();
+                if (modal === 'receive') run('receiveRawMaterialItem', { id: form.id, quantity: form.quantityOnHand, unitCost: form.unitCost, reference: form.reference, notes: form.notes, date: form.date }, 'Stock received and movement recorded.');
+                else if (modal === 'consume') run('consumeRawMaterial', { id: form.id, quantity: form.quantityOnHand, reference: form.reference, notes: form.notes, date: form.date }, 'Consumption recorded.');
+                else run('saveRawMaterialItem', form, modal === 'edit' ? 'Raw material updated.' : 'Raw material added.');
+              }}>
+                <label>Name<input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required /></label>
+                {modal === 'add' && <label>SKU<input value={form.sku} onChange={e => setForm({ ...form, sku: e.target.value })} placeholder="Leave blank for auto RM-xxx" /></label>}
+                <label>Category<select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>{['Raw Material', 'Packaging Material', 'Consumable'].map(c => <option key={c}>{c}</option>)}</select></label>
+                <label>Unit of Measure<input value={form.unitOfMeasure} onChange={e => setForm({ ...form, unitOfMeasure: e.target.value })} placeholder="kg, g, L, units" required /></label>
+                <label>{modal === 'receive' ? 'Quantity Received' : modal === 'consume' ? 'Quantity Consumed' : 'Quantity on Hand'}<input type="number" min="0" step="0.001" value={form.quantityOnHand} onChange={e => setForm({ ...form, quantityOnHand: e.target.value })} required /></label>
+                {(modal === 'add' || modal === 'edit' || modal === 'receive') && <label>Unit Cost<input type="number" min="0" step="0.01" value={form.unitCost} onChange={e => setForm({ ...form, unitCost: e.target.value })} placeholder="KES per unit (optional)" /></label>}
+                {(modal === 'add' || modal === 'edit') && <label>Minimum Stock Level<input type="number" min="0" step="0.001" value={form.minimumStockLevel} onChange={e => setForm({ ...form, minimumStockLevel: e.target.value })} /></label>}
+                {(modal === 'add' || modal === 'edit') && <label>Maximum Stock Level<input type="number" min="0" step="0.001" value={form.maximumStockLevel} onChange={e => setForm({ ...form, maximumStockLevel: e.target.value })} /></label>}
+                {(modal === 'add' || modal === 'edit') && <label>Description<textarea rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} /></label>}
+                <label>Reference / Notes<input value={form.reference} onChange={e => setForm({ ...form, reference: e.target.value })} placeholder="GRN / production order / supplier" /></label>
+                <button className="primary-action" disabled={busy}>{busy ? 'Saving...' : 'Save'}</button>
+              </form>
+            </div>
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
 function InventoryWorkspace({ user, setPage, globalPeriod }) {
-  const tabs = ['overview', 'stock', 'warehouses', 'movements', 'adjustments', 'transfers', 'receiving', 'dispatch', 'audits', 'expiry', 'damaged', 'alerts', 'reports', 'analytics', 'forecasting', 'ai', 'barcode', 'valuation', 'batch', 'reorder', 'count', 'suppliers', 'reservation', 'cost', 'mfg'];
+  const tabs = ['overview', 'stock', 'raw-materials', 'warehouses', 'movements', 'adjustments', 'transfers', 'receiving', 'dispatch', 'audits', 'expiry', 'damaged', 'alerts', 'reports', 'analytics', 'forecasting', 'ai', 'barcode', 'valuation', 'batch', 'reorder', 'count', 'suppliers', 'reservation', 'cost', 'mfg'];
   const [refreshKey, setRefreshKey] = useState(0);
   const workspace = useServer(user, 'getInventoryWorkspaceData', [{ period: globalPeriod }], [refreshKey, globalPeriod]);
   const [view, setView] = useRouteTab('inventory', tabs, 'overview');
@@ -4390,6 +4503,7 @@ function InventoryWorkspace({ user, setPage, globalPeriod }) {
         </div>
         </Panel>
       )}
+      {view === 'raw-materials' && <InventoryRawMaterials user={user} onRefresh={() => setRefreshKey(x => x + 1)} />}
       {view === 'warehouses' && <Panel title="Store Management"><SimpleTable rows={data.warehouses} columns={['code', 'name', 'county', 'capacity', 'used', 'utilization', 'stockValue']} /></Panel>}
       {view === 'movements' && <Panel title="Stock Movement Tracking"><SimpleTable rows={data.movements} columns={['productName', 'warehouseName', 'transactionType', 'quantity', 'unitCost', 'referenceType', 'createdBy']} /></Panel>}
       {view === 'adjustments' && <Panel title="Stock Adjustments" action="Authorized"><SimpleTable rows={data.adjustments} columns={['productName', 'warehouseName', 'adjustmentType', 'quantity', 'reason', 'approvedBy', 'date']} /></Panel>}

@@ -8804,6 +8804,104 @@ const api = {
   },
   getProducts: user => (reqRole(user), list('products').map(p => ({ ...p, costPrice: num(p.costPrice), sellingPrice: num(p.sellingPrice), minStock: num(p.minStock), stock: data().inventory.filter(i => i.productName === p.name).reduce((s, i) => s + num(i.quantity), 0) }))),
   saveProduct(user, row) { const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.WAREHOUSE, ROLES.PRODUCTION); const d = data(); const saved = save('products', u, row); if (saved && saved.id) { d.inventory = d.inventory || []; if (!d.inventory.some(i => i.productId === saved.id || i.productName === saved.name)) { d.inventory.unshift({ id: gid(), productId: saved.id, productName: saved.name, sku: saved.sku || '', warehouseName: 'Njiru Store', quantity: num(row.openingStock || 0), unitCost: num(saved.costPrice || row.costPrice), quantityReserved: 0, quantityIncoming: 0, quantityOutgoing: 0, damagedQuantity: 0, expiredQuantity: 0, quarantinedQuantity: 0, status: 'Active', createdAt: new Date().toISOString() }); try { if (typeof saveState === 'function') saveState(d); } catch (_) {} } } return saved; },
+  getRawMaterialsInventory(user) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.WAREHOUSE, ROLES.PRODUCTION);
+    const d = data();
+    d.rawMaterialInventory = Array.isArray(d.rawMaterialInventory) ? d.rawMaterialInventory : [];
+    d.rawMaterialMovements = Array.isArray(d.rawMaterialMovements) ? d.rawMaterialMovements : [];
+    const items = d.rawMaterialInventory.filter(rm => rm.isDeleted !== 'Yes').map(rm => {
+      const qty = num(rm.quantityOnHand);
+      const cost = num(rm.unitCost);
+      const status = qty <= 0 ? 'OUT OF STOCK' : num(rm.minimumStockLevel) > 0 && qty <= num(rm.minimumStockLevel) ? 'LOW STOCK' : num(rm.maximumStockLevel) > 0 && qty > num(rm.maximumStockLevel) ? 'OVERSTOCKED' : 'IN STOCK';
+      return { ...rm, quantityOnHand: qty, quantity: qty, status, stockValue: Math.round(qty * cost * 100) / 100, lastUpdated: (rm.updatedAt || rm.createdAt || '').slice(0, 10) };
+    });
+    return { items, movements: d.rawMaterialMovements, overview: { totalItems: items.length, totalQty: items.reduce((s, i) => s + num(i.quantityOnHand), 0), lowStock: items.filter(i => i.status === 'LOW STOCK').length, outOfStock: items.filter(i => i.status === 'OUT OF STOCK').length, stockValue: Math.round(items.reduce((s, i) => s + num(i.stockValue), 0)) } };
+  },
+  saveRawMaterialItem(user, form = {}) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.WAREHOUSE, ROLES.PRODUCTION);
+    const d = data();
+    d.rawMaterialInventory = Array.isArray(d.rawMaterialInventory) ? d.rawMaterialInventory : [];
+    d.rawMaterialMovements = Array.isArray(d.rawMaterialMovements) ? d.rawMaterialMovements : [];
+    const name = clean(form.name); if (!name) throw new Error('Material name is required');
+    const unitOfMeasure = clean(form.unitOfMeasure || form.unit) || 'units';
+    const qty = Math.max(0, num(form.quantityOnHand ?? form.openingQuantity ?? form.quantity));
+    const unitCost = Math.max(0, num(form.unitCost));
+    const now = new Date().toISOString();
+    let item = form.id ? d.rawMaterialInventory.find(x => x.id === form.id) : null;
+    if (item) {
+      const before = num(item.quantityOnHand);
+      item.name = name; item.category = clean(form.category) || 'Raw Material'; item.unitOfMeasure = unitOfMeasure;
+      item.unitCost = unitCost; item.description = clean(form.description);
+      item.minimumStockLevel = Math.max(0, num(form.minimumStockLevel));
+      item.maximumStockLevel = form.maximumStockLevel === '' ? null : Math.max(0, num(form.maximumStockLevel));
+      item.quantityOnHand = qty; item.updatedAt = now;
+      if (qty !== before) {
+        const type = qty > before ? 'ADJUSTMENT_UP' : 'ADJUSTMENT_DOWN';
+        d.rawMaterialMovements.unshift({ id: gid(), materialId: item.id, materialName: item.name, sku: item.sku, transactionType: type, quantity: Math.abs(qty - before), beforeQuantity: before, afterQuantity: qty, unitOfMeasure, reference: clean(form.reference) || 'EDIT', notes: clean(form.notes) || 'Edited raw material', userName: u.name, transactionDate: today(), createdAt: now });
+      }
+    } else {
+      // If a non-deleted item already exists with this SKU, update it instead of duplicating.
+      let sku = clean(form.sku) || `RM-${String(d.rawMaterialInventory.length + 1).padStart(3, '0')}`;
+      const existingBySku = d.rawMaterialInventory.find(x => String(x.sku || '').toLowerCase() === sku.toLowerCase() && x.isDeleted !== 'Yes');
+      if (existingBySku) {
+        const before = num(existingBySku.quantityOnHand);
+        existingBySku.name = name; existingBySku.category = clean(form.category) || existingBySku.category || 'Raw Material'; existingBySku.unitOfMeasure = unitOfMeasure;
+        existingBySku.unitCost = unitCost > 0 ? unitCost : existingBySku.unitCost;
+        existingBySku.minimumStockLevel = Math.max(0, num(form.minimumStockLevel)); existingBySku.updatedAt = now;
+        existingBySku.quantityOnHand = qty;
+        if (qty !== before) d.rawMaterialMovements.unshift({ id: gid(), materialId: existingBySku.id, materialName: existingBySku.name, sku, transactionType: qty > before ? 'ADJUSTMENT_UP' : 'ADJUSTMENT_DOWN', quantity: Math.abs(qty - before), beforeQuantity: before, afterQuantity: qty, unitOfMeasure, reference: 'EDIT', notes: 'Updated via raw materials editor', userName: u.name, transactionDate: today(), createdAt: now });
+        item = existingBySku;
+      } else {
+        while (d.rawMaterialInventory.some(x => String(x.sku || '').toLowerCase() === sku.toLowerCase())) sku = `RM-${String(d.rawMaterialInventory.length + 2).padStart(3, '0')}`;
+        const id = gid();
+        item = { id, name, sku, category: clean(form.category) || 'Raw Material', unitOfMeasure, quantityOnHand: qty, minimumStockLevel: Math.max(0, num(form.minimumStockLevel)), maximumStockLevel: form.maximumStockLevel === '' ? null : Math.max(0, num(form.maximumStockLevel)), unitCost, totalValue: Math.round(qty * unitCost * 100) / 100, status: qty <= 0 ? 'OUT OF STOCK' : 'IN STOCK', description: clean(form.description), isDeleted: 'No', createdBy: u.name, createdAt: now, updatedAt: now };
+        d.rawMaterialInventory.unshift(item);
+        if (qty > 0) d.rawMaterialMovements.unshift({ id: gid(), materialId: id, materialName: name, sku, transactionType: 'OPENING_BALANCE', quantity: qty, beforeQuantity: 0, afterQuantity: qty, unitOfMeasure, reference: clean(form.reference) || 'OPENING', notes: clean(form.notes) || 'Opening balance', userName: u.name, transactionDate: form.date || today(), createdAt: now });
+      }
+    }
+    log(u, item ? 'Update Raw Material' : 'Add Raw Material', 'Inventory', name);
+    try { if (typeof saveState === 'function') Promise.resolve(saveState()).catch(() => {}); } catch {}
+    return { success: true, item };
+  },
+  receiveRawMaterialItem(user, form = {}) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.WAREHOUSE, ROLES.PRODUCTION);
+    const d = data(); d.rawMaterialInventory ||= []; d.rawMaterialMovements ||= [];
+    const item = (form.id ? d.rawMaterialInventory.find(x => x.id === form.id) : d.rawMaterialInventory.find(x => String(x.sku || '').toLowerCase() === String(form.sku || '').toLowerCase()));
+    if (!item) throw new Error('Raw material not found');
+    const addQty = Math.max(0, num(form.quantity)); if (!addQty) throw new Error('Receipt quantity is required');
+    const before = num(item.quantityOnHand);
+    item.quantityOnHand = before + addQty;
+    if (num(form.unitCost) > 0) item.unitCost = num(form.unitCost);
+    item.totalValue = Math.round(num(item.quantityOnHand) * num(item.unitCost) * 100) / 100; item.updatedAt = new Date().toISOString();
+    d.rawMaterialMovements.unshift({ id: gid(), materialId: item.id, materialName: item.name, sku: item.sku, transactionType: 'RECEIPT', quantity: addQty, beforeQuantity: before, afterQuantity: num(item.quantityOnHand), unitOfMeasure: item.unitOfMeasure, reference: clean(form.reference) || `GRN-${String(d.rawMaterialMovements.length + 1).padStart(4, '0')}`, notes: clean(form.notes) || `Received ${addQty} ${item.unitOfMeasure} from ${clean(form.supplierName) || 'supplier'}`, userName: u.name, transactionDate: form.date || today(), createdAt: new Date().toISOString() });
+    log(u, 'Receive Raw Material', 'Inventory', `${item.sku} +${addQty}`);
+    try { if (typeof saveState === 'function') Promise.resolve(saveState()).catch(() => {}); } catch {}
+    return { success: true, item };
+  },
+  consumeRawMaterial(user, form = {}) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.WAREHOUSE, ROLES.PRODUCTION);
+    const d = data(); d.rawMaterialInventory ||= []; d.rawMaterialMovements ||= [];
+    const item = (form.id ? d.rawMaterialInventory.find(x => x.id === form.id) : d.rawMaterialInventory.find(x => String(x.sku || '').toLowerCase() === String(form.sku || '').toLowerCase()));
+    if (!item) throw new Error('Raw material not found');
+    const useQty = Math.max(0, num(form.quantity)); if (!useQty) throw new Error('Consumed quantity is required');
+    const before = num(item.quantityOnHand);
+    if (before < useQty) throw new Error(`Insufficient stock: ${item.name} has ${before} ${item.unitOfMeasure}, cannot consume ${useQty}.`);
+    item.quantityOnHand = Math.round((before - useQty) * 1000000) / 1000000;
+    item.totalValue = Math.round(num(item.quantityOnHand) * num(item.unitCost) * 100) / 100; item.updatedAt = new Date().toISOString();
+    d.rawMaterialMovements.unshift({ id: gid(), materialId: item.id, materialName: item.name, sku: item.sku, transactionType: 'PRODUCTION_CONSUMPTION', quantity: useQty, beforeQuantity: before, afterQuantity: num(item.quantityOnHand), unitOfMeasure: item.unitOfMeasure, reference: clean(form.reference) || clean(form.productionOrderNo) || 'PROD', notes: clean(form.notes) || `Consumed ${useQty} ${item.unitOfMeasure} in production`, userName: u.name, transactionDate: form.date || today(), createdAt: new Date().toISOString() });
+    log(u, 'Consume Raw Material', 'Inventory', `${item.sku} -${useQty}`);
+    try { if (typeof saveState === 'function') Promise.resolve(saveState()).catch(() => {}); } catch {}
+    return { success: true, item };
+  },
+  deleteRawMaterial(user, id) {
+    const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.WAREHOUSE);
+    const d = data(); d.rawMaterialInventory ||= [];
+    const item = d.rawMaterialInventory.find(x => x.id === id); if (!item) throw new Error('Raw material not found');
+    item.isDeleted = 'Yes'; item.deletedAt = new Date().toISOString(); item.deletedBy = u.name; item.updatedAt = new Date().toISOString();
+    log(u, 'Delete Raw Material', 'Inventory', item.sku || item.name);
+    try { if (typeof saveState === 'function') Promise.resolve(saveState()).catch(() => {}); } catch {}
+    return { success: true };
+  },
   getInventory: user => (reqRole(user), list('inventory').map(i => ({ ...i, quantity: num(i.quantity), unitCost: num(i.unitCost) }))),
   saveInventoryItem(user, row) { const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.WAREHOUSE); return save('inventory', u, row); },
   getInventoryWorkspaceData(user, filters = {}) {
@@ -15575,6 +15673,10 @@ const SYNC_AFTER_RPC = {
   saveSupplier: ['Purchases', 'Activity'],
   deleteSupplier: ['Purchases', 'Activity'],
   saveProduct: ['Products', 'Inventory', 'Dashboard', 'Activity'],
+  saveRawMaterialItem: ['Inventory', 'Inventory Movements', 'Activity'],
+  receiveRawMaterialItem: ['Inventory', 'Inventory Movements', 'Notifications', 'Activity'],
+  consumeRawMaterial: ['Inventory', 'Inventory Movements', 'Manufacturing', 'Activity'],
+  deleteRawMaterial: ['Inventory', 'Inventory Movements', 'Activity'],
   saveInventoryItem: ['Inventory', 'Inventory Movements', 'Dashboard', 'Activity'],
   adjustInventory: ['Inventory', 'Inventory Movements', 'Dashboard', 'Activity'],
   transferInventory: ['Inventory', 'Inventory Movements', 'Dashboard', 'Activity'],
