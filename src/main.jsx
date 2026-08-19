@@ -4290,7 +4290,7 @@ function ProfitLossReport({ data }) {
     { label: 'Gross Profit', amount: gross, kind: 'profit' },
     { label: 'Operating Expenses', amount: expenses, kind: 'expense' },
     { label: 'Net Profit / Loss', amount: netProfit, kind: 'net' },
-  ].filter(r => Math.abs(num(r.amount)) > 0 || r.kind === 'net' || rows.length === 1);
+  ].filter(r => r.kind === 'net' || Math.abs(num(r.amount)) > 0);
   return (
     <Panel className="span-12" title="Profit & Loss (Income Statement)" action="Live journal lines">
       <SimpleTable rows={rows.map(r => ({ ...r, amount: currency(r.amount) }))} columns={['label', 'amount', 'kind']} />
