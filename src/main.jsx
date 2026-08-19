@@ -4276,7 +4276,6 @@ function InventoryRawMaterials({ user, onRefresh }) {
 }
 
 function ProfitLossReport({ data }) {
-  const accounts = data.financeAccounts || data.accounts || [];
   const lines = data.journalLines || data.ledger || data.generalLedger || [];
   const net = prefix => lines.filter(l => String(l.accountCode || l.account || '').startsWith(prefix)).reduce((s, l) => s + num(l.credit) - num(l.debit), 0);
   const revenue = net('4');
@@ -4284,16 +4283,19 @@ function ProfitLossReport({ data }) {
   const expenses = net('6');
   const gross = revenue - cogs;
   const netProfit = gross - expenses;
+  const grossMargin = revenue ? Math.round((gross / revenue) * 100) : 0;
+  const netMargin = revenue ? Math.round((netProfit / revenue) * 100) : 0;
+  const expenseRatio = revenue ? Math.round((expenses / revenue) * 100) : 0;
   const rows = [
-    { label: 'Revenue', amount: revenue, kind: 'revenue' },
-    { label: 'Less: Cost of Sales', amount: cogs, kind: 'cogs' },
-    { label: 'Gross Profit', amount: gross, kind: 'profit' },
-    { label: 'Operating Expenses', amount: expenses, kind: 'expense' },
-    { label: 'Net Profit / Loss', amount: netProfit, kind: 'net' },
+    { label: 'Revenue', amount: revenue, kind: 'revenue', pct: revenue ? '100%' : '—' },
+    { label: 'Less: Cost of Sales', amount: cogs, kind: 'cogs', pct: revenue ? `${Math.round((cogs / revenue) * 100)}%` : '—' },
+    { label: 'Gross Profit', amount: gross, kind: 'profit', pct: `${grossMargin}% margin` },
+    { label: 'Operating Expenses', amount: expenses, kind: 'expense', pct: `${expenseRatio}% of revenue` },
+    { label: 'Net Profit / Loss', amount: netProfit, kind: 'net', pct: `${netMargin}% margin` },
   ].filter(r => r.kind === 'net' || Math.abs(num(r.amount)) > 0);
   return (
     <Panel className="span-12" title="Profit & Loss (Income Statement)" action="Live journal lines">
-      <SimpleTable rows={rows.map(r => ({ ...r, amount: currency(r.amount) }))} columns={['label', 'amount', 'kind']} />
+      <SimpleTable rows={rows.map(r => ({ ...r, amount: currency(r.amount) }))} columns={['label', 'amount', 'pct', 'kind']} />
     </Panel>
   );
 }
@@ -7296,7 +7298,7 @@ function RouteList({ routes }) {
 }
 
 function Manufacturing({ user, setPage, globalPeriod }) {
-  const tabs = ['dashboard', 'materials', 'packaging', 'formulas', 'orders', 'production', 'rnd', 'consumption', 'traceability', 'quality', 'waste', 'costs', 'capacity', 'calendar', 'downtime', 'reports', 'ai'];
+  const tabs = ['dashboard', 'materials', 'packaging', 'orders', 'production', 'rnd', 'consumption', 'traceability', 'quality', 'waste', 'costs', 'capacity', 'calendar', 'downtime', 'reports', 'ai'];
   const [view, setView] = useRouteTab('production', tabs, 'dashboard');
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [newMaterialOpen, setNewMaterialOpen] = useState(false);
@@ -7736,117 +7738,47 @@ function RawMaterialModal({ user, materials, uoms, onClose, onSaved }) {
   );
 }
 
-function ProductionOrderModal({ user, formulas, rawMaterials, formulaVersions, onClose, onSaved }) {
-  const safeFormulas = Array.isArray(formulas) ? formulas.filter(Boolean) : [];
-  const safeRawMaterials = Array.isArray(rawMaterials) ? rawMaterials.filter(Boolean) : [];
-  const safeFormulaVersions = Array.isArray(formulaVersions) ? formulaVersions.filter(Boolean) : [];
-  const approvedFormulas = safeFormulas.filter(f => f?.approvalStatus === 'Approved');
-  const first = approvedFormulas[0] || safeFormulas[0] || {};
-  const [form, setForm] = useState({ formulaId: first?.id || '', productName: first?.productName || '', plannedQty: 1, outputUnit: first?.outputUnit || 'BAG', operator: user?.name || 'Grace Production', startDate: new Date().toISOString().slice(0, 10), endDate: '', warehouse: 'Njiru Store' });
+function ProductionOrderModal({ user, onClose, onSaved }) {
+  const [form, setForm] = useState({ productName: '', plannedQty: 1, outputUnit: 'BAG', operator: user?.name || '', startDate: new Date().toISOString().slice(0, 10), endDate: '', warehouse: 'Njiru Store' });
   const [saving, setSaving] = useState(false);
   const [validationMsg, setValidationMsg] = useState('');
-  const selectedFormula = safeFormulas.find(f => f?.id === form.formulaId) || {};
-  const selectedFormulaItems = safeFormulaVersions.filter(v => v?.formulaId === form.formulaId && v?.version === selectedFormula?.activeVersion);
-  
-  const handleFormulaChange = (e) => {
-    const formulaId = e.target.value;
-    const formula = safeFormulas.find(x => x?.id === formulaId) || {};
-    setForm({ ...form, formulaId: formula?.id || '', productName: formula?.productName || '', outputUnit: formula?.outputUnit || '' });
-  };
-  
-  const materialRequirements = selectedFormulaItems.map(item => {
-    const mat = safeRawMaterials.find(m => m?.id === item?.rawMaterialId);
-    const reqQty = Math.round(num(item?.quantity) * num(form.plannedQty));
-    return { ...item, materialName: mat?.materialName || item?.materialName || 'Unknown', available: num(mat?.availableQuantity || 0), requiredQty: reqQty, unit: mat?.unitOfMeasure || item?.unit, cost: mat ? num(mat?.costPerUnit || mat?.unitCost) * reqQty : 0, shortage: reqQty > num(mat?.availableQuantity || 0) };
-  });
-  const totalMaterialCost = materialRequirements.reduce((s, x) => s + x.cost, 0);
-  const hasShortage = materialRequirements.some(r => r.shortage);
   const estimatedDays = Math.max(1, Math.ceil(num(form.plannedQty) / 50));
   const estimatedEndDate = form.startDate ? new Date(new Date(form.startDate).getTime() + estimatedDays * 86400000).toISOString().slice(0, 10) : '';
-
   async function save(e) {
     e.preventDefault();
     setValidationMsg('');
-    if (!form.formulaId) {
-      setValidationMsg('Please select a formula for this production order');
-      return;
-    }
-    if (selectedFormula?.approvalStatus !== 'Approved') {
-      setValidationMsg('Formula must be approved before creating a production order');
-      return;
-    }
-    if (hasShortage) {
-      setValidationMsg('Cannot create order: insufficient raw materials. Please check the material shortage report below.');
-      return;
-    }
+    if (!String(form.productName || '').trim()) { setValidationMsg('Product name is required'); return; }
     setSaving(true);
     try {
       await rpc('saveProductionJob', [user, { ...form, endDate: estimatedEndDate }]);
       onSaved?.();
-    } catch (err) {
-      alert(err.message);
-    } finally {
-      setSaving(false);
-    }
+    } catch (err) { alert(err.message); }
+    finally { setSaving(false); }
   }
   return (
     <div className="modal-backdrop">
       <form className="modal-card wide" onSubmit={save}>
         <header><h2>New Production Order</h2><button type="button" onClick={onClose}><X size={18} /></button></header>
         {validationMsg && <div className="error-banner">{validationMsg}</div>}
-        <label>Formula *
-          <select value={form.formulaId} onChange={handleFormulaChange} required>
-            <option value="">Select approved formula...</option>
-            {approvedFormulas.map((f, i) => <option key={f?.id ?? i} value={f?.id}>{f?.productName || '—'} (v{f?.activeVersion || '—'}) - {f?.formulaName || ''}</option>)}
-          </select>
-          {approvedFormulas.length === 0 && <small style={{color: '#d92d20'}}>No approved formulas available. Go to Formulas tab to create and approve one.</small>}
-        </label>
         <div className="modal-grid three-col">
-          <label>Product<input value={form.productName} onChange={e => setForm({ ...form, productName: e.target.value })} placeholder="Auto-filled from formula" /></label>
+          <label>Product<input value={form.productName} onChange={e => setForm({ ...form, productName: e.target.value })} placeholder="Product to produce" required /></label>
           <label>Planned Qty<input type="number" min="1" value={form.plannedQty} onChange={e => setForm({ ...form, plannedQty: e.target.value })} /></label>
-          <label>Output Unit<input value={form.outputUnit} onChange={e => setForm({ ...form, outputUnit: e.target.value })} /></label>
+          <label>Output Unit<input value={form.outputUnit} onChange={e => setForm({ ...form, outputUnit: e.target.value })} placeholder="BAG, GA, BOTTLE..." /></label>
           <label>Warehouse<input value={form.warehouse} onChange={e => setForm({ ...form, warehouse: e.target.value })} /></label>
           <label>Operator<input value={form.operator} onChange={e => setForm({ ...form, operator: e.target.value })} /></label>
           <label>Start Date<input type="date" value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })} /></label>
         </div>
-
-        {selectedFormulaItems.length > 0 && (
-          <div className="material-requirements" style={{ marginTop: 16, marginBottom: 16 }}>
-            <h3>Material Requirements for {form.plannedQty} {form.outputUnit}</h3>
-            <table className="requirements-table">
-              <thead><tr><th>Material</th><th>Per Unit</th><th>Required</th><th>Available</th><th>Unit</th><th>Cost</th><th>Status</th></tr></thead>
-              <tbody>
-                {materialRequirements.map((req, i) => (
-                  <tr key={i} className={req.shortage ? 'shortage' : 'sufficient'}>
-                    <td>{req.materialName}</td>
-                    <td>{req.quantity}</td>
-                    <td><strong>{req.requiredQty}</strong></td>
-                    <td>{req.available}</td>
-                    <td>{req.unit}</td>
-                    <td>{currency(req.cost)}</td>
-                    <td>{req.shortage ? <span className="status cancelled">Shortage</span> : <span className="status active">OK</span>}</td>
-                  </tr>
-                ))}
-                <tr className="total-row"><td colSpan={5}><strong>Total Material Cost</strong></td><td><strong>{currency(totalMaterialCost)}</strong></td><td /></tr>
-              </tbody>
-            </table>
-          </div>
-        )}
-
         <div className="cost-breakdown" style={{ marginBottom: 16 }}>
           <h3>Order Preview</h3>
           <div className="cost-grid">
-            <span>Raw Material Cost</span><strong>{currency(totalMaterialCost)}</strong>
-            <span>Labor Cost (15%)</span><strong>{currency(totalMaterialCost * 0.15)}</strong>
-            <span>Overhead Cost (8%)</span><strong>{currency(totalMaterialCost * 0.08)}</strong>
-            <span>Machine Cost (5%)</span><strong>{currency(totalMaterialCost * 0.05)}</strong>
-            <span>Utility Cost (3%)</span><strong>{currency(totalMaterialCost * 0.03)}</strong>
-            <span className="total">Total Est. Cost</span><strong className="total">{currency(totalMaterialCost * 1.31)}</strong>
+            <span>Planned Quantity</span><strong>{form.plannedQty} {form.outputUnit}</strong>
+            <span>Operator / Assigned</span><strong>{form.operator || '—'}</strong>
+            <span>Start Date</span><strong>{form.startDate || '—'}</strong>
             <span>Est. Completion</span><strong>{estimatedDays} days ({estimatedEndDate || '—'})</strong>
+            <span>Status</span><strong>Pending</strong>
           </div>
         </div>
-
-        <button className="primary-action" disabled={saving || !approvedFormulas.length || hasShortage}>{saving ? 'Creating...' : !approvedFormulas.length ? 'No Approved Formulas' : hasShortage ? 'Resolve Shortages First' : 'Create Production Order'}</button>
+        <button className="primary-action" disabled={saving}>{saving ? 'Creating...' : 'Create Production Order'}</button>
       </form>
     </div>
   );
@@ -9472,22 +9404,58 @@ function FinanceControls({ data = {} }) {
 }
 
 function FinanceReconciliation({ data = {} }) {
-  const rows = (data.bankTransactions || []).map(row => ({
-    ...row,
-    expectedLedger: Number(row.deposit || 0) || Number(row.withdrawal || 0),
-    matchStatus: row.reconciled ? 'Matched' : 'Open'
-  }));
+  const [matchedIds, setMatchedIds] = useState({});
+  const [filterAccount, setFilterAccount] = useState('');
+  const allTxns = (data.bankTransactions || []).map(row => ({ ...row, key: row.id || row.reference || `${row.date}-${row.accountName}-${row.deposit}-${row.withdrawal}` }));
+  const rows = allTxns.filter(row => !filterAccount || row.accountName === filterAccount);
+  const accounts = Array.from(new Set(allTxns.map(t => t.accountName).filter(Boolean)));
+  const totals = allTxns.reduce((acc, t) => { acc.deposits += num(t.deposit); acc.withdrawals += num(t.withdrawal); return acc; }, { deposits: 0, withdrawals: 0 });
+  const matchedCount = allTxns.filter(t => matchedIds[t.key]).length;
+  const toggle = key => setMatchedIds(m => ({ ...m, [key]: !m[key] }));
+  const matchAll = () => { const next = {}; allTxns.forEach(t => { next[t.key] = true; }); setMatchedIds(next); };
+  const matchAccount = () => { const next = { ...matchedIds }; rows.forEach(t => { next[t.key] = true; }); setMatchedIds(next); };
   return (
     <div className="dashboard-grid">
-      <Panel className="span-4" title="Bank Reconciliation Status">
+      <Panel className="span-4" title="Reconciliation Status">
         <div className="finance-control-list">
           <article><span>Bank Accounts</span><strong>{(data.bankAccounts || []).length}</strong><em>Active cash locations</em></article>
-          <article><span>Transactions</span><strong>{data.bankTransactions.length}</strong><em>Bank movements imported/generated</em></article>
-          <article><span>Open Items</span><strong>{rows.filter(x => x.matchStatus === 'Open').length}</strong><em>Need matching or review</em></article>
+          <article><span>Transactions</span><strong>{allTxns.length}</strong><em>{currency(totals.deposits)} in · {currency(totals.withdrawals)} out</em></article>
+          <article><span>Matched</span><strong>{matchedCount}</strong><em>{allTxns.length ? Math.round((matchedCount / allTxns.length) * 100) : 0}% complete</em></article>
+          <article><span>Open Items</span><strong>{allTxns.length - matchedCount}</strong><em>Need matching or review</em></article>
+        </div>
+        <div className="inline-actions" style={{ marginTop: 12, padding: '0 16px', flexWrap: 'wrap' }}>
+          <button className="primary-action" onClick={matchAll}><CheckCircle2 size={15} /> Match All</button>
+          {filterAccount && <button className="secondary-action" onClick={matchAccount}><CheckCircle2 size={15} /> Match {filterAccount}</button>}
         </div>
       </Panel>
-      <Panel className="span-8" title="Reconciliation Workbench">
-        <SimpleTable rows={rows} columns={['date', 'accountName', 'reference', 'description', 'deposit', 'withdrawal', 'matchStatus']} />
+      <Panel className="span-8" title="Reconciliation Workbench" action={accounts.length > 0 ? (
+        <select value={filterAccount} onChange={e => setFilterAccount(e.target.value)} style={{ height: 34, borderRadius: 8, border: '1px solid var(--line)', padding: '0 8px' }}>
+          <option value="">All accounts</option>
+          {accounts.map(a => <option key={a} value={a}>{a}</option>)}
+        </select>
+      ) : null}>
+        <div className="table-wrap"><table>
+          <thead><tr><th>Date</th><th>Account</th><th>Reference</th><th>Description</th><th>Deposit</th><th>Withdrawal</th><th>Status</th><th>Action</th></tr></thead>
+          <tbody>
+            {rows.map(row => {
+              const key = row.key;
+              const matched = !!matchedIds[key];
+              return (
+                <tr key={key}>
+                  <td>{row.date}</td>
+                  <td>{row.accountName}</td>
+                  <td>{row.reference}</td>
+                  <td>{row.description}</td>
+                  <td>{row.deposit ? currency(row.deposit) : '—'}</td>
+                  <td>{row.withdrawal ? currency(row.withdrawal) : '—'}</td>
+                  <td><span className={matched ? 'status active' : 'status partial'}>{matched ? 'Matched' : 'Open'}</span></td>
+                  <td><button className="mini-action" onClick={() => toggle(key)}>{matched ? 'Unmatch' : 'Match'}</button></td>
+                </tr>
+              );
+            })}
+            {!rows.length && <tr><td colSpan={8}><div className="empty-state">No bank transactions to reconcile.</div></td></tr>}
+          </tbody>
+        </table></div>
       </Panel>
     </div>
   );
@@ -15003,6 +14971,10 @@ function CreditNoteModal({ user, invoices = [], onClose, onSaved }) {
         </div></fieldset>
 
         <fieldset className="settings-fieldset"><legend>Products being credited ({selectedItems.length})</legend>
+          <div className="inline-actions" style={{ marginBottom: 8 }}>
+            <button type="button" className="mini-action" onClick={() => setItems(prev => prev.map(i => ({ ...i, selected: true })))}><CheckCircle2 size={14} /> Select all</button>
+            <button type="button" className="mini-action" onClick={() => setItems(prev => prev.map(i => ({ ...i, selected: false })))}><X size={14} /> Clear all</button>
+          </div>
           {loadingItems && <div className="quiet-state">Loading invoice products...</div>}
           {!loadingItems && !form.invoiceId && <div className="quiet-state">Select an invoice above to load its products.</div>}
           {!loadingItems && form.invoiceId && items.length === 0 && <div className="quiet-state">No line items found on this invoice.</div>}

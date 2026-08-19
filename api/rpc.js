@@ -10093,18 +10093,18 @@ const api = {
   async saveProductionJob(user, row) {
     const u = reqRole(user, ROLES.ADMIN, ROLES.MANAGER, ROLES.PRODUCTION);
     const d = data();
-    const formula = d.productFormulas.find(x => x.id === row.formulaId || x.productName === row.productName) || d.productFormulas[0];
-    if (!formula) throw new Error('No formula found for production order');
-    if (formula.approvalStatus !== 'Approved') throw new Error('Formula must be approved before creating a production order');
+    d.productionOrders = Array.isArray(d.productionOrders) ? d.productionOrders : [];
+    const productName = clean(row.productName);
+    if (!productName) throw new Error('Product name is required');
     const order = {
       id: gid(),
       orderNo: row.jobNo || `PO-${String((d.productionOrders || []).length + 1).padStart(4, '0')}`,
-      productName: row.productName || formula.productName,
-      productId: formula.productId,
-      formulaId: formula.id,
-      formulaVersion: row.formulaVersion || formula.activeVersion,
-      plannedQty: num(row.plannedQty || 1),
-      outputUnit: row.outputUnit || formula.outputUnit,
+      productName,
+      productId: row.productId || '',
+      formulaId: row.formulaId || '',
+      formulaVersion: row.formulaVersion || '',
+      plannedQty: Math.max(1, num(row.plannedQty || 1)),
+      outputUnit: row.outputUnit || 'BAG',
       status: 'Pending',
       operator: row.assignedTo || row.operator || u.name,
       warehouse: row.warehouse || 'Njiru Store',

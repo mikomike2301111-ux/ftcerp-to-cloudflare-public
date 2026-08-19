@@ -33,6 +33,27 @@ Verification:
 Notes / next steps:
 ```
 
+## 2026-08-18 - Manufacturing Formulas Removed, Reconciliation/P&L/Credit-Note Upgrades
+
+Target area:
+Manufacturing production orders, bank reconciliation, Profit & Loss, credit notes
+
+Reason:
+Remove the formula/BOM requirement from Manufacturing ("remove formulas — all in production out"), and improve reconciliation, P&L, and credit notes.
+
+Files changed:
+- `api/rpc.js`
+- `src/main.jsx`
+
+Improvements:
+- Manufacturing: removed the "formulas" tab and the formula requirement from new production orders — `saveProductionJob` now only needs a product name + planned qty (auto PO-#### number as before); New Production Order modal is a simple clean form (Product, Planned Qty, Output Unit, Warehouse, Operator, Start Date) with an order preview.
+- Reconciliation (Finance → Reconciliation): upgraded workbench with per-row Match/Unmatch, Match All + Match-by-account buttons, account filter, totals (deposits/withdrawals in/out), matched count + % complete.
+- Profit & Loss panel: now shows margins/ratios (Gross % margin, Expense % of revenue, Net % margin) and cost-of-sales ratio.
+- Credit Note: added Select all / Clear all toggles on the products being credited.
+
+Verification:
+- `node --check api/rpc.js` passed.
+- `vite build` passed.
 ## 2026-08-18 - Manufacturing Role Separation + Sales by Rep Reports
 
 Target area:
